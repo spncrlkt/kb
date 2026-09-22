@@ -21,6 +21,9 @@ Icon?
 rustc-ice-*.txt
 *.pdb
 
+# Runtime artifacts: rewritten on every launch
+debug.log
+
 # IDE and editor files (optional)
 .idea/
 .vscode/

@@ -1,8 +1,6 @@
 //! Progression data model: entries, clipboard, and edit operations.
 
-use std::collections::BTreeSet;
-
-use crate::keyboard::{KeyPosition, PositionSet};
+use crate::keyboard::PositionSet;
 use crate::music::{
     chord_label, diatonic_triad, diatonic_triad_label, ChordSpec, Key, ScaleDegree,
     Transformation,

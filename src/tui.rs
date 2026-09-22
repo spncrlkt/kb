@@ -25,6 +25,7 @@ use crate::grammar::{left_hand_degree, right_hand_transformation};
 use crate::keyboard::{KeyPosition, LockTarget, PositionSet, ACTIVE_LAYOUT};
 use crate::music::{
     chord_label, diatonic_triad, diatonic_triad_label, note_name, ChordSpec, Key, Scale,
+    ScaleDegree, Transformation,
 };
 use crate::presets::{default_path, PatchStore};
 use crate::progression::{Progression, ProgressionEntry, Registers, Slot};
@@ -521,9 +522,7 @@ impl AppState {
     }
 
     fn update_live_chord(&self) {
-        let effective = self.registers.resolve(&self.held);
-        let key = self.transport.key();
-        let notes = current_chord(&effective, &key);
+        let notes = chord_notes(resolved_chord(self), &self.transport.key());
         if notes.is_some() {
             // First time the user produces a chord, suppress the chime
             // for the rest of the session.
@@ -687,8 +686,7 @@ fn event_loop(
                         } else {
                             buffer.trim().to_string()
                         };
-                        let mut patch = synth.capture_patch(&name);
-                        patch.mixer.note_length = state.transport.note_length();
+                        let patch = synth.capture_patch(&name, state.transport.note_length());
                         state.patch_store.add(patch);
                         if let Err(e) = state.patch_store.save(&default_path()) {
                             logger.input(&format!("SAVE ERROR: {}", e));
@@ -988,7 +986,15 @@ fn handle_panel_key(
         KeyCode::Right => adjust_current(state, synth, 1, logger),
         KeyCode::Enter => {
             if ev.modifiers.contains(KeyModifiers::CONTROL) {
+                // Ctrl+Enter always appends, even with no chord held.
                 add_current_chord(state, true, logger);
+            } else if enter_commits_chord(state) {
+                // A chord is resolvable (held keys and/or a latched register),
+                // so Enter commits it from whichever panel has focus. In the
+                // progression panel it lands after the selected row; elsewhere
+                // it appends.
+                let to_end = state.focus != Focus::Progression;
+                add_current_chord(state, to_end, logger);
             } else {
                 primary_action(state, synth, logger);
             }
@@ -1100,11 +1106,7 @@ fn primary_action(state: &mut AppState, synth: &Synth, logger: &Logger) {
 }
 
 fn add_current_chord(state: &mut AppState, to_end: bool, logger: &Logger) {
-    let effective = state.registers.resolve(&state.held);
-    let degree = left_hand_degree(&effective);
-    let transformation = right_hand_transformation(&effective);
-
-    let Some(degree) = degree else {
+    let Some((degree, transformation)) = resolved_chord(state) else {
         if state.focus == Focus::Progression {
             state.modal = Some(Modal::AddRest);
             logger.input("ADD no chord -> Add Rest modal");
@@ -1135,12 +1137,34 @@ fn add_current_chord(state: &mut AppState, to_end: bool, logger: &Logger) {
     logger.input(&format!("ADD chord at {}", inserted_at));
 }
 
-fn current_chord(held: &PositionSet, key: &Key) -> Option<Vec<u8>> {
-    let degree = left_hand_degree(held)?;
-    match right_hand_transformation(held) {
-        Some(t) => Some(ChordSpec::new(degree, t).voice(key)),
-        None => Some(diatonic_triad(key, degree)),
-    }
+/// The chord implied by the latched registers plus any keys held right now.
+///
+/// One hand can come from a register while the other is live, and live input
+/// wins per side (see `Registers::resolve`). This is the single source of
+/// truth for "what is the user playing": the on-screen readout, the live
+/// audio, and Enter-to-add all go through it, so they cannot disagree.
+fn resolved_chord(state: &AppState) -> Option<(ScaleDegree, Option<Transformation>)> {
+    let effective = state.registers.resolve(&state.held);
+    let degree = left_hand_degree(&effective)?;
+    Some((degree, right_hand_transformation(&effective)))
+}
+
+/// True when Enter should commit the current chord instead of falling through
+/// to the focused panel's primary action.
+fn enter_commits_chord(state: &AppState) -> bool {
+    resolved_chord(state).is_some()
+}
+
+/// Sound a resolved chord, or `None` when nothing resolves.
+fn chord_notes(
+    chord: Option<(ScaleDegree, Option<Transformation>)>,
+    key: &Key,
+) -> Option<Vec<u8>> {
+    let (degree, transformation) = chord?;
+    Some(match transformation {
+        Some(t) => ChordSpec::new(degree, t).voice(key),
+        None => diatonic_triad(key, degree),
+    })
 }
 
 // -----------------------------------------------------------------------------
@@ -1174,10 +1198,8 @@ fn render(stdout: &mut io::Stdout, synth: &Synth, state: &AppState) -> io::Resul
         Print("  Lock:  z -> right register   / -> left register\r\n\r\n")
     )?;
 
-    let degree = left_hand_degree(&state.held);
-    let transformation = right_hand_transformation(&state.held);
-    match degree {
-        Some(d) => {
+    match resolved_chord(state) {
+        Some((d, transformation)) => {
             let (label, notes) = match transformation {
                 Some(t) => {
                     let spec = ChordSpec::new(d, t);
@@ -1212,8 +1234,8 @@ fn render(stdout: &mut io::Stdout, synth: &Synth, state: &AppState) -> io::Resul
     execute!(
         stdout,
         Print(
-            "\r\n  Esc quit   Tab cycle   Space: play/pause   \
-             double: mid   triple: restart\r\n"
+            "\r\n  Esc quit   Tab cycle   Enter: add chord   \
+             Space: play/pause (2: mid, 3: restart)\r\n"
         )
     )?;
     execute!(stdout, Print("  Log: debug.log\r\n"))?;
@@ -1593,4 +1615,232 @@ fn draw_key(stdout: &mut io::Stdout, pos: KeyPosition, active: bool) -> io::Resu
     }
     execute!(stdout, ResetColor, Print(" "))?;
     Ok(())
+}
+
+// -----------------------------------------------------------------------------
+// Tests
+// -----------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn logger() -> Arc<Logger> {
+        let mut path = std::env::temp_dir();
+        path.push(format!("chord-tool-tui-{}.log", std::process::id()));
+        Logger::create(path.to_str().unwrap()).unwrap()
+    }
+
+    fn state(focus: Focus) -> AppState {
+        AppState {
+            held: PositionSet::new(),
+            registers: Registers::default(),
+            focus,
+            progression: Arc::new(Mutex::new(Progression::new())),
+            transport: Transport::new(Key::new(60, Scale::Major)),
+            edit: TransportEdit::None,
+            mixer_row: 0,
+            channel_row: [0, 0, 0],
+            progression_row: 0,
+            preset_row: 0,
+            modal: None,
+            patch_store: PatchStore {
+                patches: Vec::new(),
+            },
+            flash_until: None,
+            taps: TapTracker::default(),
+            last_chime_index: None,
+        }
+    }
+
+    fn slots(state: &AppState) -> Vec<Slot> {
+        state.progression.lock().unwrap().slots.clone()
+    }
+
+    // ---- resolution: register + live override ----
+
+    #[test]
+    fn nothing_held_and_no_register_does_not_resolve() {
+        let s = state(Focus::Progression);
+        assert_eq!(resolved_chord(&s), None);
+        assert!(!enter_commits_chord(&s));
+    }
+
+    #[test]
+    fn live_left_hand_resolves_the_plain_triad() {
+        let mut s = state(Focus::Progression);
+        s.held.insert(KeyPosition::LeftIndex);
+        assert_eq!(resolved_chord(&s), Some((ScaleDegree::I, None)));
+        assert!(enter_commits_chord(&s));
+    }
+
+    #[test]
+    fn register_supplies_one_hand_and_live_supplies_the_other() {
+        // The bug report: latch the left hand, hold only the right.
+        let mut s = state(Focus::Transport);
+        s.held.insert(KeyPosition::LeftIndex);
+        s.registers.lock_left(&s.held);
+        s.held.clear();
+
+        s.held.insert(KeyPosition::RightIndex);
+        assert_eq!(
+            resolved_chord(&s),
+            Some((ScaleDegree::I, Some(Transformation::Dom7)))
+        );
+    }
+
+    #[test]
+    fn live_input_overrides_a_stale_register_per_side() {
+        let mut s = state(Focus::Progression);
+        s.held.insert(KeyPosition::LeftIndex);
+        s.registers.lock_left(&s.held);
+        s.held.clear();
+
+        // A live left-hand key wins over the latch.
+        s.held.insert(KeyPosition::LeftMiddle);
+        assert_eq!(resolved_chord(&s), Some((ScaleDegree::V, None)));
+    }
+
+    // ---- Enter commits from any panel ----
+
+    #[test]
+    fn enter_commits_while_holding_a_chord_in_any_panel() {
+        for focus in [
+            Focus::Transport,
+            Focus::Progression,
+            Focus::SynthMixer,
+            Focus::SynthLow,
+            Focus::SynthPresets,
+        ] {
+            let mut s = state(focus);
+            s.held.insert(KeyPosition::LeftIndex);
+            assert!(enter_commits_chord(&s), "focus {:?}", focus);
+        }
+    }
+
+    #[test]
+    fn enter_defers_to_the_panel_when_no_chord_resolves() {
+        for focus in [Focus::Transport, Focus::SynthPresets] {
+            let s = state(focus);
+            assert!(!enter_commits_chord(&s), "focus {:?}", focus);
+        }
+    }
+
+    #[test]
+    fn add_appends_from_a_non_progression_panel() {
+        let mut s = state(Focus::Transport);
+        s.held.insert(KeyPosition::LeftIndex);
+        let log = logger();
+        let to_end = s.focus != Focus::Progression;
+        add_current_chord(&mut s, to_end, &log);
+
+        match slots(&s).as_slice() {
+            [Slot::Chord(e)] => {
+                assert_eq!(e.degree, ScaleDegree::I);
+                assert_eq!(e.transformation, None);
+            }
+            other => panic!("expected one chord, got {:?}", other),
+        }
+        // The transport must learn the new length or playback ignores it.
+        assert_eq!(s.transport.progression_len.load(Ordering::Relaxed), 1);
+    }
+
+    #[test]
+    fn add_inserts_after_the_selected_row_in_the_progression_panel() {
+        let mut s = state(Focus::Progression);
+        let log = logger();
+
+        s.held.insert(KeyPosition::LeftIndex); // I
+        add_current_chord(&mut s, false, &log);
+        s.held.clear();
+        s.held.insert(KeyPosition::LeftMiddle); // V
+        add_current_chord(&mut s, false, &log);
+        assert_eq!(s.progression_row, 1);
+
+        // Select row 0 and insert: the new chord lands at index 1.
+        s.progression_row = 0;
+        s.held.clear();
+        s.held.insert(KeyPosition::LeftPinky); // ii
+        add_current_chord(&mut s, false, &log);
+
+        let degrees: Vec<ScaleDegree> = slots(&s)
+            .iter()
+            .map(|s| match s {
+                Slot::Chord(e) => e.degree,
+                Slot::Rest => panic!("unexpected rest"),
+            })
+            .collect();
+        assert_eq!(
+            degrees,
+            vec![ScaleDegree::I, ScaleDegree::II, ScaleDegree::V]
+        );
+        assert_eq!(s.progression_row, 1);
+    }
+
+    #[test]
+    fn add_appends_with_to_end_from_the_progression_panel() {
+        let mut s = state(Focus::Progression);
+        let log = logger();
+        s.held.insert(KeyPosition::LeftIndex);
+        add_current_chord(&mut s, true, &log);
+        s.progression_row = 0;
+        s.held.clear();
+        s.held.insert(KeyPosition::LeftMiddle);
+        add_current_chord(&mut s, true, &log);
+        assert_eq!(s.progression_row, 1);
+    }
+
+    #[test]
+    fn add_records_the_register_snapshot_from_the_resolved_chord() {
+        let mut s = state(Focus::Transport);
+        let log = logger();
+        s.held.insert(KeyPosition::LeftIndex);
+        s.registers.lock_left(&s.held);
+        s.held.clear();
+
+        s.held.insert(KeyPosition::RightIndex);
+        add_current_chord(&mut s, true, &log);
+
+        match slots(&s).as_slice() {
+            [Slot::Chord(e)] => {
+                assert_eq!(e.degree, ScaleDegree::I);
+                assert_eq!(e.transformation, Some(Transformation::Dom7));
+                assert_eq!(e.registers.left, Some([KeyPosition::LeftIndex].into()));
+            }
+            other => panic!("expected one chord, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn add_without_a_chord_in_the_progression_panel_offers_a_rest() {
+        let mut s = state(Focus::Progression);
+        let log = logger();
+        add_current_chord(&mut s, false, &log);
+        assert!(matches!(s.modal, Some(Modal::AddRest)));
+        assert!(slots(&s).is_empty());
+    }
+
+    #[test]
+    fn add_without_a_chord_elsewhere_flashes_instead_of_prompting() {
+        let mut s = state(Focus::Transport);
+        let log = logger();
+        add_current_chord(&mut s, true, &log);
+        assert!(s.modal.is_none());
+        assert!(s.is_flashing());
+        assert!(slots(&s).is_empty());
+    }
+
+    // ---- resolved chord drives the audio too ----
+
+    #[test]
+    fn chord_notes_follows_the_resolved_chord() {
+        let key = Key::new(60, Scale::Major);
+        // I with a dominant 7th: C E G Bb.
+        let notes = chord_notes(Some((ScaleDegree::I, Some(Transformation::Dom7))), &key);
+        assert_eq!(notes, Some(vec![60, 64, 67, 70]));
+        // No chord at all.
+        assert_eq!(chord_notes(None, &key), None);
+        // Degree with no transformation is the plain triad.
+        assert_eq!(chord_notes(Some((ScaleDegree::I, None)), &key), Some(vec![60, 64, 67]));
+    }
 }

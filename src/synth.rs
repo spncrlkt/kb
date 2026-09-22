@@ -789,7 +789,11 @@ impl Synth {
         self.params.preview_fade.set(patch.mixer.preview_fade);
     }
 
-    pub fn capture_patch(&self, name: &str) -> Patch {
+    /// Snapshot the current sound design as a named patch.
+    ///
+    /// `note_length` is transport state, not synth state, so the caller
+    /// supplies it (it is stored alongside the mixer for convenience).
+    pub fn capture_patch(&self, name: &str, note_length: f32) -> Patch {
         Patch {
             name: name.to_string(),
             low: capture_channel(&self.params.low),
@@ -801,6 +805,7 @@ impl Synth {
                 master_volume: self.params.master_volume.get(),
                 master_mute: self.params.master_mute.get() > 0.5,
                 preview_fade: self.params.preview_fade.get(),
+                note_length,
             },
         }
     }

@@ -192,6 +192,9 @@ fn scheduler_loop(
 
         let playing = transport.playing.load(Ordering::Relaxed);
         let live = transport.live_chord.lock().unwrap().clone();
+        // `live` is moved into `BarAction` below, so remember its presence
+        // now for the bar-advance arithmetic at the end of the iteration.
+        let live_present = live.is_some();
         let prog_len = transport.progression_len.load(Ordering::Relaxed);
         let bar = transport.current_bar.load(Ordering::Relaxed);
         let bar_dur = transport.bar_duration();
@@ -202,7 +205,7 @@ fn scheduler_loop(
 
         // Decide what this bar is.
         let action = if playing {
-            let total = prog_len + if live.is_some() { 1 } else { 0 };
+            let total = prog_len + if live_present { 1 } else { 0 };
             if total == 0 {
                 if chime_off {
                     BarAction::Silent
@@ -266,7 +269,7 @@ fn scheduler_loop(
 
         // Advance the bar counter for progression playback.
         if playing {
-            let total = prog_len + if live.is_some() { 1 } else { 0 };
+            let total = prog_len + if live_present { 1 } else { 0 };
             if total > 0 {
                 let next = (bar + 1) % total;
                 if next == 0 && !transport.looping.load(Ordering::Relaxed) {

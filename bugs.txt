@@ -1,0 +1,4 @@
+bug01 :::: f/hk -- (I) Csus4 -- works when in register but not by hand... what gives??
+bug02 :::: 
+bug0 ::::
+bug0 ::::

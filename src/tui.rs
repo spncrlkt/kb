@@ -22,7 +22,7 @@ use crossterm::{
 use crate::chime::CHIMES;
 use crate::debug_log::{Logger, OutputTap};
 use crate::grammar::{left_hand_degree, right_hand_transformation};
-use crate::keyboard::{KeyPosition, LockTarget, PositionSet, ACTIVE_LAYOUT};
+use crate::keyboard::{Hotkey, KeyPosition, PositionSet, ACTIVE_LAYOUT};
 use crate::music::{
     chord_label, diatonic_triad, diatonic_triad_label, note_name, ChordSpec, Key, Scale,
     ScaleDegree, Transformation,
@@ -427,7 +427,8 @@ enum TransportEdit {
 }
 
 enum Modal {
-    ConfirmDelete { index: usize },
+    /// Two-stage confirmation for clearing the whole progression. Single-chord
+    /// deletion is a hotkey backed by undo instead, so it needs no prompt.
     ConfirmDeleteAllStage1,
     ConfirmDeleteAllStage2,
     AddRest,
@@ -519,6 +520,12 @@ impl AppState {
     fn update_progression_len(&self) {
         let len = self.progression.lock().unwrap().len();
         self.transport.progression_len.store(len, Ordering::Relaxed);
+    }
+
+    /// Keep the progression cursor inside the list after a structural edit.
+    fn clamp_progression_row(&mut self) {
+        let len = self.progression.lock().unwrap().len();
+        self.progression_row = if len == 0 { 0 } else { self.progression_row.min(len - 1) };
     }
 
     fn update_live_chord(&self) {
@@ -717,13 +724,6 @@ fn event_loop(
                         continue;
                     }
                     KeyCode::Enter => match modal {
-                        Modal::ConfirmDelete { index: i } => {
-                            state.progression.lock().unwrap().delete(*i);
-                            state.update_progression_len();
-                            logger.input(&format!("MODAL confirm delete #{}", i));
-                            state.modal = None;
-                            continue;
-                        }
                         Modal::ConfirmDeleteAllStage1 => {
                             state.modal = Some(Modal::ConfirmDeleteAllStage2);
                             logger.input("MODAL delete-all stage 2");
@@ -794,22 +794,25 @@ fn event_loop(
 
                 if let KeyCode::Char(c) = ev.code {
                     if let Some(pos) = ACTIVE_LAYOUT.position(c) {
-                        match pos.lock_target() {
-                            Some(LockTarget::RightRegister) => {
-                                state.registers.lock_right(&state.held);
-                                state.update_live_chord();
-                                logger.input(&format!("LOCK RIGHT via '{}'", c));
-                            }
-                            Some(LockTarget::LeftRegister) => {
-                                state.registers.lock_left(&state.held);
-                                state.update_live_chord();
-                                logger.input(&format!("LOCK LEFT via '{}'", c));
-                            }
-                            None => {
-                                state.held.insert(pos);
-                                state.update_live_chord();
-                                logger.input(&format!("PRESS '{}'", c));
-                            }
+                        let shift = ev.modifiers.contains(KeyModifiers::SHIFT)
+                            || c.is_ascii_uppercase();
+                        if let Some(hotkey) = pos.hotkey() {
+                            // Hotkeys are checked first so they never reach the
+                            // held set. `LeftInner` is a home-row key the
+                            // grammar ignores, and the grammar matches exact
+                            // shapes, so inserting it would break whatever
+                            // chord it was held with.
+                            handle_hotkey(state, hotkey, shift, logger);
+                        } else if !ev
+                            .modifiers
+                            .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT)
+                        {
+                            // Ctrl/Alt are not part of the chord grammar.
+                            // Ignoring them keeps the combination free for
+                            // bindings instead of silently sounding a chord.
+                            state.held.insert(pos);
+                            state.update_live_chord();
+                            logger.input(&format!("PRESS '{}'", c));
                         }
                     }
                     continue;
@@ -822,7 +825,7 @@ fn event_loop(
                     // Tap tracker handles it.
                 } else if let KeyCode::Char(c) = ev.code {
                     if let Some(pos) = ACTIVE_LAYOUT.position(c) {
-                        if pos.lock_target().is_none() {
+                        if pos.is_home_row() {
                             state.held.remove(&pos);
                             state.update_live_chord();
                         }
@@ -1117,10 +1120,14 @@ fn add_current_chord(state: &mut AppState, to_end: bool, logger: &Logger) {
         return;
     };
 
+    let effective = state.registers.resolve(&state.held);
     let entry = ProgressionEntry {
         degree,
         transformation,
-        registers: state.registers.clone(),
+        // Capture the resolved gesture, not the latch state. Storing
+        // `registers` here would miss chords played live with both hands and
+        // record an empty snapshot, which nothing could usefully replay.
+        registers: capture_registers(&effective),
     };
 
     let inserted_at = {
@@ -1153,6 +1160,120 @@ fn resolved_chord(state: &AppState) -> Option<(ScaleDegree, Option<Transformatio
 /// to the focused panel's primary action.
 fn enter_commits_chord(state: &AppState) -> bool {
     resolved_chord(state).is_some()
+}
+
+/// Split a resolved position set into the per-hand registers that produced it.
+///
+/// Both sides are recorded as `Some`, including an empty right hand for a
+/// plain triad: `Some(empty)` means "explicitly no right-hand shape" and
+/// re-resolves to the triad, whereas `None` would mean "never set".
+fn capture_registers(effective: &PositionSet) -> Registers {
+    Registers {
+        left: Some(effective.iter().filter(|p| p.is_left()).copied().collect()),
+        right: Some(effective.iter().filter(|p| p.is_right()).copied().collect()),
+    }
+}
+
+/// Dispatch a hotkey.
+///
+/// The register locks are performance controls and work from any panel. The
+/// progression actions are scoped to the progression panel, where the
+/// selection cursor lives, so they can never act on an invisible row.
+fn handle_hotkey(state: &mut AppState, hotkey: Hotkey, shift: bool, logger: &Logger) {
+    // Redo shares a position with undo and is selected with Shift, keeping
+    // `KeyPosition::hotkey` a pure function of the physical key.
+    let hotkey = match hotkey {
+        Hotkey::Undo if shift => Hotkey::Redo,
+        other => other,
+    };
+
+    match hotkey {
+        Hotkey::LockRightRegister => {
+            state.registers.lock_right(&state.held);
+            state.update_live_chord();
+            logger.input("LOCK RIGHT register");
+        }
+        Hotkey::LockLeftRegister => {
+            state.registers.lock_left(&state.held);
+            state.update_live_chord();
+            logger.input("LOCK LEFT register");
+        }
+        Hotkey::LoadSelectedChord => load_selected_chord(state, logger),
+        Hotkey::CopyChord | Hotkey::PasteChord | Hotkey::DeleteChord | Hotkey::Undo | Hotkey::Redo => {
+            if state.focus == Focus::Progression {
+                edit_progression(state, hotkey, logger);
+            } else {
+                state.flash(200);
+                logger.input(&format!("{:?} outside progression -> flash", hotkey));
+            }
+        }
+    }
+}
+
+/// Recall the chord under the progression cursor into the registers.
+///
+/// Deliberately explicit rather than automatic on selection: scrolling the
+/// progression must not clobber a latched register mid-performance. This is
+/// the only place the selection's stored registers are read.
+fn load_selected_chord(state: &mut AppState, logger: &Logger) {
+    if state.focus != Focus::Progression {
+        state.flash(200);
+        logger.input("RECALL outside progression -> flash");
+        return;
+    }
+
+    let recalled = {
+        let prog = state.progression.lock().unwrap();
+        match prog.slots.get(state.progression_row) {
+            Some(Slot::Chord(entry)) => Some(entry.registers.clone()),
+            _ => None,
+        }
+    };
+
+    let Some(registers) = recalled else {
+        // Nothing to recall: a rest, or an empty progression.
+        state.flash(200);
+        logger.input("RECALL no chord under cursor -> flash");
+        return;
+    };
+
+    state.registers = registers;
+    state.update_live_chord();
+    logger.input(&format!("RECALL chord at {}", state.progression_row));
+}
+
+/// Apply a progression edit. Only called with the progression panel focused,
+/// so `progression_row` is a live selection.
+fn edit_progression(state: &mut AppState, hotkey: Hotkey, logger: &Logger) {
+    let row = state.progression_row;
+
+    let changed = {
+        let mut prog = state.progression.lock().unwrap();
+        match hotkey {
+            Hotkey::CopyChord => prog.copy(row),
+            Hotkey::PasteChord => prog.paste_after(Some(row)),
+            Hotkey::DeleteChord => prog.delete(row),
+            Hotkey::Undo => prog.undo(),
+            Hotkey::Redo => prog.redo(),
+            Hotkey::LockRightRegister
+            | Hotkey::LockLeftRegister
+            | Hotkey::LoadSelectedChord => unreachable!(),
+        }
+    };
+
+    if !changed {
+        state.flash(200);
+        logger.input(&format!("PROG {:?} no-op at {}", hotkey, row));
+        return;
+    }
+
+    // A paste lands directly after the row it was pasted from, so follow it.
+    if hotkey == Hotkey::PasteChord {
+        state.progression_row = row + 1;
+    }
+    state.clamp_progression_row();
+    state.update_progression_len();
+    logger.input(&format!("PROG {:?} at {}", hotkey, row));
 }
 
 /// Sound a resolved chord, or `None` when nothing resolves.
@@ -1349,10 +1470,19 @@ fn render_presets_body(stdout: &mut io::Stdout, state: &AppState) -> io::Result<
 fn render_progression_panel(stdout: &mut io::Stdout, state: &AppState) -> io::Result<()> {
     execute!(stdout, Print("\r\n"))?;
     let focused = state.focus == Focus::Progression;
+    let history = {
+        let prog = state.progression.lock().unwrap();
+        match (prog.can_undo(), prog.can_redo()) {
+            (false, false) => String::new(),
+            (true, false) => "  undo: yes".to_string(),
+            (false, true) => "  redo: yes".to_string(),
+            (true, true) => "  undo: yes  redo: yes".to_string(),
+        }
+    };
     let header = if focused {
-        " Progression  (tab to switch) "
+        format!(" Progression  (tab to switch){} ", history)
     } else {
-        " Progression "
+        format!(" Progression{} ", history)
     };
     execute!(stdout, Print(format!("──{}──\r\n", header)))?;
 
@@ -1517,15 +1647,6 @@ fn render_modal(stdout: &mut io::Stdout, modal: &Modal) -> io::Result<()> {
         SetBackgroundColor(Color::Yellow),
     )?;
     match modal {
-        Modal::ConfirmDelete { index } => {
-            execute!(
-                stdout,
-                Print(format!(
-                    "  Delete chord #{}?  [Enter] yes  [Esc] no  ",
-                    index + 1
-                ))
-            )?;
-        }
         Modal::ConfirmDeleteAllStage1 => {
             execute!(
                 stdout,
@@ -1605,6 +1726,14 @@ fn draw_key(stdout: &mut io::Stdout, pos: KeyPosition, active: bool) -> io::Resu
             SetForegroundColor(Color::Black),
             SetBackgroundColor(Color::Green),
             Print(format!(" {} ", label)),
+        )?;
+    } else if pos.hotkey().is_some() {
+        // An action key sitting in the chord row (`g` recalls the selection).
+        // Coloured separately so it doesn't read as a chord key.
+        execute!(
+            stdout,
+            SetForegroundColor(Color::Cyan),
+            Print(format!("[{}]", label)),
         )?;
     } else {
         execute!(
@@ -1831,6 +1960,311 @@ mod tests {
     }
 
     // ---- resolved chord drives the audio too ----
+
+    // ---- below-home-row editing hotkeys ----
+
+    fn chord_entry(degree: ScaleDegree, t: Option<Transformation>) -> ProgressionEntry {
+        ProgressionEntry {
+            degree,
+            transformation: t,
+            registers: Registers::default(),
+        }
+    }
+
+    fn seed(s: &mut AppState, degrees: &[ScaleDegree]) {
+        let mut prog = s.progression.lock().unwrap();
+        for d in degrees {
+            prog.slots.push(Slot::Chord(chord_entry(*d, None)));
+        }
+    }
+
+    fn degrees(s: &AppState) -> Vec<ScaleDegree> {
+        s.progression
+            .lock()
+            .unwrap()
+            .slots
+            .iter()
+            .map(|slot| match slot {
+                Slot::Chord(e) => e.degree,
+                Slot::Rest => panic!("unexpected rest"),
+            })
+            .collect()
+    }
+
+    #[test]
+    fn delete_hotkey_removes_the_selected_chord_and_is_undoable() {
+        let mut s = state(Focus::Progression);
+        let log = logger();
+        seed(&mut s, &[ScaleDegree::I, ScaleDegree::IV, ScaleDegree::V]);
+        s.progression_row = 1;
+
+        edit_progression(&mut s, Hotkey::DeleteChord, &log);
+        assert_eq!(degrees(&s), vec![ScaleDegree::I, ScaleDegree::V]);
+        assert_eq!(s.transport.progression_len.load(Ordering::Relaxed), 2);
+
+        edit_progression(&mut s, Hotkey::Undo, &log);
+        assert_eq!(
+            degrees(&s),
+            vec![ScaleDegree::I, ScaleDegree::IV, ScaleDegree::V]
+        );
+        assert_eq!(s.transport.progression_len.load(Ordering::Relaxed), 3);
+
+        edit_progression(&mut s, Hotkey::Redo, &log);
+        assert_eq!(degrees(&s), vec![ScaleDegree::I, ScaleDegree::V]);
+    }
+
+    #[test]
+    fn copy_then_paste_duplicates_after_the_selection() {
+        let mut s = state(Focus::Progression);
+        let log = logger();
+        seed(&mut s, &[ScaleDegree::I, ScaleDegree::V]);
+        s.progression_row = 0;
+
+        edit_progression(&mut s, Hotkey::CopyChord, &log);
+        edit_progression(&mut s, Hotkey::PasteChord, &log);
+
+        assert_eq!(
+            degrees(&s),
+            vec![ScaleDegree::I, ScaleDegree::I, ScaleDegree::V]
+        );
+        // The cursor follows the pasted chord.
+        assert_eq!(s.progression_row, 1);
+    }
+
+    #[test]
+    fn paste_without_a_copy_flashes_and_changes_nothing() {
+        let mut s = state(Focus::Progression);
+        let log = logger();
+        seed(&mut s, &[ScaleDegree::I]);
+        edit_progression(&mut s, Hotkey::PasteChord, &log);
+        assert_eq!(degrees(&s), vec![ScaleDegree::I]);
+        assert!(s.is_flashing());
+    }
+
+    #[test]
+    fn undo_and_redo_are_noops_when_history_is_empty() {
+        let mut s = state(Focus::Progression);
+        let log = logger();
+        seed(&mut s, &[ScaleDegree::I]);
+        edit_progression(&mut s, Hotkey::Undo, &log);
+        assert_eq!(degrees(&s), vec![ScaleDegree::I]);
+        assert!(s.is_flashing());
+    }
+
+    #[test]
+    fn delete_past_the_end_of_the_list_flashes() {
+        let mut s = state(Focus::Progression);
+        let log = logger();
+        seed(&mut s, &[ScaleDegree::I]);
+        s.progression_row = 5;
+        edit_progression(&mut s, Hotkey::DeleteChord, &log);
+        assert_eq!(degrees(&s), vec![ScaleDegree::I]);
+        assert!(s.is_flashing());
+    }
+
+    #[test]
+    fn deleting_the_last_chord_leaves_the_cursor_valid() {
+        let mut s = state(Focus::Progression);
+        let log = logger();
+        seed(&mut s, &[ScaleDegree::I, ScaleDegree::V]);
+        s.progression_row = 1;
+        edit_progression(&mut s, Hotkey::DeleteChord, &log);
+        assert_eq!(s.progression_row, 0);
+    }
+
+    #[test]
+    fn shift_turns_undo_into_redo() {
+        // `handle_hotkey` resolves the Shift modifier, keeping
+        // `KeyPosition::hotkey` a pure function of the physical key.
+        let mut s = state(Focus::Progression);
+        let log = logger();
+        seed(&mut s, &[ScaleDegree::I, ScaleDegree::V]);
+        s.progression_row = 1;
+        edit_progression(&mut s, Hotkey::DeleteChord, &log);
+        assert_eq!(degrees(&s), vec![ScaleDegree::I]);
+
+        handle_hotkey(&mut s, Hotkey::Undo, false, &log);
+        assert_eq!(degrees(&s), vec![ScaleDegree::I, ScaleDegree::V]);
+
+        handle_hotkey(&mut s, Hotkey::Undo, true, &log);
+        assert_eq!(degrees(&s), vec![ScaleDegree::I]);
+    }
+
+    #[test]
+    fn progression_hotkeys_are_inert_outside_the_progression_panel() {
+        let mut s = state(Focus::Transport);
+        let log = logger();
+        seed(&mut s, &[ScaleDegree::I, ScaleDegree::V]);
+        s.progression_row = 0;
+
+        handle_hotkey(&mut s, Hotkey::DeleteChord, false, &log);
+        assert_eq!(degrees(&s), vec![ScaleDegree::I, ScaleDegree::V]);
+        assert!(s.is_flashing());
+    }
+
+    #[test]
+    fn register_locks_still_work_and_are_not_scoped_to_a_panel() {
+        let mut s = state(Focus::SynthMixer);
+        let log = logger();
+        s.held.insert(KeyPosition::LeftIndex);
+        handle_hotkey(&mut s, Hotkey::LockLeftRegister, false, &log);
+        s.held.clear();
+        s.held.insert(KeyPosition::RightIndex);
+        assert_eq!(
+            resolved_chord(&s),
+            Some((ScaleDegree::I, Some(Transformation::Dom7)))
+        );
+    }
+
+    #[test]
+    fn unassigned_below_home_row_keys_are_never_dispatched() {
+        // The dispatcher only fires for positions that resolve to a hotkey, so
+        // the four reserved right-hand slots fall through to the chord path.
+        for p in [
+            KeyPosition::RightInnerBelow,
+            KeyPosition::RightIndexBelow,
+            KeyPosition::RightMiddleBelow,
+            KeyPosition::RightRingBelow,
+        ] {
+            assert_eq!(p.hotkey(), None, "{:?} should be inert", p);
+        }
+    }
+
+    // ---- the register snapshot ----
+
+    #[test]
+    fn snapshot_captures_the_resolved_gesture_not_just_the_latches() {
+        let mut s = state(Focus::Transport);
+        s.held.insert(KeyPosition::LeftIndex);
+        s.held.insert(KeyPosition::RightIndex);
+        // Nothing is latched: the chord is played entirely live, which is the
+        // case the old `state.registers.clone()` recorded as empty.
+        let captured = capture_registers(&s.registers.resolve(&s.held));
+        assert_eq!(captured.left, Some([KeyPosition::LeftIndex].into()));
+        assert_eq!(captured.right, Some([KeyPosition::RightIndex].into()));
+    }
+
+    #[test]
+    fn snapshot_marks_a_plain_triad_as_explicitly_right_hand_empty() {
+        let mut s = state(Focus::Transport);
+        s.held.insert(KeyPosition::LeftIndex);
+        let captured = capture_registers(&s.registers.resolve(&s.held));
+        assert_eq!(captured.left, Some([KeyPosition::LeftIndex].into()));
+        // Some(empty) re-resolves to the triad; None would mean "never set".
+        assert_eq!(captured.right, Some(PositionSet::new()));
+    }
+
+    #[test]
+    fn add_current_chord_records_the_gesture_for_live_two_handed_chords() {
+        let mut s = state(Focus::Transport);
+        let log = logger();
+        s.held.insert(KeyPosition::LeftIndex);
+        s.held.insert(KeyPosition::RightIndex);
+        add_current_chord(&mut s, true, &log);
+
+        match slots(&s).as_slice() {
+            [Slot::Chord(e)] => {
+                assert_eq!(e.degree, ScaleDegree::I);
+                assert_eq!(e.transformation, Some(Transformation::Dom7));
+                assert_eq!(e.registers.left, Some([KeyPosition::LeftIndex].into()));
+                assert_eq!(e.registers.right, Some([KeyPosition::RightIndex].into()));
+            }
+            other => panic!("expected one chord, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn recall_restores_the_snapshot_and_voices_it() {
+        let mut s = state(Focus::Progression);
+        seed(&mut s, &[ScaleDegree::I, ScaleDegree::V]);
+        // Give row 1 a latched left hand plus a live right hand.
+        {
+            let mut prog = s.progression.lock().unwrap();
+            if let Slot::Chord(e) = &mut prog.slots[1] {
+                e.registers = Registers {
+                    left: Some([KeyPosition::LeftMiddle].into()),
+                    right: Some([KeyPosition::RightIndex].into()),
+                };
+            }
+        }
+
+        s.progression_row = 1;
+        load_selected_chord(&mut s, &logger());
+
+        assert_eq!(s.registers.left, Some([KeyPosition::LeftMiddle].into()));
+        assert_eq!(s.registers.right, Some([KeyPosition::RightIndex].into()));
+        // V + dom7 in C major = G B D F.
+        assert_eq!(
+            s.transport.live_chord.lock().unwrap().clone(),
+            Some(vec![67, 71, 74, 77])
+        );
+    }
+
+    #[test]
+    fn scrolling_the_progression_does_not_touch_the_registers() {
+        // The whole point of binding recall to `g`: selection must never
+        // clobber a latched register mid-performance.
+        let mut s = state(Focus::Progression);
+        let log = logger();
+        seed(&mut s, &[ScaleDegree::I, ScaleDegree::V]);
+        s.registers.left = Some([KeyPosition::LeftPinky].into());
+        s.registers.right = Some([KeyPosition::RightIndex].into());
+
+        s.set_current_row(1);
+        s.set_current_row(0);
+        s.set_current_row(1);
+
+        assert_eq!(s.registers.left, Some([KeyPosition::LeftPinky].into()));
+        assert_eq!(s.registers.right, Some([KeyPosition::RightIndex].into()));
+        // ...and the edits do not either.
+        edit_progression(&mut s, Hotkey::DeleteChord, &log);
+        assert_eq!(s.registers.left, Some([KeyPosition::LeftPinky].into()));
+        assert_eq!(s.registers.right, Some([KeyPosition::RightIndex].into()));
+    }
+
+    #[test]
+    fn recall_goes_through_the_hotkey_and_updates_the_live_chord() {
+        let mut s = state(Focus::Progression);
+        let log = logger();
+        seed(&mut s, &[ScaleDegree::I, ScaleDegree::V]);
+        {
+            let mut prog = s.progression.lock().unwrap();
+            if let Slot::Chord(e) = &mut prog.slots[1] {
+                e.registers = Registers {
+                    left: Some([KeyPosition::LeftMiddle].into()),
+                    right: Some([KeyPosition::RightIndex].into()),
+                };
+            }
+        }
+        s.progression_row = 1;
+        handle_hotkey(&mut s, Hotkey::LoadSelectedChord, false, &log);
+        assert_eq!(s.registers.left, Some([KeyPosition::LeftMiddle].into()));
+        assert_eq!(
+            s.transport.live_chord.lock().unwrap().clone(),
+            Some(vec![67, 71, 74, 77])
+        );
+    }
+
+    #[test]
+    fn recall_is_silent_outside_the_progression_panel() {
+        let mut s = state(Focus::SynthMixer);
+        seed(&mut s, &[ScaleDegree::I]);
+        load_selected_chord(&mut s, &logger());
+        assert_eq!(s.registers.left, None);
+        assert_eq!(s.transport.live_chord.lock().unwrap().clone(), None);
+        assert!(s.is_flashing());
+    }
+
+    #[test]
+    fn recall_ignores_a_rest() {
+        let mut s = state(Focus::Progression);
+        s.registers.left = Some([KeyPosition::LeftPinky].into());
+        s.progression.lock().unwrap().slots.push(Slot::Rest);
+        load_selected_chord(&mut s, &logger());
+        // Untouched: the rest has nothing to recall.
+        assert_eq!(s.registers.left, Some([KeyPosition::LeftPinky].into()));
+        assert!(s.is_flashing());
+    }
 
     #[test]
     fn chord_notes_follows_the_resolved_chord() {

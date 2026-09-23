@@ -173,6 +173,26 @@ mod tests {
     }
 
     #[test]
+    fn left_inner_is_not_part_of_the_grammar() {
+        // `LeftInner` (physical `g`) carries the recall hotkey rather than a
+        // chord meaning, so the grammar must ignore it...
+        let l = Layout::Qwerty;
+        assert_eq!(left_hand_degree(&positions(&['g'], l)), None);
+
+        // ...and this is exactly why hotkeys must never be inserted into the
+        // held set: the arms match exact shapes, so one extra position
+        // silently destroys an otherwise valid chord.
+        let with_chord = positions(&['f', 'g'], l);
+        assert_eq!(with_chord.len(), 2);
+        assert_eq!(left_hand_degree(&with_chord), None);
+        // The same shape without it still resolves.
+        assert_eq!(
+            left_hand_degree(&positions(&['f'], l)),
+            Some(ScaleDegree::I)
+        );
+    }
+
+    #[test]
     fn empty_right_hand_is_none() {
         let p = PositionSet::new();
         assert_eq!(right_hand_transformation(&p), None);

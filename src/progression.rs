@@ -110,15 +110,63 @@ impl Slot {
 // Progression
 // -----------------------------------------------------------------------------
 
+/// How many edits deep undo goes before the oldest is discarded.
+const HISTORY_LIMIT: usize = 128;
+
 #[derive(Default)]
 pub struct Progression {
     pub slots: Vec<Slot>,
     pub clipboard: Option<ProgressionEntry>,
+    /// Snapshots of `slots` taken immediately before each change.
+    undo_stack: Vec<Vec<Slot>>,
+    /// Snapshots discarded by `undo`, available to `redo`.
+    redo_stack: Vec<Vec<Slot>>,
 }
 
 impl Progression {
     pub fn new() -> Self {
         Progression::default()
+    }
+
+    /// Record the current state so the edit about to happen can be undone.
+    ///
+    /// Every mutating method calls this, and only once it knows the edit is
+    /// real, so no-ops never pollute the history. Recording also discards the
+    /// redo stack: history becomes a straight line again after a fresh edit.
+    fn record(&mut self) {
+        self.undo_stack.push(self.slots.clone());
+        if self.undo_stack.len() > HISTORY_LIMIT {
+            self.undo_stack.remove(0);
+        }
+        self.redo_stack.clear();
+    }
+
+    pub fn can_undo(&self) -> bool {
+        !self.undo_stack.is_empty()
+    }
+
+    pub fn can_redo(&self) -> bool {
+        !self.redo_stack.is_empty()
+    }
+
+    /// Step back one edit. Returns true if the progression changed.
+    pub fn undo(&mut self) -> bool {
+        let Some(previous) = self.undo_stack.pop() else {
+            return false;
+        };
+        let current = std::mem::replace(&mut self.slots, previous);
+        self.redo_stack.push(current);
+        true
+    }
+
+    /// Step forward one undone edit. Returns true if the progression changed.
+    pub fn redo(&mut self) -> bool {
+        let Some(next) = self.redo_stack.pop() else {
+            return false;
+        };
+        let current = std::mem::replace(&mut self.slots, next);
+        self.undo_stack.push(current);
+        true
     }
 
     pub fn len(&self) -> usize {
@@ -131,12 +179,14 @@ impl Progression {
 
     /// Append a slot to the end.
     pub fn append(&mut self, slot: Slot) -> usize {
+        self.record();
         self.slots.push(slot);
         self.slots.len() - 1
     }
 
     /// Insert a slot at a specific index. If index >= len, appends.
     pub fn insert_at(&mut self, index: usize, slot: Slot) -> usize {
+        self.record();
         let idx = index.min(self.slots.len());
         self.slots.insert(idx, slot);
         idx
@@ -145,6 +195,7 @@ impl Progression {
     /// Delete the slot at `index`. Returns true if anything was removed.
     pub fn delete(&mut self, index: usize) -> bool {
         if index < self.slots.len() {
+            self.record();
             self.slots.remove(index);
             true
         } else {
@@ -154,10 +205,15 @@ impl Progression {
 
     /// Delete all slots.
     pub fn delete_all(&mut self) {
-        self.slots.clear();
+        if !self.slots.is_empty() {
+            self.record();
+            self.slots.clear();
+        }
     }
 
     /// Copy the entry at `index` into the clipboard.
+    ///
+    /// This does not mutate `slots`, so it stays out of the undo history.
     pub fn copy(&mut self, index: usize) -> bool {
         match self.slots.get(index) {
             Some(Slot::Chord(e)) => {
@@ -191,6 +247,7 @@ impl Progression {
         if index == 0 || index >= self.slots.len() {
             return false;
         }
+        self.record();
         self.slots.swap(index - 1, index);
         true
     }
@@ -200,6 +257,7 @@ impl Progression {
         if index + 1 >= self.slots.len() {
             return false;
         }
+        self.record();
         self.slots.swap(index, index + 1);
         true
     }
@@ -396,5 +454,175 @@ mod tests {
         let k = c_major();
         assert!(Slot::Rest.notes(&k).is_none());
         assert_eq!(Slot::Rest.label(&k), "—");
+    }
+
+    // ---- undo / redo ----
+
+    fn degrees(p: &Progression) -> Vec<Option<ScaleDegree>> {
+        p.slots
+            .iter()
+            .map(|s| match s {
+                Slot::Chord(e) => Some(e.degree),
+                Slot::Rest => None,
+            })
+            .collect()
+    }
+
+    fn filled(degrees: &[ScaleDegree]) -> Progression {
+        let mut p = Progression::new();
+        for d in degrees {
+            p.append(Slot::Chord(entry(*d, None)));
+        }
+        p
+    }
+
+    #[test]
+    fn fresh_progression_has_no_history() {
+        let p = Progression::new();
+        assert!(!p.can_undo());
+        assert!(!p.can_redo());
+    }
+
+    #[test]
+    fn undo_reverses_an_append() {
+        let mut p = filled(&[ScaleDegree::I, ScaleDegree::V]);
+        assert!(p.can_undo());
+        assert!(p.undo());
+        assert_eq!(degrees(&p), vec![Some(ScaleDegree::I)]);
+        assert!(p.can_redo());
+    }
+
+    #[test]
+    fn redo_reapplies_an_undone_append() {
+        let mut p = filled(&[ScaleDegree::I, ScaleDegree::V]);
+        p.undo();
+        assert!(p.redo());
+        assert_eq!(degrees(&p), vec![Some(ScaleDegree::I), Some(ScaleDegree::V)]);
+        assert!(!p.can_redo());
+    }
+
+    #[test]
+    fn undo_unwinds_multiple_edits_in_order() {
+        let mut p = filled(&[ScaleDegree::I, ScaleDegree::IV, ScaleDegree::V]);
+        assert!(p.undo());
+        assert!(p.undo());
+        assert_eq!(degrees(&p), vec![Some(ScaleDegree::I)]);
+        assert!(p.undo());
+        assert!(p.is_empty());
+        assert!(!p.undo());
+        assert!(!p.can_undo());
+    }
+
+    #[test]
+    fn a_new_edit_discards_the_redo_stack() {
+        let mut p = filled(&[ScaleDegree::I, ScaleDegree::V]);
+        p.undo();
+        assert!(p.can_redo());
+        p.append(Slot::Chord(entry(ScaleDegree::II, None)));
+        assert!(!p.can_redo());
+        assert!(!p.redo());
+        assert_eq!(degrees(&p), vec![Some(ScaleDegree::I), Some(ScaleDegree::II)]);
+    }
+
+    #[test]
+    fn undo_reverses_delete_and_delete_all() {
+        let mut p = filled(&[ScaleDegree::I, ScaleDegree::IV, ScaleDegree::V]);
+        assert!(p.delete(1));
+        assert_eq!(
+            degrees(&p),
+            vec![Some(ScaleDegree::I), Some(ScaleDegree::V)]
+        );
+        p.delete_all();
+        assert!(p.is_empty());
+        assert!(p.undo());
+        assert_eq!(
+            degrees(&p),
+            vec![Some(ScaleDegree::I), Some(ScaleDegree::V)]
+        );
+        assert!(p.undo());
+        assert_eq!(
+            degrees(&p),
+            vec![Some(ScaleDegree::I), Some(ScaleDegree::IV), Some(ScaleDegree::V)]
+        );
+    }
+
+    #[test]
+    fn undo_reverses_move_and_paste() {
+        let mut p = filled(&[ScaleDegree::I, ScaleDegree::V]);
+        assert!(p.move_down(0));
+        assert_eq!(degrees(&p), vec![Some(ScaleDegree::V), Some(ScaleDegree::I)]);
+        assert!(p.undo());
+        assert_eq!(degrees(&p), vec![Some(ScaleDegree::I), Some(ScaleDegree::V)]);
+
+        assert!(p.copy(0));
+        assert!(p.paste_after(Some(0)));
+        assert_eq!(
+            degrees(&p),
+            vec![Some(ScaleDegree::I), Some(ScaleDegree::I), Some(ScaleDegree::V)]
+        );
+        assert!(p.undo());
+        assert_eq!(degrees(&p), vec![Some(ScaleDegree::I), Some(ScaleDegree::V)]);
+    }
+
+    #[test]
+    fn no_op_edits_do_not_touch_history() {
+        let mut p = filled(&[ScaleDegree::I]);
+        // Out of range / boundary operations change nothing, so there must be
+        // nothing extra to undo afterwards.
+        assert!(!p.delete(9));
+        assert!(!p.move_up(0));
+        assert!(!p.move_down(0));
+        assert!(!p.paste_after(None)); // nothing on the clipboard
+        // Only the original append is undoable, so one undo empties it.
+        assert!(p.undo());
+        assert!(p.is_empty());
+        assert!(!p.undo());
+    }
+
+    #[test]
+    fn an_empty_delete_all_records_nothing() {
+        let mut p = Progression::new();
+        p.delete_all();
+        assert!(!p.can_undo());
+    }
+
+    #[test]
+    fn copy_alone_is_not_an_undoable_edit() {
+        let mut p = filled(&[ScaleDegree::I]);
+        assert!(p.copy(0));
+        assert!(p.can_undo());
+        // Undo removes the append that created the chord, not the copy.
+        assert!(p.undo());
+        assert!(p.is_empty());
+        assert!(!p.undo());
+    }
+
+    #[test]
+    fn history_is_bounded() {
+        let mut p = Progression::new();
+        for _ in 0..(HISTORY_LIMIT + 20) {
+            p.append(Slot::Rest);
+        }
+        // Undo can step back the whole retained window, but no further.
+        for _ in 0..HISTORY_LIMIT {
+            assert!(p.undo());
+        }
+        assert!(!p.undo());
+    }
+
+    #[test]
+    fn undo_restores_chords_with_their_transformations() {
+        let mut p = Progression::new();
+        p.append(Slot::Chord(entry(ScaleDegree::V, Some(Transformation::Dom7))));
+        p.append(Slot::Chord(entry(ScaleDegree::I, None)));
+        p.delete(0);
+        p.undo();
+        match &p.slots[0] {
+            Slot::Chord(e) => {
+                assert_eq!(e.degree, ScaleDegree::V);
+                assert_eq!(e.transformation, Some(Transformation::Dom7));
+            }
+            other => panic!("expected the restored chord, got {:?}", other),
+        }
     }
 }

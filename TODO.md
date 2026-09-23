@@ -29,31 +29,61 @@ scheduling item.)
       `state.held` directly and so ignored latched registers, and added `Enter`
       to the on-screen help line, which never mentioned it.
       Covered by 13 new tests in `tui.rs` (**105 total**).
+- [x] Built the below-home-row hotkey row (it was documented in `keyboard.rs` but
+      only the two register locks were ever implemented; the other eight keys
+      were wrongly inserted into the held set). Added `Hotkey` +
+      `KeyPosition::hotkey()`, folding in the old `LockTarget`, and routed the
+      row to a dispatcher that never touches the held set. Ctrl/Alt are now
+      ignored by the chord grammar so they stay free for bindings.
+- [x] Progression **delete / copy / paste / undo / redo** on `k` / `q` / `j` /
+      `x` / `Shift+x`, scoped to the Progression panel, with a bounded
+      (128-deep) undo/redo stack in `Progression` that snapshots every mutation.
+- [x] Made `ProgressionEntry.registers` meaningful: it now captures the
+      *resolved* gesture (latches plus live keys) instead of only the latch
+      state — which is why it was previously unreadable — and drives
+      `g`-to-recall.
+- [x] Recall is explicit rather than automatic on selection, so scrolling the
+      progression can no longer clobber a latched register.
+      Suite is now **140 tests**.
 
-## 1. Wire up the progression editing that already exists
+## 1. Progression editing — remaining work
 
-`progression.rs` implements and tests `copy`, `paste_after`, `move_up`,
-`move_down`, `delete`, and `delete_all`, but the compiler reports all of them as
-never used. The modals `ConfirmDelete` and `ConfirmDeleteAllStage1` are never
-constructed, so **there is currently no way to delete a chord from the UI**, and
-no way to reorder or duplicate one.
+Done: the below-home-row hotkey row is live, and delete / copy / paste / undo /
+redo all work and are undoable. See the README for the key table.
 
-- [ ] Bind copy / paste / move-up / move-down to keys in the Progression panel
-      and document them in the on-screen help line.
-- [ ] Reach `ConfirmDelete` (e.g. `Delete` on a selected row) and
-      `ConfirmDeleteAllStage1` (e.g. `Ctrl+Delete`) so both exist in the state
-      machine.
-- [ ] Decide whether `Clipboard` should survive a `delete_all`.
+Still open, with four below-home-row slots reserved (`b`, `m`, `w`, `v` on the
+keycaps — you type `b`, `m`, `w`, `v`):
 
-## 2. Fix the register snapshot
+- [ ] Bind `move_up` / `move_down`. Both are implemented, undoable and tested,
+      but nothing reaches them. Natural home: `RightIndexBelow` (`m`) /
+      `RightMiddleBelow` (`w`).
+- [ ] Wire clear-all. `delete_all` is implemented, undoable and tested, and the
+      two-stage `ConfirmDeleteAllStage1`/`Stage2` modals still exist for it, but
+      `Stage1` is never constructed. Clear-all is destructive enough to keep a
+      confirm even with undo available — reach it from `RightRingBelow` (`v`).
+- [ ] Decide whether the clipboard should survive a `delete_all`, and whether it
+      should be visible in the panel.
+- [ ] Multi-select / block operations were deliberately left out of the first
+      pass; revisit only if editing one row at a time proves painful.
+- [ ] Remove the now-reserved-but-unused `ConfirmDeleteAllStage1` warning by
+      wiring it, or delete the modal pair and drop `delete_all`.
 
-`ProgressionEntry.registers` is populated at `tui.rs:1120` and never read. Either:
+## 2. Recall is bound to `g`
 
-- [ ] Use it — store how a chord was voiced so re-voicing on key change can
-      restore the intended register, or show it in the progression row; or
-- [ ] Drop the field and simplify `ProgressionEntry`.
+Resolved. Selecting a row with `↑`/`↓` no longer touches the registers, so
+scrolling can't clobber a latched register mid-performance. Recall is explicit:
+`g` (physical `g`, you type `i`) loads the selected entry's register snapshot
+and voices it, scoped to the Progression panel.
 
-Leaving it in place is the worst option: it looks load-bearing but isn't.
+- [x] Moved the register restore off selection and onto an explicit hotkey.
+- [x] `LeftInner` is no longer a chord key. It was previously worse than inert:
+      the grammar matches exact shapes, so holding `g` with `f` produced
+      `[LeftIndex, LeftInner]`, matched no arm, and silently killed the chord.
+      Regression test in `grammar.rs`.
+- [ ] Decide whether recall should stay latching. Today it replaces both
+      registers and persists, like the lock keys. A momentary
+      "hold `g` to preview, release to restore" variant is possible if
+      latching over your performance state turns out to be annoying.
 
 ## 3. Repository hygiene
 

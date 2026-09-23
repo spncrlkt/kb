@@ -8,11 +8,18 @@
 //!
 //! - Home-row positions (ten variants, `LeftPinky`..`RightPinky`). These
 //!   feed the chord grammar. `is_left` / `is_right` return true only for
-//!   these.
+//!   these. `LeftInner` is the one home-row position the grammar never
+//!   uses, so it carries a hotkey instead of a chord meaning.
 //! - Below-home-row positions (ten variants, `LeftPinkyBelow`..
 //!   `RightPinkyBelow`). These are hotkeys and lock keys, never inserted
-//!   into a `PositionSet`. `lock_target` returns `Some` for the two pinky
-//!   positions used to lock registers.
+//!   into a `PositionSet`. `hotkey` returns `Some` for the six positions
+//!   that are bound; the rest are deliberately inert. The two register
+//!   locks are simply two of those hotkeys.
+//!
+//! No position that `hotkey` returns `Some` for is ever inserted into a
+//! `PositionSet`. That matters beyond tidiness: the chord grammar matches
+//! exact shapes, so an extra position in the held set silently breaks the
+//! chord it was added to.
 
 use std::collections::BTreeSet;
 
@@ -44,11 +51,33 @@ pub enum KeyPosition {
     RightPinkyBelow,
 }
 
-/// Which register a lock key targets.
+/// An action bound to a below-home-row key.
+///
+/// The row below the home row is the hotkey row. Its keys never take part in
+/// the chord grammar and never enter a `PositionSet`, so they stay usable for
+/// editing even while both hands are holding a chord.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum LockTarget {
-    LeftRegister,
-    RightRegister,
+pub enum Hotkey {
+    /// Latch the right register (left pinky below home row).
+    LockRightRegister,
+    /// Latch the left register (right pinky below home row).
+    LockLeftRegister,
+    /// Copy the chord under the progression cursor.
+    CopyChord,
+    /// Paste the clipboard after the progression cursor.
+    PasteChord,
+    /// Delete the chord under the progression cursor.
+    DeleteChord,
+    /// Undo the last progression edit. Shift selects `Redo` instead.
+    Undo,
+    /// Redo the last undone progression edit.
+    Redo,
+    /// Recall the chord under the progression cursor into the registers.
+    ///
+    /// Bound to `LeftInner`, the one home-row position the chord grammar
+    /// ignores. Deliberately explicit: selecting a row must not clobber a
+    /// latched register mid-performance.
+    LoadSelectedChord,
 }
 
 impl KeyPosition {
@@ -75,19 +104,27 @@ impl KeyPosition {
         self.is_left() || self.is_right()
     }
 
-    /// True if this is a below-home-row position.
-    pub fn is_below_home_row(self) -> bool {
-        !self.is_home_row()
-    }
-
-    /// If this position is a lock key, which register it locks.
+    /// If this position is bound to a hotkey, which one.
+    ///
+    /// Covers the whole below-home-row row plus `LeftInner`, the single
+    /// home-row position the chord grammar never uses.
     ///
     /// The left pinky below home row locks the *right* register, and vice
     /// versa: the gesture mirrors the register being targeted.
-    pub fn lock_target(self) -> Option<LockTarget> {
+    ///
+    /// `Redo` is never returned: it shares a position with `Undo` and is
+    /// selected with Shift by the input layer, so this stays a pure function
+    /// of the physical key.
+    pub fn hotkey(self) -> Option<Hotkey> {
+        use Hotkey::*;
         match self {
-            KeyPosition::LeftPinkyBelow => Some(LockTarget::RightRegister),
-            KeyPosition::RightPinkyBelow => Some(LockTarget::LeftRegister),
+            KeyPosition::LeftInner => Some(LoadSelectedChord),
+            KeyPosition::LeftPinkyBelow => Some(LockRightRegister),
+            KeyPosition::RightPinkyBelow => Some(LockLeftRegister),
+            KeyPosition::LeftRingBelow => Some(CopyChord),
+            KeyPosition::LeftMiddleBelow => Some(PasteChord),
+            KeyPosition::LeftIndexBelow => Some(DeleteChord),
+            KeyPosition::LeftInnerBelow => Some(Undo),
             _ => None,
         }
     }
@@ -316,23 +353,97 @@ mod tests {
     }
 
     #[test]
-    fn lock_targets_are_cross_handed() {
+    fn lock_hotkeys_are_cross_handed() {
         assert_eq!(
-            KeyPosition::LeftPinkyBelow.lock_target(),
-            Some(LockTarget::RightRegister)
+            KeyPosition::LeftPinkyBelow.hotkey(),
+            Some(Hotkey::LockRightRegister)
         );
         assert_eq!(
-            KeyPosition::RightPinkyBelow.lock_target(),
-            Some(LockTarget::LeftRegister)
+            KeyPosition::RightPinkyBelow.hotkey(),
+            Some(Hotkey::LockLeftRegister)
         );
     }
 
     #[test]
-    fn non_lock_keys_have_no_lock_target() {
-        assert_eq!(KeyPosition::LeftPinky.lock_target(), None);
-        assert_eq!(KeyPosition::RightIndex.lock_target(), None);
-        assert_eq!(KeyPosition::LeftInnerBelow.lock_target(), None);
-        assert_eq!(KeyPosition::RightMiddleBelow.lock_target(), None);
+    fn grammar_home_row_positions_have_no_hotkey() {
+        // Every home-row position the grammar actually uses must stay a
+        // chord key. `LeftInner` is excluded on purpose: see the next test.
+        for p in [
+            KeyPosition::LeftPinky,
+            KeyPosition::LeftRing,
+            KeyPosition::LeftMiddle,
+            KeyPosition::LeftIndex,
+            KeyPosition::RightInner,
+            KeyPosition::RightIndex,
+            KeyPosition::RightMiddle,
+            KeyPosition::RightRing,
+            KeyPosition::RightPinky,
+        ] {
+            assert_eq!(p.hotkey(), None, "{:?} must stay a chord key", p);
+        }
+    }
+
+    #[test]
+    fn left_inner_recalls_instead_of_sounding_and_is_never_is_right() {
+        assert_eq!(
+            KeyPosition::LeftInner.hotkey(),
+            Some(Hotkey::LoadSelectedChord)
+        );
+        // It reports as a left position, so the input layer must route it by
+        // `hotkey` first or it would land in the held set and break shapes.
+        assert!(KeyPosition::LeftInner.is_left());
+        assert!(!KeyPosition::LeftInner.is_right());
+    }
+
+    #[test]
+    fn unassigned_below_home_row_positions_are_inert() {
+        // These four right-hand slots are deliberately unbound, reserved for
+        // later progression operations.
+        for p in [
+            KeyPosition::RightInnerBelow,
+            KeyPosition::RightIndexBelow,
+            KeyPosition::RightMiddleBelow,
+            KeyPosition::RightRingBelow,
+        ] {
+            assert_eq!(p.hotkey(), None, "{:?} should be inert", p);
+        }
+    }
+
+    #[test]
+    fn hotkeys_map_to_the_documented_programmer_dvorak_keys() {
+        // The characters the user actually types on the active layout.
+        let l = Layout::ProgrammerDvorak;
+        let cases = [
+            ('i', Hotkey::LoadSelectedChord), // physical `g`
+            ('\'', Hotkey::LockRightRegister),
+            ('q', Hotkey::CopyChord),
+            ('j', Hotkey::PasteChord),
+            ('k', Hotkey::DeleteChord),
+            ('x', Hotkey::Undo),
+            ('z', Hotkey::LockLeftRegister),
+        ];
+        for (c, expected) in cases {
+            let pos = l.position(c).unwrap_or_else(|| panic!("{:?} is unmapped", c));
+            assert_eq!(pos.hotkey(), Some(expected), "char {:?}", c);
+        }
+    }
+
+    #[test]
+    fn below_home_row_hotkeys_never_resolve_as_hands() {
+        // A hotkey position must not double as a hand position, or the key
+        // would do two things at once.
+        for p in [
+            KeyPosition::LeftPinkyBelow,
+            KeyPosition::LeftRingBelow,
+            KeyPosition::LeftMiddleBelow,
+            KeyPosition::LeftIndexBelow,
+            KeyPosition::LeftInnerBelow,
+            KeyPosition::RightPinkyBelow,
+        ] {
+            assert!(p.hotkey().is_some());
+            assert!(!p.is_left() && !p.is_right());
+            assert!(!p.is_home_row());
+        }
     }
 
     #[test]
@@ -354,7 +465,6 @@ mod tests {
             assert!(!p.is_left(), "{:?} should not be is_left", p);
             assert!(!p.is_right(), "{:?} should not be is_right", p);
             assert!(!p.is_home_row(), "{:?} should not be is_home_row", p);
-            assert!(p.is_below_home_row(), "{:?} should be is_below_home_row", p);
         }
     }
 

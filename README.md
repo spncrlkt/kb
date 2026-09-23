@@ -56,8 +56,9 @@ grammar.
 | `s`                 | vi     |
 | `a` `s` `d`         | vii    |
 
-`g` (left inner) is not used by the grammar. If you hold left-hand keys that
-don't form one of these shapes, no degree resolves and no chord sounds.
+`g` (left inner) is **not** a chord key — it carries the recall hotkey, so it
+never joins the held set. If you hold left-hand keys that don't form one of
+these shapes, no degree resolves and no chord sounds.
 
 ### Right hand: transformation
 
@@ -114,6 +115,12 @@ progressions with one hand free.
 The `Chord:` readout shows the resolved result, so it reflects a latched
 register exactly as the audio and `Enter` do.
 
+Each progression entry records the gesture that produced it. With the cursor on
+a chord in the Progression panel, press `g` to **recall** that entry's registers
+and voice it. This is deliberately explicit rather than automatic on selection:
+moving the cursor with `↑`/`↓` never touches the registers, so scrolling can't
+clobber a latched register mid-performance.
+
 ### Transport
 
 | Input            | Action                                  |
@@ -154,6 +161,48 @@ Progression panel — offer to add a rest.
 
 The **Presets** panel's last row, `[Save As...]`, opens a text prompt and writes
 the full sound design to `patches.toml`.
+
+### Editing hotkeys
+
+The row **below the home row** is the hotkey row, plus `g` on the home row
+itself — the one home-row position the chord grammar never uses. None of them
+ever join the held set, so they stay usable for editing while both hands are
+holding a chord. This is the only editing surface; there is no modifier-based
+shortcut layer.
+
+| Keycap | You type | Action | Scope |
+| --- | --- | --- | --- |
+| `g` | `i` | recall the chord under the cursor into the registers | Progression |
+| `z` | `'` | lock the right register | any panel |
+| `/` | `z` | lock the left register | any panel |
+| `x` | `q` | copy the chord under the cursor | Progression |
+| `c` | `j` | paste the clipboard after the cursor | Progression |
+| `v` | `k` | delete the chord under the cursor | Progression |
+| `b` | `x` | undo | Progression |
+| `b` + Shift | `X` | redo | Progression |
+
+"Keycap" is the QWERTY label printed on the key; "you type" is the character
+that actually reaches the app under Programmer Dvorak. In the key row drawn at
+the top of the screen, hotkey positions are shown in cyan rather than dark grey
+so `g` doesn't read as a chord key.
+
+The progression actions are scoped to the Progression panel, where the cursor
+lives, so they can never act on a row you can't see — press `Tab` to get there.
+Pressing one elsewhere flashes rather than doing nothing silently. Register
+locks are performance controls and work everywhere.
+
+The four unassigned slots (`n`, `m`, `,`, `.` — you type `b`, `m`, `w`, `v`) are
+deliberately inert, reserved for future operations.
+
+Undo covers every structural change: add, delete, paste, move. History is 128
+edits deep, and a fresh edit discards the redo stack. The Progression panel
+header shows `undo: yes` / `redo: yes` when there is history to step through.
+An edit that changes nothing (deleting past the end, pasting with an empty
+clipboard, undo with no history) flashes instead.
+
+Modifier keys are deliberately **not** part of the chord grammar, so `Ctrl`/`Alt`
+combinations are ignored rather than sounding a chord — that keeps them free for
+bindings later.
 
 ## Layouts
 
@@ -247,12 +296,27 @@ soft-clipped with `tanh`.
   register-locked playing keeps working.
 - **Full-screen redraw.** Every frame clears the terminal and reprints
   everything, which can flicker on slow terminals.
-- Progression copy/paste/reorder and chord deletion are implemented and tested
-  but have no working UI path.
-- `ProgressionEntry` stores a snapshot of the registers that is never read.
-- Below-home-row keys other than the two lock keys are inserted into the held
-  `PositionSet`, contradicting the doc comment in `keyboard.rs`. It is harmless
-  today only because `is_left`/`is_right` filter them out.
+- **The lock-key hint line is stale.** It still prints the QWERTY names
+  `z -> right register  / -> left register`, which under P.D. are backwards and
+  refer to a key (`/`) the grammar never maps. The README table above is
+  correct; the on-screen line has not been updated to derive from the active
+  layout.
+- **Progression reordering and clear-all have no UI path.** `move_up`,
+  `move_down` and `delete_all` are implemented, undoable and tested, but no
+  hotkey reaches them yet — four below-home-row slots are reserved for them.
+- **Progressions are not persisted.** `patches.toml` survives restarts; the
+  progression does not.
+
+## Fixed in this session
+
+- Progression **delete, copy and paste** now have hotkeys and are undoable; the
+  code existed but was unreachable.
+- `ProgressionEntry.registers` is now **read** (it drives `g`-to-recall) and
+  captures the *resolved* gesture rather than just the latch state, which was
+  why it was previously unusable.
+- Below-home-row keys no longer leak into the held `PositionSet`, so
+  `keyboard.rs` now matches its own documentation. `g` no longer silently breaks
+  a chord it is held alongside.
 
 ## See also
 

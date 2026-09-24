@@ -127,6 +127,11 @@ pub struct SynthParams {
     pub low: ChannelParams,
     pub mid: ChannelParams,
     pub high: ChannelParams,
+    /// How much reverb is added on top of the dry signal, 0..1.
+    ///
+    /// Additive, not a wet/dry balance: the dry path never sees this value. The
+    /// name is historical — `patches.toml` still stores it as `reverb_mix`, and
+    /// renaming the key would break saved patches.
     pub reverb_mix: SharedF32,
     pub reverb_size: SharedF32,
     pub master_volume: SharedF32,
@@ -480,6 +485,29 @@ impl Reverb {
 }
 
 // -----------------------------------------------------------------------------
+// Dry / reverb summing
+// -----------------------------------------------------------------------------
+
+/// Gain applied to the reverb return at full level.
+///
+/// This is the same ×3 the old wet/dry crossfade applied at its maximum, so
+/// full reverb is as loud as it always was. What changed is that the dry signal
+/// is no longer faded out underneath it.
+const REVERB_RETURN_GAIN: f32 = 3.0;
+
+/// Sum the dry stereo pair with the reverb return.
+///
+/// Additive on purpose: reverb only ever adds. `level` 0 leaves the dry signal
+/// untouched, and the return depends on the wet tank and the level alone — never
+/// on the dry — so no setting can subtract from it. The old crossfade multiplied
+/// the dry by `1 - level`, which is why turning reverb up used to hollow out the
+/// instrument.
+fn mix_reverb(dry_l: f32, dry_r: f32, wet: f32, level: f32) -> (f32, f32) {
+    let reverb = wet * level.clamp(0.0, 1.0) * REVERB_RETURN_GAIN;
+    (dry_l + reverb, dry_r + reverb)
+}
+
+// -----------------------------------------------------------------------------
 // Allocation
 // -----------------------------------------------------------------------------
 
@@ -665,8 +693,7 @@ impl Synth {
                         (low_out * low_send + mid_out * mid_send + high_out * high_send) * 0.3;
                     let wet = reverb.tick(reverb_in, reverb_size);
 
-                    let final_l = left * (1.0 - reverb_mix) + wet * reverb_mix * 3.0;
-                    let final_r = right * (1.0 - reverb_mix) + wet * reverb_mix * 3.0;
+                    let (final_l, final_r) = mix_reverb(left, right, wet, reverb_mix);
 
                     let sample_l = (final_l * master_gain).tanh();
                     let sample_r = (final_r * master_gain).tanh();
@@ -889,6 +916,56 @@ mod tests {
             assert!(last.is_finite());
         }
         assert!(last.abs() < 0.01);
+    }
+
+    // ---- reverb is additive ----
+
+    #[test]
+    fn zero_reverb_leaves_the_dry_signal_alone() {
+        // The old crossfade multiplied the dry by `1 - level`; at zero level
+        // that happened to be a no-op, so this pins the identity down.
+        assert_eq!(mix_reverb(0.5, -0.25, 0.8, 0.0), (0.5, -0.25));
+    }
+
+    #[test]
+    fn reverb_only_ever_adds_to_the_dry_signal() {
+        // The defining property: the return is a function of the wet tank and
+        // the level, never of the dry. So no setting can subtract from it.
+        for level in [0.0, 0.25, 0.5, 0.75, 1.0] {
+            let (l, r) = mix_reverb(0.37, -0.42, 0.11, level);
+            let expected = 0.11 * level * REVERB_RETURN_GAIN;
+            assert!(
+                (l - (0.37 + expected)).abs() < 1e-6,
+                "left dry was altered at level {}",
+                level
+            );
+            assert!(
+                (r - (-0.42 + expected)).abs() < 1e-6,
+                "right dry was altered at level {}",
+                level
+            );
+        }
+    }
+
+    #[test]
+    fn full_reverb_adds_three_times_the_wet_signal() {
+        // Deliberately the same gain the old crossfade used at maximum, so
+        // full reverb is as loud as it always was.
+        let (l, _) = mix_reverb(0.0, 0.0, 0.2, 1.0);
+        assert!((l - 0.6).abs() < 1e-6);
+    }
+
+    #[test]
+    fn the_reverb_level_is_clamped() {
+        let (l, _) = mix_reverb(0.0, 0.0, 0.2, 5.0);
+        assert!((l - 0.6).abs() < 1e-6, "an over-range level must not run away");
+        let (l, _) = mix_reverb(0.0, 0.0, 0.2, -1.0);
+        assert_eq!(l, 0.0);
+    }
+
+    #[test]
+    fn silence_in_stays_silence_out() {
+        assert_eq!(mix_reverb(0.0, 0.0, 0.0, 1.0), (0.0, 0.0));
     }
 
     #[test]

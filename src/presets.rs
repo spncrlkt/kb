@@ -51,6 +51,10 @@ impl ChannelPatch {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct MixerPatch {
+    /// How much reverb is added on top of the dry signal, 0..1.
+    ///
+    /// Additive, never a wet/dry balance. The key keeps its historical name so
+    /// patches written before the change still load.
     pub reverb_mix: f32,
     pub reverb_size: f32,
     pub master_volume: f32,

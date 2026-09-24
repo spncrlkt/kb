@@ -228,7 +228,7 @@ impl MixerParam {
             MixerParam::LowPan => "low pan",
             MixerParam::MidPan => "mid pan",
             MixerParam::HighPan => "high pan",
-            MixerParam::ReverbMix => "reverb mix",
+            MixerParam::ReverbMix => "reverb level",
             MixerParam::ReverbSize => "reverb size",
             MixerParam::MasterVolume => "master volume",
             MixerParam::MasterMute => "master mute",

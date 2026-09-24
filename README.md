@@ -385,6 +385,14 @@ The filter is a Chamberlin state-variable lowpass and the reverb is a
 Schroeder-style network of four combs into two allpasses. Master output is
 soft-clipped with `tanh`.
 
+**Reverb is additive.** The three per-channel sends feed one mono tank, and the
+`reverb level` control sums its output *on top of* the dry signal — it never
+attenuates it. At level 0 the dry path is untouched; turning reverb up only ever
+adds. The per-channel sends decide how much each register feeds the tank, so
+with every send at zero the level does nothing. (The stored key is still called
+`reverb_mix` in `patches.toml`, so patches written before this change load
+unchanged.)
+
 ## Runtime files
 
 | File          | Notes                                                                  |

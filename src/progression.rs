@@ -211,6 +211,20 @@ impl Progression {
         }
     }
 
+    /// Replace every slot in a single undoable edit. Returns true if changed.
+    ///
+    /// MIDI import installs a whole session at once; recording once means one
+    /// undo returns to the previous progression instead of unwinding the
+    /// import slot by slot.
+    pub fn replace(&mut self, slots: Vec<Slot>) -> bool {
+        if self.slots == slots {
+            return false;
+        }
+        self.record();
+        self.slots = slots;
+        true
+    }
+
     /// Copy the entry at `index` into the clipboard.
     ///
     /// This does not mutate `slots`, so it stays out of the undo history.
@@ -624,5 +638,42 @@ mod tests {
             }
             other => panic!("expected the restored chord, got {:?}", other),
         }
+    }
+
+    // ---- replace (used by MIDI import) ----
+
+    #[test]
+    fn replace_swaps_every_slot_in_one_undo_step() {
+        // Start with no history so the assertion is about `replace` alone.
+        let mut p = Progression::new();
+        p.slots = vec![Slot::Chord(entry(ScaleDegree::I, None))];
+
+        assert!(p.replace(vec![Slot::Rest, Slot::Rest]));
+        assert_eq!(p.len(), 2);
+
+        // One undo returns the whole previous progression, rather than
+        // unwinding the import slot by slot.
+        assert!(p.undo());
+        assert_eq!(degrees(&p), vec![Some(ScaleDegree::I)]);
+        assert!(!p.undo());
+    }
+
+    #[test]
+    fn replace_with_identical_slots_changes_nothing() {
+        let mut p = filled(&[ScaleDegree::I]);
+        let same = p.slots.clone();
+        assert!(!p.replace(same));
+        // Only the original append remains undoable.
+        assert!(p.undo());
+        assert!(p.is_empty());
+    }
+
+    #[test]
+    fn replace_with_an_empty_list_clears_the_progression() {
+        let mut p = filled(&[ScaleDegree::I, ScaleDegree::V]);
+        assert!(p.replace(Vec::new()));
+        assert!(p.is_empty());
+        assert!(p.undo());
+        assert_eq!(p.len(), 2);
     }
 }

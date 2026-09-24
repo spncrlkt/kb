@@ -1,0 +1,18 @@
+9/23/26
+deepseek for bozos
+motivation:
+chinese ai allows us to ethically build custom local tooling
+bad for my bank account, good for my ears
+the ability for anyone to create their own highly complex custom software instruments
+
+setup:
+install dsh + dependencies (npm/node, brew?) different 4 u
+deepseek api key
+run dsh, setup harness w/ api key
+
+next steps:
+- midi roll export
+- reverb on second channel (additive / don't duck master)
+- sinko
+- absolute root on one above home row
+- midi live output

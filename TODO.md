@@ -126,7 +126,32 @@ and voices it, scoped to the Progression panel.
 
 - [ ] Save and load progressions, not just patches — nothing persists the
       progression across restarts.
-- [ ] Export a progression as MIDI.
+- [x] Export a progression as MIDI. Done: `[Export MIDI]` on the Transport
+      panel writes a timestamped format 0 file, one track on channel 1, with
+      tempo / 4/4 / key signature and the progression's chord tones. See
+      `MIDI_EXPORT_PLAN.md`.
+- [x] Import an exported MIDI back into the session. Done: `[Import MIDI]`
+      opens a prompt pre-filled with the newest export; the key, BPM and note
+      length are restored along with the progression, and the whole thing is
+      one undoable edit. The session is embedded at export time as a versioned
+      TOML document in a sequencer-specific meta event (`project.rs`), so
+      degrees, transformations and register gestures survive. A file without
+      that payload is refused rather than guessed at — which means files
+      exported before the payload existed cannot be imported.
+- [ ] MIDI export follow-ups, in the order they are worth doing:
+  - [ ] Route low / mid / high to separate MIDI channels. The score already
+        tags every note with a layer and `smf::TrackLayout::PerLayer` already
+        writes the format 1 file; what is missing is a `ChannelMap` on
+        `MixerPatch` and a UI to edit it.
+  - [ ] Live MIDI output. Add a `MidiSink` trait and a `midir`-backed sink on
+        the scheduler events at `tui.rs` (`SchedulerEvent::PlayChord` /
+        `StopChord`). The `midi::Score` model is the shared seam; no timing
+        engine is needed.
+  - [ ] Refactor `synth::allocate` onto `midi::split_layers` so the audio and
+        MIDI definitions of low / mid / high cannot drift.
+  - [ ] Optional "legato" export that holds each chord to the bar line, and
+        optional inclusion of the live bar or a count-in.
+  - [ ] MIDI clock / transport sync and CC automation from the mixer.
 - [ ] Undo/redo for progression edits.
 - [ ] Swing / subdivision, and more than one bar per chord.
 - [ ] Extend the grammar to seventh-scale-degrees so minor-key diatonic

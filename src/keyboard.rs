@@ -23,7 +23,12 @@
 
 use std::collections::BTreeSet;
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+use serde::{Deserialize, Serialize};
+
+/// Serialised into the MIDI export payload, so the variant names are part of
+/// the file format; rename them only with a `project::VERSION` bump.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum KeyPosition {
     // Home row, left hand, outer -> inner
     LeftPinky,

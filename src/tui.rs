@@ -1,10 +1,12 @@
 //! TUI: chord grammar, synth controls, progression, transport.
 
 use std::io::{self, Write};
+use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use chrono::Local;
 use crossterm::{
     cursor::MoveTo,
     event::{
@@ -21,14 +23,17 @@ use crossterm::{
 
 use crate::chime::CHIMES;
 use crate::debug_log::{Logger, OutputTap};
+use crate::export;
 use crate::grammar::{left_hand_degree, right_hand_transformation};
 use crate::keyboard::{Hotkey, KeyPosition, PositionSet, ACTIVE_LAYOUT};
+use crate::midi;
 use crate::music::{
     chord_label, diatonic_triad, diatonic_triad_label, note_name, ChordSpec, Key, Scale,
     ScaleDegree, Transformation,
 };
 use crate::presets::{default_path, PatchStore};
 use crate::progression::{Progression, ProgressionEntry, Registers, Slot};
+use crate::project;
 use crate::synth::{Synth, SynthParams, Waveform};
 use crate::transport::{Scheduler, SchedulerEvent, Transport};
 
@@ -63,6 +68,13 @@ const NOTE_LENGTHS: [(f32, &str); 4] = [
     (0.75, "3/4"),
     (1.0, "whole"),
 ];
+
+/// Transport panel rows: bpm, loop, playing, track key, mute progression,
+/// last chime, `[Export MIDI]`, `[Import MIDI]`. Rows 2 and 5 are read-only but
+/// still occupy an index, as they always have.
+const TRANSPORT_ROW_EXPORT: usize = 6;
+const TRANSPORT_ROW_IMPORT: usize = 7;
+const TRANSPORT_ROWS: usize = 8;
 
 fn format_note_length(v: f32) -> String {
     let closest = NOTE_LENGTHS
@@ -433,17 +445,111 @@ enum Modal {
     ConfirmDeleteAllStage2,
     AddRest,
     PatchNameInput { buffer: String },
+    /// Filename to import, pre-filled with the newest export.
+    ImportPathInput { buffer: String },
 }
 
 impl Modal {
     fn pass_through_chords(&self) -> bool {
-        !matches!(self, Modal::PatchNameInput { .. })
+        !matches!(
+            self,
+            Modal::PatchNameInput { .. } | Modal::ImportPathInput { .. }
+        )
     }
 }
 
 // -----------------------------------------------------------------------------
 // App state
 // -----------------------------------------------------------------------------
+
+/// How long a successful export/import message stays at full brightness.
+const STATUS_HOLD: Duration = Duration::from_secs(5);
+
+/// How long it takes to fade away once the hold is over.
+const STATUS_FADE: Duration = Duration::from_millis(1000);
+
+#[derive(Debug)]
+enum ActionOutcome {
+    Ok,
+    Failed,
+}
+
+/// Outcome of the most recent MIDI export or import, rendered beside the
+/// relevant button so the user gets feedback without reading `debug.log`.
+///
+/// A success carries a `shown_at` stamp so the filename can fade away on its
+/// own; see [`ActionStatus::appearance_at`].
+#[derive(Debug)]
+struct ActionStatus {
+    text: String,
+    outcome: ActionOutcome,
+    shown_at: Instant,
+}
+
+impl ActionStatus {
+    fn new(text: String, outcome: ActionOutcome, shown_at: Instant) -> Self {
+        ActionStatus {
+            text,
+            outcome,
+            shown_at,
+        }
+    }
+
+    fn ok(text: String) -> Self {
+        Self::new(text, ActionOutcome::Ok, Instant::now())
+    }
+
+    fn failed(text: String) -> Self {
+        Self::new(text, ActionOutcome::Failed, Instant::now())
+    }
+
+    fn text(&self) -> &str {
+        &self.text
+    }
+
+    fn is_ok(&self) -> bool {
+        matches!(self.outcome, ActionOutcome::Ok)
+    }
+
+    /// How to draw this at `now`: the colour and text, or `None` once it has
+    /// faded away entirely.
+    ///
+    /// A success holds at full brightness for [`STATUS_HOLD`] and then dims
+    /// over [`STATUS_FADE`]. A failure never fades: it is usually telling you
+    /// to do something, and vanishing before it is read would be unhelpful.
+    fn appearance_at(&self, now: Instant) -> Option<(Color, &str)> {
+        if !self.is_ok() {
+            return Some((Color::Red, self.text()));
+        }
+
+        let elapsed = now.saturating_duration_since(self.shown_at);
+        if elapsed < STATUS_HOLD {
+            return Some((Color::Green, self.text()));
+        }
+
+        let faded = (elapsed - STATUS_HOLD).as_secs_f32();
+        let total = STATUS_FADE.as_secs_f32();
+        if faded >= total {
+            return None;
+        }
+        Some((faded_green(1.0 - faded / total), self.text()))
+    }
+}
+
+/// Green dimmed toward black.
+///
+/// A terminal cannot blend toward an unknown background, so "fade" here means
+/// "lose brightness": `level` 1 is the normal green, 0 is black. Truecolor is
+/// near-universal on the terminals this targets; a terminal without it will
+/// approximate, which still reads as a fade.
+fn faded_green(level: f32) -> Color {
+    let level = level.clamp(0.0, 1.0);
+    Color::Rgb {
+        r: 0,
+        g: (0xAF as f32 * level).round() as u8,
+        b: 0,
+    }
+}
 
 struct AppState {
     held: PositionSet,
@@ -461,6 +567,12 @@ struct AppState {
     flash_until: Option<Instant>,
     taps: TapTracker,
     last_chime_index: Option<usize>,
+    /// Where MIDI exports are written. A field rather than a call to
+    /// `current_dir()` at export time, so it is testable and can later become
+    /// a setting.
+    export_dir: PathBuf,
+    export_status: Option<ActionStatus>,
+    import_status: Option<ActionStatus>,
 }
 
 impl AppState {
@@ -483,7 +595,7 @@ impl AppState {
 
     fn row_count(&self) -> usize {
         match self.focus {
-            Focus::Transport => 5,
+            Focus::Transport => TRANSPORT_ROWS,
             Focus::Progression => self.progression.lock().unwrap().len(),
             Focus::SynthMixer => MIXER_PARAMS.len(),
             Focus::SynthLow | Focus::SynthMid | Focus::SynthHigh => CHANNEL_PARAMS.len(),
@@ -493,7 +605,7 @@ impl AppState {
 
     fn current_row(&self) -> usize {
         match self.focus {
-            Focus::Transport => self.mixer_row.min(4),
+            Focus::Transport => self.mixer_row.min(TRANSPORT_ROWS - 1),
             Focus::Progression => self.progression_row,
             Focus::SynthMixer => self.mixer_row,
             Focus::SynthLow => self.channel_row[0],
@@ -568,6 +680,17 @@ pub fn run_interactive() -> io::Result<()> {
 
     let scheduler = Scheduler::start(transport.clone(), progression.clone());
 
+    // Exported progressions go to a gitignored `progressions/` directory. If it
+    // cannot be created (a read-only checkout, say) fall back to the working
+    // directory rather than refusing to start; the per-export error explains it.
+    let export_dir = export::ensure_export_dir().unwrap_or_else(|err| {
+        logger.input(&format!(
+            "EXPORT directory unavailable ({}); using the working directory",
+            err
+        ));
+        std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
+    });
+
     let mut state = AppState {
         held: PositionSet::new(),
         registers: Registers::default(),
@@ -584,6 +707,9 @@ pub fn run_interactive() -> io::Result<()> {
         flash_until: None,
         taps: TapTracker::default(),
         last_chime_index: None,
+        export_dir,
+        export_status: None,
+        import_status: None,
     };
 
     state.update_live_chord();
@@ -715,6 +841,43 @@ fn event_loop(
             continue;
         }
 
+        if matches!(state.modal, Some(Modal::ImportPathInput { .. })) {
+            if ev.kind == KeyEventKind::Press {
+                match ev.code {
+                    KeyCode::Esc => {
+                        state.modal = None;
+                        logger.input("MODAL cancel import");
+                    }
+                    KeyCode::Enter => {
+                        // Take the modal first so the buffer borrow is over
+                        // before the import mutates state.
+                        let filename = match state.modal.take() {
+                            Some(Modal::ImportPathInput { buffer }) => buffer.trim().to_string(),
+                            other => {
+                                state.modal = other;
+                                String::new()
+                            }
+                        };
+                        import_midi(state, &filename, logger);
+                    }
+                    KeyCode::Backspace => {
+                        if let Some(Modal::ImportPathInput { buffer }) = &mut state.modal {
+                            buffer.pop();
+                        }
+                    }
+                    KeyCode::Char(c) => {
+                        if let Some(Modal::ImportPathInput { buffer }) = &mut state.modal {
+                            if buffer.len() < 200 && !c.is_control() {
+                                buffer.push(c);
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            continue;
+        }
+
         if let Some(ref modal) = state.modal {
             if ev.kind == KeyEventKind::Press {
                 match ev.code {
@@ -744,6 +907,7 @@ fn event_loop(
                             continue;
                         }
                         Modal::PatchNameInput { .. } => unreachable!(),
+                        Modal::ImportPathInput { .. } => unreachable!(),
                     },
                     _ => {}
                 }
@@ -987,21 +1151,10 @@ fn handle_panel_key(
         }
         KeyCode::Left => adjust_current(state, synth, -1, logger),
         KeyCode::Right => adjust_current(state, synth, 1, logger),
-        KeyCode::Enter => {
-            if ev.modifiers.contains(KeyModifiers::CONTROL) {
-                // Ctrl+Enter always appends, even with no chord held.
-                add_current_chord(state, true, logger);
-            } else if enter_commits_chord(state) {
-                // A chord is resolvable (held keys and/or a latched register),
-                // so Enter commits it from whichever panel has focus. In the
-                // progression panel it lands after the selected row; elsewhere
-                // it appends.
-                let to_end = state.focus != Focus::Progression;
-                add_current_chord(state, to_end, logger);
-            } else {
-                primary_action(state, synth, logger);
-            }
-        }
+        KeyCode::Enter => match enter_intent(state, ev.modifiers.contains(KeyModifiers::CONTROL)) {
+            EnterIntent::CommitChord { to_end } => add_current_chord(state, to_end, logger),
+            EnterIntent::PanelAction => primary_action(state, synth, logger),
+        },
         _ => {}
     }
 }
@@ -1082,6 +1235,8 @@ fn primary_action(state: &mut AppState, synth: &Synth, logger: &Logger) {
                 let cur = p.mute_progression.get() > 0.5;
                 p.mute_progression.set(if cur { 0.0 } else { 1.0 });
             }
+            TRANSPORT_ROW_EXPORT => export_midi(state, logger),
+            TRANSPORT_ROW_IMPORT => open_import_modal(state, logger),
             _ => {}
         },
         Focus::Progression => {
@@ -1106,6 +1261,139 @@ fn primary_action(state: &mut AppState, synth: &Synth, logger: &Logger) {
             }
         }
     }
+}
+
+/// Render the progression and write it out as a timestamped `.mid` file.
+///
+/// The semantic session document is embedded alongside the notes, so the file
+/// can be imported back (`import_midi`) rather than only played by a DAW.
+///
+/// Runs on the UI thread from an explicit keypress, so no file I/O ever
+/// touches the audio callback. The outcome is kept on the state for the panel
+/// to render, because flashing alone is invisible on the Transport panel.
+fn export_midi(state: &mut AppState, logger: &Logger) {
+    // Encode and render under one lock, from one snapshot, so the notes and the
+    // document can never describe different sessions.
+    let prepared = {
+        let prog = state.progression.lock().unwrap();
+        if prog.is_empty() {
+            Ok(None)
+        } else {
+            let key = state.transport.key();
+            let bpm = state.transport.bpm();
+            let note_length = state.transport.note_length();
+            project::encode(&prog, key, bpm, note_length).map(|document| {
+                let score = midi::render_progression(&prog, &key, bpm, note_length);
+                Some((score, document))
+            })
+        }
+    };
+
+    let (score, document) = match prepared {
+        Ok(Some(prepared)) => prepared,
+        Ok(None) => {
+            state.export_status = Some(ActionStatus::failed("nothing to export".to_string()));
+            state.flash(300);
+            logger.input("EXPORT skipped: progression is empty");
+            return;
+        }
+        Err(err) => {
+            state.export_status = Some(ActionStatus::failed(err.to_string()));
+            state.flash(300);
+            logger.input(&format!("EXPORT failed: {}", err));
+            return;
+        }
+    };
+
+    match export::export(&score, &document, &state.export_dir, Local::now()) {
+        Ok(path) => {
+            let name = path
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_else(|| path.display().to_string());
+            state.export_status = Some(ActionStatus::ok(name));
+            state.flash(600);
+            logger.input(&format!("EXPORT wrote {}", path.display()));
+        }
+        Err(err) => {
+            state.export_status = Some(ActionStatus::failed(err.to_string()));
+            state.flash(300);
+            logger.input(&format!("EXPORT failed: {}", err));
+        }
+    }
+}
+
+/// Open the import prompt, pre-filled with the newest export.
+///
+/// The prompt is what makes a specific file reachable: a terminal UI has no
+/// file picker, and the newest export is the overwhelmingly common target.
+fn open_import_modal(state: &mut AppState, logger: &Logger) {
+    let buffer = newest_export(&state.export_dir).unwrap_or_default();
+    logger.input(&format!("IMPORT modal (prefill {:?})", buffer));
+    state.modal = Some(Modal::ImportPathInput { buffer });
+}
+
+/// Read an exported file and install its progression and session context.
+fn import_midi(state: &mut AppState, filename: &str, logger: &Logger) {
+    let filename = filename.trim();
+    if filename.is_empty() {
+        state.import_status = Some(ActionStatus::failed("no file name".to_string()));
+        state.flash(300);
+        logger.input("IMPORT skipped: no file name");
+        return;
+    }
+
+    // A relative name resolves against the export directory, which is where
+    // exports land; an absolute path is honoured as given.
+    let candidate = PathBuf::from(filename);
+    let path = if candidate.is_absolute() {
+        candidate
+    } else {
+        state.export_dir.join(candidate)
+    };
+
+    match export::import(&path) {
+        Ok(restored) => {
+            let count = restored.slots.len();
+            let changed = state.progression.lock().unwrap().replace(restored.slots);
+            state.transport.set_key(restored.key);
+            state.transport.set_bpm(restored.bpm.clamp(BPM_MIN, BPM_MAX));
+            state.transport.set_note_length(restored.note_length);
+            state.update_progression_len();
+            state.progression_row = 0;
+
+            let name = path
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_else(|| path.display().to_string());
+            state.import_status = Some(ActionStatus::ok(name));
+            state.flash(600);
+            logger.input(&format!(
+                "IMPORT loaded {} slots from {} (changed: {})",
+                count,
+                path.display(),
+                changed
+            ));
+        }
+        Err(err) => {
+            state.import_status = Some(ActionStatus::failed(err.to_string()));
+            state.flash(300);
+            logger.input(&format!("IMPORT failed: {}", err));
+        }
+    }
+}
+
+/// The newest export in `dir`, if there is one.
+///
+/// Timestamped names sort lexicographically in chronological order, so the
+/// greatest name is the most recent export.
+fn newest_export(dir: &Path) -> Option<String> {
+    std::fs::read_dir(dir)
+        .ok()?
+        .filter_map(|entry| entry.ok())
+        .filter_map(|entry| entry.file_name().into_string().ok())
+        .filter(|name| name.starts_with("progression-") && name.ends_with(".mid"))
+        .max()
 }
 
 fn add_current_chord(state: &mut AppState, to_end: bool, logger: &Logger) {
@@ -1154,6 +1442,52 @@ fn resolved_chord(state: &AppState) -> Option<(ScaleDegree, Option<Transformatio
     let effective = state.registers.resolve(&state.held);
     let degree = left_hand_degree(&effective)?;
     Some((degree, right_hand_transformation(&effective)))
+}
+
+/// What Enter should do, decided before any side effect.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+enum EnterIntent {
+    /// Commit the chord currently being played.
+    CommitChord { to_end: bool },
+    /// Fall through to the focused panel's own action.
+    PanelAction,
+}
+
+/// Decide what Enter does.
+///
+/// Ctrl+Enter always appends, even with nothing held. Otherwise a chord that
+/// resolves is committed from whichever panel has focus — in the Progression
+/// panel it lands after the selected row, elsewhere it appends.
+///
+/// The exception is an explicitly selected **button** row: it takes Enter even
+/// while a chord is held. Without that, holding a chord would silently swallow
+/// the button press and add a chord instead of exporting (the same latent trap
+/// the Presets panel's `[Save As...]` row had).
+fn enter_intent(state: &AppState, ctrl: bool) -> EnterIntent {
+    if ctrl {
+        return EnterIntent::CommitChord { to_end: true };
+    }
+    if row_is_action_button(state) {
+        return EnterIntent::PanelAction;
+    }
+    if enter_commits_chord(state) {
+        return EnterIntent::CommitChord {
+            to_end: state.focus != Focus::Progression,
+        };
+    }
+    EnterIntent::PanelAction
+}
+
+/// True when the focused row is an explicit button rather than a value row.
+fn row_is_action_button(state: &AppState) -> bool {
+    match state.focus {
+        Focus::Transport => matches!(
+            state.current_row(),
+            TRANSPORT_ROW_EXPORT | TRANSPORT_ROW_IMPORT
+        ),
+        Focus::SynthPresets => state.current_row() >= state.patch_store.patches.len(),
+        _ => false,
+    }
 }
 
 /// True when Enter should commit the current chord instead of falling through
@@ -1288,6 +1622,28 @@ fn chord_notes(
     })
 }
 
+/// What the `Chord:` readout shows: the chord's name, its scale degree
+/// relative to the track key, and its notes.
+///
+/// The degree belongs here because the register lines already show it for a
+/// latched hand, and live playing should read the same way. Both go through
+/// `ScaleDegree::label()`, so the two can never disagree.
+fn chord_readout(
+    degree: ScaleDegree,
+    transformation: Option<Transformation>,
+    key: &Key,
+) -> (String, &'static str, Vec<u8>) {
+    let label = match transformation {
+        Some(t) => chord_label(key, &ChordSpec::new(degree, t)),
+        None => diatonic_triad_label(key, degree),
+    };
+    let notes = match transformation {
+        Some(t) => ChordSpec::new(degree, t).voice(key),
+        None => diatonic_triad(key, degree),
+    };
+    (label, degree.label(), notes)
+}
+
 // -----------------------------------------------------------------------------
 // Rendering
 // -----------------------------------------------------------------------------
@@ -1321,15 +1677,12 @@ fn render(stdout: &mut io::Stdout, synth: &Synth, state: &AppState) -> io::Resul
 
     match resolved_chord(state) {
         Some((d, transformation)) => {
-            let (label, notes) = match transformation {
-                Some(t) => {
-                    let spec = ChordSpec::new(d, t);
-                    (chord_label(&key, &spec), spec.voice(&key))
-                }
-                None => (diatonic_triad_label(&key, d), diatonic_triad(&key, d)),
-            };
+            let (label, degree, notes) = chord_readout(d, transformation, &key);
             let note_str: Vec<String> = notes.iter().map(|n| note_name(*n)).collect();
-            execute!(stdout, Print(format!("  Chord:       {}\r\n", label)))?;
+            execute!(
+                stdout,
+                Print(format!("  Chord:       {}   ({})\r\n", label, degree))
+            )?;
             execute!(
                 stdout,
                 Print(format!("  Notes:       {}\r\n\r\n", note_str.join(" ")))
@@ -1355,7 +1708,7 @@ fn render(stdout: &mut io::Stdout, synth: &Synth, state: &AppState) -> io::Resul
     execute!(
         stdout,
         Print(
-            "\r\n  Esc quit   Tab cycle   Enter: add chord   \
+            "\r\n  Esc quit   Tab cycle   Enter: add chord, or activate a button   \
              Space: play/pause (2: mid, 3: restart)\r\n"
         )
     )?;
@@ -1549,7 +1902,13 @@ fn render_transport_panel(
 ) -> io::Result<()> {
     execute!(stdout, Print("\r\n"))?;
     let focused = state.focus == Focus::Transport;
-    let row = if focused { state.mixer_row } else { usize::MAX };
+    // `current_row` applies the Transport row clamp; reading `mixer_row`
+    // directly would highlight nothing after the mixer cursor was left deep.
+    let row = if focused {
+        state.current_row()
+    } else {
+        usize::MAX
+    };
 
     let header = if focused {
         " Transport  (tab to switch) "
@@ -1623,6 +1982,48 @@ fn render_transport_panel(
     };
     draw_transport_row(stdout, false, "last chime", &chime_display)?;
 
+    // Action buttons. They are selected like value rows, but
+    // `row_is_action_button` makes Enter activate them even while a chord is
+    // held. Each shows the outcome of its last run, since flashing is
+    // invisible on this panel.
+    draw_action_row(
+        stdout,
+        focused && row == TRANSPORT_ROW_EXPORT,
+        "[Export MIDI]",
+        state.export_status.as_ref(),
+    )?;
+    draw_action_row(
+        stdout,
+        focused && row == TRANSPORT_ROW_IMPORT,
+        "[Import MIDI]",
+        state.import_status.as_ref(),
+    )?;
+
+    Ok(())
+}
+
+/// A button row plus the green/red outcome of its last run.
+///
+/// A successful filename fades away over [`STATUS_FADE`] once it is
+/// [`STATUS_HOLD`] old, which is why the appearance is resolved against the
+/// current instant rather than drawn unconditionally.
+fn draw_action_row(
+    stdout: &mut io::Stdout,
+    selected: bool,
+    label: &str,
+    status: Option<&ActionStatus>,
+) -> io::Result<()> {
+    let marker = if selected { "▸" } else { " " };
+    execute!(stdout, Print(format!("  {} {:<16}", marker, label)))?;
+    match status.and_then(|status| status.appearance_at(Instant::now())) {
+        Some((colour, text)) => execute!(
+            stdout,
+            SetForegroundColor(colour),
+            Print(format!(" {}\r\n", text)),
+            ResetColor,
+        )?,
+        None => execute!(stdout, Print("\r\n"))?,
+    }
     Ok(())
 }
 
@@ -1671,6 +2072,16 @@ fn render_modal(stdout: &mut io::Stdout, modal: &Modal) -> io::Result<()> {
                 stdout,
                 Print(format!(
                     "  Save patch as: {}     [Enter] save  [Esc] cancel  ",
+                    shown
+                ))
+            )?;
+        }
+        Modal::ImportPathInput { buffer } => {
+            let shown = if buffer.is_empty() { "_" } else { buffer };
+            execute!(
+                stdout,
+                Print(format!(
+                    "  Import MIDI: {}     [Enter] import  [Esc] cancel  ",
                     shown
                 ))
             )?;
@@ -1779,6 +2190,9 @@ mod tests {
             flash_until: None,
             taps: TapTracker::default(),
             last_chime_index: None,
+            export_dir: std::env::temp_dir(),
+            export_status: None,
+        import_status: None,
         }
     }
 
@@ -2276,5 +2690,385 @@ mod tests {
         assert_eq!(chord_notes(None, &key), None);
         // Degree with no transformation is the plain triad.
         assert_eq!(chord_notes(Some((ScaleDegree::I, None)), &key), Some(vec![60, 64, 67]));
+    }
+
+    // ---- chord readout ----
+
+    #[test]
+    fn chord_readout_reports_the_relative_degree() {
+        let key = Key::new(60, Scale::Major);
+
+        // IV7 in C major is F7.
+        let (label, degree, notes) =
+            chord_readout(ScaleDegree::IV, Some(Transformation::Dom7), &key);
+        assert_eq!(label, "F7");
+        assert_eq!(degree, "IV");
+        assert_eq!(notes, vec![65, 69, 72, 75]);
+
+        // A plain diatonic triad on vi is Am, and the degree keeps its case.
+        let (label, degree, notes) = chord_readout(ScaleDegree::VI, None, &key);
+        assert_eq!(label, "Am");
+        assert_eq!(degree, "vi");
+        assert_eq!(notes, vec![69, 72, 76]);
+
+        // vii is the diminished triad.
+        let (label, degree, notes) = chord_readout(ScaleDegree::VII, None, &key);
+        assert_eq!(label, "Bdim");
+        assert_eq!(degree, "vii");
+        assert_eq!(notes, vec![71, 74, 77]);
+    }
+
+    #[test]
+    fn chord_readout_degree_matches_the_register_line() {
+        // Both the register line and the chord readout describe the same
+        // gesture, and `ScaleDegree::label` is their shared source.
+        let key = Key::new(60, Scale::Major);
+        let held: PositionSet = [KeyPosition::LeftMiddle].into(); // V
+
+        let from_grammar = left_hand_degree(&held).expect("a degree");
+        let (_, readout_degree, _) = chord_readout(from_grammar, None, &key);
+        assert_eq!(readout_degree, from_grammar.label());
+    }
+
+    #[test]
+    fn chord_readout_follows_a_minor_key() {
+        let key = Key::new(57, Scale::Minor); // A minor
+        // i in A minor is Am.
+        let (label, degree, notes) = chord_readout(ScaleDegree::I, None, &key);
+        assert_eq!(label, "Am");
+        assert_eq!(degree, "I");
+        assert_eq!(notes, vec![57, 60, 64]);
+    }
+
+    // ---- MIDI export button ----
+
+    fn unique_export_dir(tag: &str) -> PathBuf {
+        let mut path = std::env::temp_dir();
+        path.push(format!(
+            "chord-tool-tui-export-{}-{}",
+            std::process::id(),
+            tag
+        ));
+        let _ = std::fs::remove_dir_all(&path);
+        std::fs::create_dir_all(&path).unwrap();
+        path
+    }
+
+    #[test]
+    fn transport_panel_exposes_the_export_button() {
+        let mut s = state(Focus::Transport);
+        assert_eq!(s.row_count(), TRANSPORT_ROWS);
+        s.set_current_row(TRANSPORT_ROW_EXPORT);
+        assert_eq!(s.current_row(), TRANSPORT_ROW_EXPORT);
+        assert!(row_is_action_button(&s));
+    }
+
+    #[test]
+    fn the_export_button_clamps_after_a_deep_mixer_cursor() {
+        // The Transport and Synth Mixer panels share `mixer_row`; leaving the
+        // cursor deep in the mixer must not push the Transport selection off
+        // the end of its own (shorter) row list.
+        let mut s = state(Focus::SynthMixer);
+        s.mixer_row = MIXER_PARAMS.len() - 1;
+        s.focus = Focus::Transport;
+        assert_eq!(s.current_row(), TRANSPORT_ROWS - 1);
+    }
+
+    #[test]
+    fn a_held_chord_does_not_swallow_the_export_button() {
+        // The whole point of the buttons-win rule: selecting Export MIDI and
+        // pressing Enter must export, not add the chord under the hands.
+        let mut s = state(Focus::Transport);
+        s.held.insert(KeyPosition::LeftIndex);
+        s.set_current_row(TRANSPORT_ROW_EXPORT);
+        assert_eq!(enter_intent(&s, false), EnterIntent::PanelAction);
+    }
+
+    #[test]
+    fn a_value_row_still_commits_a_held_chord() {
+        let mut s = state(Focus::Transport);
+        s.held.insert(KeyPosition::LeftIndex);
+        s.set_current_row(0);
+        assert_eq!(
+            enter_intent(&s, false),
+            EnterIntent::CommitChord { to_end: true }
+        );
+    }
+
+    #[test]
+    fn ctrl_enter_always_commits_even_on_a_button() {
+        let mut s = state(Focus::Transport);
+        s.set_current_row(TRANSPORT_ROW_EXPORT);
+        // No chord resolves, but Ctrl+Enter appends regardless.
+        assert_eq!(
+            enter_intent(&s, true),
+            EnterIntent::CommitChord { to_end: true }
+        );
+    }
+
+    #[test]
+    fn the_presets_save_row_is_a_button_too() {
+        // The same latent trap existed here before the rule was introduced.
+        let mut s = state(Focus::SynthPresets);
+        s.patch_store.patches.clear();
+        s.set_current_row(0);
+        assert!(row_is_action_button(&s));
+
+        s.held.insert(KeyPosition::LeftIndex);
+        assert_eq!(enter_intent(&s, false), EnterIntent::PanelAction);
+    }
+
+    #[test]
+    fn an_empty_progression_exports_nothing() {
+        let mut s = state(Focus::Transport);
+        s.export_dir = unique_export_dir("empty");
+        export_midi(&mut s, &logger());
+
+        assert!(s.export_status.as_ref().is_some_and(|status| !status.is_ok()));
+        assert_eq!(std::fs::read_dir(&s.export_dir).unwrap().count(), 0);
+
+        std::fs::remove_dir_all(&s.export_dir).unwrap();
+    }
+
+    #[test]
+    fn exporting_writes_a_timestamped_midi_file() {
+        let mut s = state(Focus::Transport);
+        s.export_dir = unique_export_dir("write");
+        seed(&mut s, &[ScaleDegree::I, ScaleDegree::V]);
+        export_midi(&mut s, &logger());
+
+        let name = match &s.export_status {
+            Some(status) if status.is_ok() => status.text().to_string(),
+            other => panic!("expected a successful export, got {:?}", other),
+        };
+        assert!(name.starts_with("progression-"), "got {}", name);
+        assert!(name.ends_with(".mid"), "got {}", name);
+
+        let bytes = std::fs::read(s.export_dir.join(&name)).unwrap();
+        assert_eq!(&bytes[0..4], b"MThd");
+
+        std::fs::remove_dir_all(&s.export_dir).unwrap();
+    }
+
+    #[test]
+    fn a_failed_export_is_reported_not_hidden() {
+        let mut s = state(Focus::Transport);
+        // A directory that does not exist makes the write fail.
+        s.export_dir = std::env::temp_dir().join("chord-tool-tui-missing-dir");
+        let _ = std::fs::remove_dir_all(&s.export_dir);
+        seed(&mut s, &[ScaleDegree::I]);
+        export_midi(&mut s, &logger());
+
+        assert!(s.export_status.as_ref().is_some_and(|status| !status.is_ok()));
+    }
+
+    // ---- MIDI import button ----
+
+    /// Export the current session and return the file name it landed under.
+    fn export_current(s: &mut AppState) -> String {
+        export_midi(s, &logger());
+        match &s.export_status {
+            Some(status) if status.is_ok() => status.text().to_string(),
+            other => panic!("expected a successful export, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn transport_panel_exposes_the_import_button() {
+        let mut s = state(Focus::Transport);
+        s.set_current_row(TRANSPORT_ROW_IMPORT);
+        assert_eq!(s.current_row(), TRANSPORT_ROW_IMPORT);
+        assert!(row_is_action_button(&s));
+        // ...and a held chord must not swallow it.
+        s.held.insert(KeyPosition::LeftIndex);
+        assert_eq!(enter_intent(&s, false), EnterIntent::PanelAction);
+    }
+
+    #[test]
+    fn an_export_imports_back_into_the_session() {
+        let mut s = state(Focus::Transport);
+        s.export_dir = unique_export_dir("import-roundtrip");
+        seed(&mut s, &[ScaleDegree::I, ScaleDegree::V]);
+        let name = export_current(&mut s);
+
+        // Wreck the session: different progression, different tempo.
+        {
+            let mut prog = s.progression.lock().unwrap();
+            prog.delete_all();
+        }
+        s.transport.set_bpm(200);
+        s.update_progression_len();
+
+        import_midi(&mut s, &name, &logger());
+
+        assert_eq!(degrees(&s), vec![ScaleDegree::I, ScaleDegree::V]);
+        assert_eq!(s.transport.bpm(), 120);
+        assert_eq!(s.transport.progression_len.load(Ordering::Relaxed), 2);
+        assert!(s.import_status.as_ref().is_some_and(ActionStatus::is_ok));
+
+        std::fs::remove_dir_all(&s.export_dir).unwrap();
+    }
+
+    #[test]
+    fn an_import_can_be_undone_in_one_step() {
+        let mut s = state(Focus::Transport);
+        s.export_dir = unique_export_dir("import-undo");
+        seed(&mut s, &[ScaleDegree::I, ScaleDegree::V]);
+        let name = export_current(&mut s);
+        {
+            let mut prog = s.progression.lock().unwrap();
+            prog.replace(vec![Slot::Rest]);
+        }
+
+        import_midi(&mut s, &name, &logger());
+        assert_eq!(s.progression.lock().unwrap().len(), 2);
+
+        // One undo returns the pre-import progression, not a half-imported one.
+        assert!(s.progression.lock().unwrap().undo());
+        assert_eq!(s.progression.lock().unwrap().len(), 1);
+
+        std::fs::remove_dir_all(&s.export_dir).unwrap();
+    }
+
+    #[test]
+    fn a_foreign_midi_file_is_refused_and_reported() {
+        let mut s = state(Focus::Transport);
+        s.export_dir = unique_export_dir("import-foreign");
+        // A well-formed MIDI file, but without the embedded session document.
+        let score = midi::render_progression(
+            &Progression::new(),
+            &Key::new(60, Scale::Major),
+            120,
+            1.0,
+        );
+        let bytes = crate::smf::write(&score, &crate::smf::SmfOptions::single("Foreign"));
+        std::fs::write(s.export_dir.join("foreign.mid"), bytes).unwrap();
+
+        import_midi(&mut s, "foreign.mid", &logger());
+
+        match &s.import_status {
+            Some(status) if !status.is_ok() => {
+                assert!(
+                    status.text().contains("not a chord-tool file"),
+                    "got {}",
+                    status.text()
+                )
+            }
+            other => panic!("expected a refusal, got {:?}", other),
+        }
+
+        std::fs::remove_dir_all(&s.export_dir).unwrap();
+    }
+
+    #[test]
+    fn importing_a_missing_file_is_reported() {
+        let mut s = state(Focus::Transport);
+        s.export_dir = unique_export_dir("import-missing");
+        import_midi(&mut s, "does-not-exist.mid", &logger());
+        assert!(s.import_status.as_ref().is_some_and(|status| !status.is_ok()));
+        std::fs::remove_dir_all(&s.export_dir).unwrap();
+    }
+
+    #[test]
+    fn importing_an_empty_name_is_refused_without_touching_the_disk() {
+        let mut s = state(Focus::Transport);
+        import_midi(&mut s, "   ", &logger());
+        assert!(s.import_status.as_ref().is_some_and(|status| !status.is_ok()));
+    }
+
+    #[test]
+    fn the_import_prompt_prefills_the_newest_export() {
+        let mut s = state(Focus::Transport);
+        s.export_dir = unique_export_dir("import-prefill");
+        seed(&mut s, &[ScaleDegree::I]);
+        let name = export_current(&mut s);
+
+        open_import_modal(&mut s, &logger());
+
+        assert!(matches!(
+            &s.modal,
+            Some(Modal::ImportPathInput { buffer }) if buffer == &name
+        ));
+
+        std::fs::remove_dir_all(&s.export_dir).unwrap();
+    }
+
+    #[test]
+    fn an_absolute_path_is_honoured_over_the_export_directory() {
+        let mut s = state(Focus::Transport);
+        let dir = unique_export_dir("import-absolute");
+        s.export_dir = dir.clone();
+        seed(&mut s, &[ScaleDegree::I]);
+        let name = export_current(&mut s);
+        let absolute = dir.join(&name);
+
+        // Point export_dir somewhere useless: the absolute path must win.
+        s.export_dir = std::env::temp_dir().join("chord-tool-tui-nowhere");
+        import_midi(&mut s, absolute.to_str().unwrap(), &logger());
+
+        assert!(s.import_status.as_ref().is_some_and(ActionStatus::is_ok));
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    // ---- status fade ----
+
+    #[test]
+    fn a_successful_filename_holds_then_fades_away() {
+        let start = Instant::now();
+        let status =
+            ActionStatus::new("progression-x.mid".to_string(), ActionOutcome::Ok, start);
+
+        // Full brightness for the whole hold.
+        assert_eq!(
+            status.appearance_at(start),
+            Some((Color::Green, "progression-x.mid"))
+        );
+        assert_eq!(
+            status.appearance_at(start + STATUS_HOLD - Duration::from_millis(1)),
+            Some((Color::Green, "progression-x.mid"))
+        );
+
+        // Dimmer in the middle of the fade, but still readable.
+        match status.appearance_at(start + STATUS_HOLD + STATUS_FADE / 2) {
+            Some((Color::Rgb { g: green, .. }, text)) => {
+                assert!(
+                    green > 0 && green < 0xAF,
+                    "expected a dimmed green, got {}",
+                    green
+                );
+                assert_eq!(text, "progression-x.mid");
+            }
+            other => panic!("expected a fading green, got {:?}", other),
+        }
+
+        // Gone once the fade completes, and it stays gone.
+        assert_eq!(status.appearance_at(start + STATUS_HOLD + STATUS_FADE), None);
+        assert_eq!(status.appearance_at(start + Duration::from_secs(600)), None);
+    }
+
+    #[test]
+    fn a_failure_does_not_fade() {
+        // An error is worth reading and usually actionable; only the
+        // confirmatory filename goes away on its own.
+        let start = Instant::now();
+        let status =
+            ActionStatus::new("not a chord-tool file".to_string(), ActionOutcome::Failed, start);
+        assert_eq!(
+            status.appearance_at(start + Duration::from_secs(600)),
+            Some((Color::Red, "not a chord-tool file"))
+        );
+    }
+
+    #[test]
+    fn a_fresh_status_is_stamped_and_classified() {
+        let before = Instant::now();
+        let ok = ActionStatus::ok("name.mid".to_string());
+        assert!(ok.shown_at >= before);
+        assert!(ok.is_ok());
+        assert_eq!(ok.text(), "name.mid");
+
+        let failed = ActionStatus::failed("nope".to_string());
+        assert!(!failed.is_ok());
     }
 }

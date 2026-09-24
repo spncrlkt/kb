@@ -8,3 +8,6 @@ crossterm = "0.28"
 cpal = "0.15"
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
+# Local wall-clock time for export filenames. Timezone/DST handling is not
+# worth hand-rolling; this is the only dependency the MIDI export adds.
+chrono = "0.4"

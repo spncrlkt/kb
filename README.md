@@ -11,8 +11,10 @@ The crate is named `chord-tool` (the repository is `kb`).
 ## Status
 
 Working, but early. The audio path, music theory core, and TUI are functional
-and covered by 92 unit tests. Several features are implemented in the data layer
-but not yet wired to the UI — see [TODO.md](TODO.md).
+and covered by 221 unit tests. A progression can be exported as a Standard MIDI
+File for Ableton from the Transport panel, and imported back — session and all.
+Several features are implemented in the data layer but not yet wired to the UI —
+see [TODO.md](TODO.md).
 
 The project did not compile as committed; two build errors (`E0063` in
 `synth.rs`, `E0382` in `transport.rs`) were fixed so that `cargo run` works.
@@ -33,7 +35,7 @@ The project did not compile as committed; two build errors (`E0063` in
 ```sh
 cargo run            # debug build
 cargo run --release  # smoother audio; recommended for actually playing
-cargo test           # 92 tests, no audio device required
+cargo test           # 221 tests, no audio device required
 ```
 
 The binary is `target/{debug,release}/chord-tool`.
@@ -113,7 +115,10 @@ set, while the locked right set keeps filling in. This is how you audition
 progressions with one hand free.
 
 The `Chord:` readout shows the resolved result, so it reflects a latched
-register exactly as the audio and `Enter` do.
+register exactly as the audio and `Enter` do. It names the chord and its scale
+degree relative to the track key — `F7 (V)`, `Dm (ii)`, `Bdim (vii)` — using the
+same degree the register lines show, so live playing and a latched hand read
+identically.
 
 Each progression entry records the gesture that produced it. With the cursor on
 a chord in the Progression panel, press `g` to **recall** that entry's registers
@@ -204,6 +209,110 @@ Modifier keys are deliberately **not** part of the chord grammar, so `Ctrl`/`Alt
 combinations are ignored rather than sounding a chord — that keeps them free for
 bindings later.
 
+## Exporting and importing MIDI
+
+The **Transport** panel's last two rows are `[Export MIDI]` and `[Import MIDI]`.
+Select one with `↓` and press `Enter`.
+
+### Export
+
+The progression is written as a Standard MIDI File that Ableton imports
+directly:
+
+```
+progression-2026-09-23_18-03-45.mid
+```
+
+The name is the local wall-clock time of the export, so files never collide
+within a second and sort chronologically. The file lands in the `progressions/`
+directory under the working directory — created on first launch and
+**gitignored**, so a session's exports never show up as untracked changes. If
+that directory cannot be created, the app falls back to the working directory
+rather than refusing to start, and says so in `debug.log`. The outcome (the file
+name, or the error) is shown beside the button in green or red and echoed to
+`debug.log`. An empty progression exports nothing, since there is no loop to
+write.
+
+A successful filename is confirmation, so it does not linger: it holds at full
+green for **5 seconds**, fades out over the next second, and then disappears.
+A failure stays on screen until the next export or import — an error is usually
+telling you to do something, so it should not vanish before it is read. Both go
+to `debug.log` regardless.
+
+What goes in the file:
+
+- **One track on channel 1** (SMF format 0), so Ableton makes exactly one clip.
+- **Tempo**, **4/4 time signature** and **key signature** from the transport.
+- **One bar per slot**, matching playback, with the note released at
+  `note_length` — so a half-bar setting exports half-bar notes and the gap is
+  silent. A rest slot is a genuinely empty bar, and a rest at the end still
+  lengthens the loop.
+- **The chord tones you played**, not the synth's voicing. The audio path
+  doubles sparse chords an octave out for timbre; that is sound design, not
+  musical content, so it stays out of the file.
+- The live chord is **not** included — an export is a function of the
+  progression alone.
+- **An embedded session document**, described below. It is invisible to a DAW.
+
+Selecting a button and pressing `Enter` always activates it, even if you are
+still holding a chord. Buttons win over chord-commit; the same rule applies to
+the Presets panel's `[Save As...]`.
+
+### Import
+
+`[Import MIDI]` opens a prompt pre-filled with the **newest export**, so the
+common case is just `Enter`. You can edit the name, or type an absolute path to
+reach a file anywhere. A successful import replaces the progression and restores
+the **key, BPM and note length** too, so a file round-trips exactly. It is one
+undoable edit: a single undo returns the whole previous progression.
+
+A file that this tool did not write is **refused**, not guessed at:
+
+```
+not a chord-tool file (no embedded progression; files exported before
+MIDI import existed will not have one)
+```
+
+That refusal is the point. A MIDI file only holds absolute notes, and the
+original degrees and transformations cannot be recovered from them — C-E-G is I
+in C, IV in G and V in F, and all three are the same three notes. Guessing would
+silently disagree with what you played. Exports made *before* import existed
+therefore will not import; re-export them from a saved progression.
+
+### How the session travels
+
+The exporter embeds the session as a **sequencer-specific meta event**
+(`FF 7F`, non-commercial manufacturer id `0x7D`, magic `CTP1`) holding a
+small versioned **TOML** document: key, BPM, note length, and each slot's
+degree, transformation and register gesture. DAWs ignore sequencer-specific
+data, so it never shows up as lyrics or a marker, while our own reader finds it
+by magic — so most other tools' files can be positively identified rather than
+guessed at.
+
+The register fields keep `None` ("never set") distinct from `Some([])`
+("explicitly cleared"), because the two resolve differently and `g`-to-recall
+would otherwise change behaviour after a round trip.
+
+The format is versioned (`project::VERSION`); a document from a different
+version is refused with a clear message rather than misread.
+
+The code is split so it can grow:
+
+| File | Role |
+| ---- | ---- |
+| `midi.rs` | Pure model — a progression becomes a `Score` of timed notes tagged Low/Mid/High. No audio, no terminal, no filesystem. |
+| `smf.rs` | Pure byte writer and reader. `TrackLayout::Single` writes the current one-track file; `TrackLayout::PerLayer` is already implemented for routing Low/Mid/High to separate channels. Framing of the embedded event lives here. |
+| `project.rs` | The session document itself: versioned TOML, and the domain conversions. |
+| `export.rs` | The only filesystem code: timestamped names, reading, writing, and turning a failed read into a specific error. |
+
+Because the layers survive into the score and `ChannelMap` already maps them to
+channels, per-channel export is a UI change rather than a format rewrite. The
+same `Score` is the intended seam for live MIDI output later — the scheduler
+already emits the chord events a live sink would consume.
+
+Time signature is hardcoded to 4/4 today, because the transport is; the score
+carries `beats_per_bar` so that will not require reworking the writer.
+
 ## Layouts
 
 The grammar is defined on **physical key positions**, never on the characters a
@@ -236,6 +345,10 @@ Two display rough edges remain:
 | ------------------ | --------------------------------------------------------------------- |
 | `main.rs`          | Declares modules; calls `tui::run_interactive()`.                     |
 | `music.rs`         | Theory core: scales, degrees, transformations, voicing, note labels.  |
+| `midi.rs`          | Pure MIDI model: `Score`, layers, `split_layers`, `render_progression`. |
+| `smf.rs`           | Pure Standard MIDI File writer and reader (format 0 single track / format 1 per layer). |
+| `project.rs`       | The versioned session document embedded in an export, so it can be imported back. |
+| `export.rs`        | MIDI export/import filenames and file I/O.                            |
 | `keyboard.rs`      | Physical positions, layout translation, `ACTIVE_LAYOUT`.              |
 | `grammar.rs`       | `PositionSet` → (degree, transformation). Pure, layout-free.          |
 | `progression.rs`   | Slots, rests, registers, clipboard, edit operations.                  |
@@ -277,6 +390,7 @@ soft-clipped with `tanh`.
 | File          | Notes                                                                  |
 | ------------- | ---------------------------------------------------------------------- |
 | `patches.toml` | Generated with five built-in patches if missing; rewritten by "Save As". Tracked in git. |
+| `progressions/` | Where MIDI exports are written and imported from, created on first launch. **Gitignored** — these are session data, not source. |
 | `debug.log`    | **Truncated and rewritten on every launch.** Tracks input events and output levels; ~113k lines / 2.7 MB after one session. Should not be committed — see TODO. |
 
 ## Known issues

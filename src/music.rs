@@ -1,5 +1,7 @@
 //! Music theory core: notes, scale degrees, keys, and chord voicing.
 
+use serde::{Deserialize, Serialize};
+
 // -----------------------------------------------------------------------------
 // Constants
 // -----------------------------------------------------------------------------
@@ -25,7 +27,10 @@ pub const NOTE_NAMES: [&str; 12] = [
 // Scale
 // -----------------------------------------------------------------------------
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+/// Serialised into the MIDI export payload, so the variant names are part of
+/// the file format; rename them only with a `project::VERSION` bump.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Scale {
     Major,
     Minor,
@@ -52,7 +57,8 @@ impl Scale {
 // Enums
 // -----------------------------------------------------------------------------
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ScaleDegree {
     I,
     II,
@@ -95,7 +101,8 @@ pub enum Mode {
     H,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Transformation {
     // j-mode: absolute chord qualities
     Dom7,

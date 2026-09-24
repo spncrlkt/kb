@@ -24,6 +24,12 @@ rustc-ice-*.txt
 # Runtime artifacts: rewritten on every launch
 debug.log
 
+# Exported/imported MIDI progressions: session data, not source
+/progressions/
+# Fallback: if progressions/ cannot be created, exports land in the working
+# directory. Keep those out of version control too.
+/progression-*.mid
+
 # IDE and editor files (optional)
 .idea/
 .vscode/

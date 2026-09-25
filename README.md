@@ -269,9 +269,11 @@ undoable edit: a single undo returns the whole previous progression.
 A file that this tool did not write is **refused**, not guessed at:
 
 ```
-not a chord-tool file (no embedded progression; files exported before
-MIDI import existed will not have one)
+not a chord-tool file (no embedded progression)
 ```
+
+The message is clipped to one fixed-width row, so it can never reflow the
+Transport panel; the full text always goes to `debug.log`.
 
 That refusal is the point. A MIDI file only holds absolute notes, and the
 original degrees and transformations cannot be recovered from them — C-E-G is I

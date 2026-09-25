@@ -100,8 +100,9 @@ impl std::fmt::Display for ImportError {
             ImportError::Midi(e) => write!(f, "{}", e),
             ImportError::NotOurs => write!(
                 f,
-                "not a chord-tool file (no embedded progression; \
-                 files exported before MIDI import existed will not have one)"
+                // Kept short: this is drawn in a fixed-width panel row. The
+                // legacy-export explanation lives in the README.
+                "not a chord-tool file (no embedded progression)"
             ),
             ImportError::Project(e) => write!(f, "{}", e),
         }
@@ -313,7 +314,7 @@ mod tests {
     }
 
     #[test]
-    fn the_not_ours_message_mentions_the_legacy_case() {
+    fn the_not_ours_message_names_the_problem() {
         let message = ImportError::NotOurs.to_string();
         assert!(message.contains("not a chord-tool file"));
     }

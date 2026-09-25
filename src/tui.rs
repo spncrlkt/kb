@@ -1,6 +1,6 @@
 //! TUI: chord grammar, synth controls, progression, transport.
 
-use std::io::{self, Write};
+use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
@@ -468,6 +468,29 @@ const STATUS_HOLD: Duration = Duration::from_secs(5);
 /// How long it takes to fade away once the hold is over.
 const STATUS_FADE: Duration = Duration::from_millis(1000);
 
+/// Widest a status message may be drawn beside a button.
+///
+/// The panel is a fixed column of rows, so a long message must never wrap: an
+/// import failure or a multi-line TOML parse error would otherwise reflow the
+/// whole panel and shove everything below it down the screen.
+const STATUS_MAX_CHARS: usize = 48;
+
+/// Flatten status text to a single clipped line.
+///
+/// Errors from deeper layers are not written for a one-line panel: a TOML parse
+/// error, for instance, arrives with newlines and a caret. Collapsing
+/// whitespace keeps the row count fixed, and clipping keeps the width fixed.
+/// The full text still reaches `debug.log`.
+fn single_line_status(text: &str) -> String {
+    let collapsed = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    if collapsed.chars().count() <= STATUS_MAX_CHARS {
+        return collapsed;
+    }
+    let mut clipped: String = collapsed.chars().take(STATUS_MAX_CHARS - 1).collect();
+    clipped.push('…');
+    clipped
+}
+
 #[derive(Debug)]
 enum ActionOutcome {
     Ok,
@@ -744,8 +767,8 @@ pub fn run_interactive() -> io::Result<()> {
 // Event loop
 // -----------------------------------------------------------------------------
 
-fn event_loop(
-    stdout: &mut io::Stdout,
+fn event_loop<W: io::Write>(
+    stdout: &mut W,
     synth: &Synth,
     scheduler: &Scheduler,
     state: &mut AppState,
@@ -778,7 +801,7 @@ fn event_loop(
             }
         }
 
-        render(stdout, synth, state)?;
+        render(stdout, synth.params(), state)?;
 
         while let Some(ev) = scheduler.try_recv() {
             match ev {
@@ -1648,7 +1671,7 @@ fn chord_readout(
 // Rendering
 // -----------------------------------------------------------------------------
 
-fn render(stdout: &mut io::Stdout, synth: &Synth, state: &AppState) -> io::Result<()> {
+fn render<W: io::Write>(stdout: &mut W, params: &SynthParams, state: &AppState) -> io::Result<()> {
     execute!(stdout, Clear(ClearType::All), MoveTo(0, 0))?;
 
     execute!(stdout, Print("  Chord Tool\r\n"))?;
@@ -1696,9 +1719,13 @@ fn render(stdout: &mut io::Stdout, synth: &Synth, state: &AppState) -> io::Resul
         }
     }
 
-    render_synth_panel(stdout, synth, state)?;
+    render_synth_panel(stdout, params, state)?;
     render_progression_panel(stdout, state)?;
-    render_transport_panel(stdout, synth, state)?;
+    render_transport_panel(
+        stdout,
+        params.mute_progression.get() > 0.5,
+        state,
+    )?;
 
     if let Some(ref modal) = state.modal {
         execute!(stdout, Print("\r\n"))?;
@@ -1717,9 +1744,9 @@ fn render(stdout: &mut io::Stdout, synth: &Synth, state: &AppState) -> io::Resul
     Ok(())
 }
 
-fn render_synth_panel(
-    stdout: &mut io::Stdout,
-    synth: &Synth,
+fn render_synth_panel<W: io::Write>(
+    stdout: &mut W,
+    params: &SynthParams,
     state: &AppState,
 ) -> io::Result<()> {
     let active_subtab = match state.focus {
@@ -1738,8 +1765,8 @@ fn render_synth_panel(
     execute!(stdout, Print(format!("\r\n──{}──\r\n", header)))?;
 
     match active_subtab {
-        Some("Mixer") => render_mixer_body(stdout, synth, state)?,
-        Some("Low") | Some("Mid") | Some("High") => render_channel_body(stdout, synth, state)?,
+        Some("Mixer") => render_mixer_body(stdout, params, state)?,
+        Some("Low") | Some("Mid") | Some("High") => render_channel_body(stdout, params, state)?,
         Some("Presets") => render_presets_body(stdout, state)?,
         _ => {
             execute!(stdout, Print("  (tab to switch to a synth subtab)\r\n"))?;
@@ -1748,9 +1775,9 @@ fn render_synth_panel(
     Ok(())
 }
 
-fn render_mixer_body(
-    stdout: &mut io::Stdout,
-    synth: &Synth,
+fn render_mixer_body<W: io::Write>(
+    stdout: &mut W,
+    params: &SynthParams,
     state: &AppState,
 ) -> io::Result<()> {
     let focused = state.focus == Focus::SynthMixer;
@@ -1766,23 +1793,23 @@ fn render_mixer_body(
                 "  {} {:<14} {}\r\n",
                 marker,
                 param.label(),
-                param.display(synth.params(), &state.transport)
+                param.display(params, &state.transport)
             ))
         )?;
     }
     Ok(())
 }
 
-fn render_channel_body(
-    stdout: &mut io::Stdout,
-    synth: &Synth,
+fn render_channel_body<W: io::Write>(
+    stdout: &mut W,
+    params: &SynthParams,
     state: &AppState,
 ) -> io::Result<()> {
     let idx = state.focused_channel().unwrap_or(0);
     let ch = match idx {
-        0 => &synth.params().low,
-        1 => &synth.params().mid,
-        _ => &synth.params().high,
+        0 => &params.low,
+        1 => &params.mid,
+        _ => &params.high,
     };
     let row = state.channel_row[idx];
     for (i, param) in CHANNEL_PARAMS.iter().enumerate() {
@@ -1800,7 +1827,7 @@ fn render_channel_body(
     Ok(())
 }
 
-fn render_presets_body(stdout: &mut io::Stdout, state: &AppState) -> io::Result<()> {
+fn render_presets_body<W: io::Write>(stdout: &mut W, state: &AppState) -> io::Result<()> {
     let focused = state.focus == Focus::SynthPresets;
     for (i, patch) in state.patch_store.patches.iter().enumerate() {
         let marker = if focused && i == state.preset_row {
@@ -1820,7 +1847,7 @@ fn render_presets_body(stdout: &mut io::Stdout, state: &AppState) -> io::Result<
     Ok(())
 }
 
-fn render_progression_panel(stdout: &mut io::Stdout, state: &AppState) -> io::Result<()> {
+fn render_progression_panel<W: io::Write>(stdout: &mut W, state: &AppState) -> io::Result<()> {
     execute!(stdout, Print("\r\n"))?;
     let focused = state.focus == Focus::Progression;
     let history = {
@@ -1895,9 +1922,9 @@ fn render_progression_panel(stdout: &mut io::Stdout, state: &AppState) -> io::Re
     Ok(())
 }
 
-fn render_transport_panel(
-    stdout: &mut io::Stdout,
-    synth: &Synth,
+fn render_transport_panel<W: io::Write>(
+    stdout: &mut W,
+    progression_muted: bool,
     state: &AppState,
 ) -> io::Result<()> {
     execute!(stdout, Print("\r\n"))?;
@@ -1959,12 +1986,11 @@ fn render_transport_panel(
     };
     draw_transport_row(stdout, focused && row == 3, "track key", &key_display)?;
 
-    let muted = synth.params().mute_progression.get() > 0.5;
     draw_transport_row(
         stdout,
         focused && row == 4,
         "mute progression",
-        if muted { "on" } else { "off" },
+        if progression_muted { "on" } else { "off" },
     )?;
 
     let chime_display = match state.last_chime_index {
@@ -2007,8 +2033,8 @@ fn render_transport_panel(
 /// A successful filename fades away over [`STATUS_FADE`] once it is
 /// [`STATUS_HOLD`] old, which is why the appearance is resolved against the
 /// current instant rather than drawn unconditionally.
-fn draw_action_row(
-    stdout: &mut io::Stdout,
+fn draw_action_row<W: io::Write>(
+    stdout: &mut W,
     selected: bool,
     label: &str,
     status: Option<&ActionStatus>,
@@ -2016,19 +2042,22 @@ fn draw_action_row(
     let marker = if selected { "▸" } else { " " };
     execute!(stdout, Print(format!("  {} {:<16}", marker, label)))?;
     match status.and_then(|status| status.appearance_at(Instant::now())) {
+        // Reset before the newline: emitting it afterwards leaks the sequence
+        // onto the start of the next row.
         Some((colour, text)) => execute!(
             stdout,
             SetForegroundColor(colour),
-            Print(format!(" {}\r\n", text)),
+            Print(format!(" {}", single_line_status(text))),
             ResetColor,
+            Print("\r\n"),
         )?,
         None => execute!(stdout, Print("\r\n"))?,
     }
     Ok(())
 }
 
-fn draw_transport_row(
-    stdout: &mut io::Stdout,
+fn draw_transport_row<W: io::Write>(
+    stdout: &mut W,
     selected: bool,
     label: &str,
     value: &str,
@@ -2041,7 +2070,7 @@ fn draw_transport_row(
     Ok(())
 }
 
-fn render_modal(stdout: &mut io::Stdout, modal: &Modal) -> io::Result<()> {
+fn render_modal<W: io::Write>(stdout: &mut W, modal: &Modal) -> io::Result<()> {
     execute!(
         stdout,
         SetForegroundColor(Color::Black),
@@ -2091,8 +2120,8 @@ fn render_modal(stdout: &mut io::Stdout, modal: &Modal) -> io::Result<()> {
     Ok(())
 }
 
-fn draw_register_line(
-    stdout: &mut io::Stdout,
+fn draw_register_line<W: io::Write>(
+    stdout: &mut W,
     side: &str,
     register: &Option<PositionSet>,
     key: &Key,
@@ -2129,7 +2158,7 @@ fn draw_register_line(
     Ok(())
 }
 
-fn draw_key(stdout: &mut io::Stdout, pos: KeyPosition, active: bool) -> io::Result<()> {
+fn draw_key<W: io::Write>(stdout: &mut W, pos: KeyPosition, active: bool) -> io::Result<()> {
     let label = pos.qwerty_label();
     if active {
         execute!(
@@ -3070,5 +3099,154 @@ mod tests {
 
         let failed = ActionStatus::failed("nope".to_string());
         assert!(!failed.is_ok());
+    }
+
+    // ---- transport panel rendering ----
+    //
+    // This panel used to take a `Synth`, which no test can construct (it needs
+    // an audio device), so none of it was ever rendered by the suite. That is
+    // how a 129-character error message shipped and wrapped the layout.
+
+    fn render_transport(state: &AppState) -> String {
+        let mut out: Vec<u8> = Vec::new();
+        render_transport_panel(&mut out, false, state).unwrap();
+        String::from_utf8(out).unwrap()
+    }
+
+    /// Visible characters only. Consumes whole CSI sequences: `Clear`/`MoveTo`
+    /// end in `J`/`H`, not `m`, and `[` is itself inside the final-byte range,
+    /// so the introducer has to be stepped over explicitly.
+    fn strip_ansi(text: &str) -> String {
+        let mut out = String::new();
+        let mut chars = text.chars();
+        while let Some(c) = chars.next() {
+            if c != '\x1b' {
+                out.push(c);
+                continue;
+            }
+            match chars.next() {
+                Some('[') => {
+                    for c in chars.by_ref() {
+                        if ('\x40'..='\x7e').contains(&c) {
+                            break;
+                        }
+                    }
+                }
+                // Not a CSI (e.g. `ESC c`): the introducer is all there was.
+                _ => {}
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn the_transport_panel_has_a_fixed_number_of_rows() {
+        let text = render_transport(&state(Focus::Transport));
+        // A leading blank line, the header, then one line per row.
+        assert_eq!(text.lines().count(), TRANSPORT_ROWS + 2);
+    }
+
+    #[test]
+    fn a_long_failure_message_cannot_widen_the_panel() {
+        // The regression: this message was printed verbatim at 129 characters,
+        // wrapping the panel and shoving everything below it down the screen.
+        let mut s = state(Focus::Transport);
+        s.import_status = Some(ActionStatus::failed(
+            "not a chord-tool file (no embedded progression; files exported \
+             before MIDI import existed will not have one)"
+                .to_string(),
+        ));
+
+        for line in render_transport(&s).lines() {
+            let visible = strip_ansi(line);
+            assert!(
+                visible.chars().count() <= 80,
+                "row wraps the panel: {:?} ({} chars)",
+                visible,
+                visible.chars().count()
+            );
+        }
+    }
+
+    #[test]
+    fn a_multi_line_error_is_flattened_onto_one_row() {
+        // A TOML parse error arrives with newlines and a caret; drawn verbatim
+        // it would add rows and shred the layout below it.
+        let mut s = state(Focus::Transport);
+        s.import_status = Some(ActionStatus::failed(
+            "TOML parse error at line 1, column 13\n  |\n1 | this is not toml\n\
+             \x20 |             ^\ninvalid key"
+                .to_string(),
+        ));
+
+        let text = render_transport(&s);
+        assert_eq!(
+            text.lines().count(),
+            TRANSPORT_ROWS + 2,
+            "rendered:\n{}",
+            text
+        );
+        assert!(strip_ansi(&text).contains("TOML parse error at line 1, column 13"));
+    }
+
+    #[test]
+    fn status_text_is_flattened_and_clipped() {
+        assert_eq!(single_line_status("nothing to export"), "nothing to export");
+        // Newlines, tabs and runs of spaces collapse to single spaces.
+        assert_eq!(
+            single_line_status("first\n\tsecond   third"),
+            "first second third"
+        );
+        // Long text clips to the cap, ellipsis included.
+        let clipped = single_line_status(&"x".repeat(200));
+        assert_eq!(clipped.chars().count(), STATUS_MAX_CHARS);
+        assert!(clipped.ends_with('…'));
+        // Exactly at the cap is left alone.
+        let exact = "y".repeat(STATUS_MAX_CHARS);
+        assert_eq!(single_line_status(&exact), exact);
+    }
+
+    /// Total lines `render` emits for a view.
+    fn ui_height(focus: Focus, chords: &[ScaleDegree]) -> usize {
+        let mut s = state(focus);
+        seed(&mut s, chords);
+        let params = SynthParams::defaults();
+        let mut out: Vec<u8> = Vec::new();
+        render(&mut out, &params, &s).unwrap();
+        String::from_utf8(out).unwrap().lines().count()
+    }
+
+    #[test]
+    fn the_mixer_view_height_is_tracked() {
+        // Every row added anywhere costs the whole screen, and the mixer view is
+        // the tallest: it lists all 15 mixer parameters. Asserting the exact
+        // number makes further growth a deliberate decision.
+        //
+        // 45 is the README's budget. This is already 46 — the two MIDI button
+        // rows pushed it over, which is why the mixer (and with it the note
+        // length row) can scroll off the top of a short terminal.
+        assert_eq!(
+            ui_height(
+                Focus::SynthMixer,
+                &[
+                    ScaleDegree::I,
+                    ScaleDegree::V,
+                    ScaleDegree::VI,
+                    ScaleDegree::IV,
+                ]
+            ),
+            46,
+            "UI height changed: re-check the README budget and that the mixer still fits"
+        );
+    }
+
+    #[test]
+    fn note_length_is_drawn_in_the_mixer_view() {
+        let mut s = state(Focus::SynthMixer);
+        let params = SynthParams::defaults();
+        let mut out: Vec<u8> = Vec::new();
+        render(&mut out, &params, &s).unwrap();
+        let text = strip_ansi(&String::from_utf8(out).unwrap());
+        assert!(text.contains("note length"), "rendered:\n{}", text);
     }
 }

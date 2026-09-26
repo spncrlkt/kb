@@ -157,19 +157,17 @@ mod tests {
         let mut prog = Progression::new();
         prog.slots = vec![
             Slot::Chord(ProgressionEntry {
-                degree: ScaleDegree::I,
-                transformation: Some(Transformation::Diatonic7),
                 registers: Registers {
                     left: Some([KeyPosition::LeftIndex].into()),
                     right: None,
                 },
+                ..ProgressionEntry::new(ScaleDegree::I, Some(Transformation::Diatonic7))
             }),
             Slot::Rest,
-            Slot::Chord(ProgressionEntry {
-                degree: ScaleDegree::V,
-                transformation: Some(Transformation::Dom7),
-                registers: Registers::default(),
-            }),
+            Slot::Chord(ProgressionEntry::new(
+                ScaleDegree::V,
+                Some(Transformation::Dom7),
+            )),
         ];
         prog
     }
@@ -177,8 +175,12 @@ mod tests {
     fn parts() -> (Score, Vec<u8>) {
         let key = Key::new(60, Scale::Major);
         let prog = progression();
-        let score = midi::render_progression(&prog, &key, 120, 0.5);
-        let document = project::encode(&prog, key, 120, 0.5).unwrap();
+        let score = midi::render_progression(&prog.slots, &key,
+            120,
+            0.5,
+        );
+        let document = project::encode(&prog, &crate::rhythm_store::RhythmStore::default(), key, 120, 0.5)
+            .unwrap();
         (score, document)
     }
 

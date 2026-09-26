@@ -24,6 +24,24 @@ pub const NOTE_NAMES: [&str; 12] = [
 ];
 
 // -----------------------------------------------------------------------------
+// Time base
+// -----------------------------------------------------------------------------
+
+/// Ticks per quarter note. 960 divides cleanly by 2, 3, 4 and 5, so straight
+/// and triplet subdivisions stay exact.
+///
+/// This is the shared musical clock: the MIDI exporter, the arrangement seam and
+/// the rhythm patterns all measure in these ticks, which is what stops audio and
+/// export from disagreeing about when a note starts.
+pub const PPQ: u16 = 960;
+
+/// The transport hardcodes 4/4 today, so every bar is four quarter notes.
+pub const BEATS_PER_BAR: u64 = 4;
+
+/// Length of one progression slot — and of one rhythm pattern.
+pub const BAR_TICKS: u64 = PPQ as u64 * BEATS_PER_BAR;
+
+// -----------------------------------------------------------------------------
 // Scale
 // -----------------------------------------------------------------------------
 

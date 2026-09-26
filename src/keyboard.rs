@@ -54,6 +54,29 @@ pub enum KeyPosition {
     RightMiddleBelow,
     RightRingBelow,
     RightPinkyBelow,
+    /// The very top-left key, left of `1`.
+    ///
+    /// Not part of either hand and never inserted into a `PositionSet`: it is
+    /// the sinko tap key, so it has to stay usable while both hands hold a
+    /// chord. On Programmer Dvorak this key is `$`.
+    TopLeft,
+    /// The next key along: the number row's `1`, right of `TopLeft`.
+    ///
+    /// The metronome toggle. Like `TopLeft` it is a performance control rather
+    /// than part of the chord grammar. On Programmer Dvorak this key is `&`.
+    TopRow1,
+    /// Two keys further along again: the number row's `3`.
+    ///
+    /// The transport tap — play/pause, and the tap counts that restart or seek.
+    /// On Programmer Dvorak this key is `{`.
+    TopRow3,
+    /// The key right of `TopRow3`: the number row's `4`.
+    ///
+    /// On Programmer Dvorak this key is `}` — the neighbour of the transport
+    /// tap and the shape of a mistyped `{`. It does the same thing, because a
+    /// performance key that punishes a one-key miss is a performance key that
+    /// stops the music.
+    TopRow4,
 }
 
 /// An action bound to a below-home-row key.
@@ -69,20 +92,57 @@ pub enum Hotkey {
     LockLeftRegister,
     /// Copy the chord under the progression cursor.
     CopyChord,
+    /// Copy the *rhythm* of the chord under the cursor, for pasting onto other
+    /// chords.
+    ///
+    /// Shares its position with [`Hotkey::CopyChord`] and is selected with
+    /// Shift, exactly as [`Hotkey::Redo`] rides on [`Hotkey::Undo`] — so `q`
+    /// copies the whole entry (chord, registers, rhythm and offset) and
+    /// `Shift+Q` copies only the rhythm. Never returned by `hotkey()`.
+    CopySinko,
     /// Paste the clipboard after the progression cursor.
     PasteChord,
+    /// Give the chord under the cursor a copy of the rhythm clipboard.
+    ///
+    /// Shares its position with [`Hotkey::PasteChord`] and is selected with
+    /// Shift. The difference is the whole point of having both: `j` inserts a
+    /// new slot, while `Shift+J` changes the rhythm of the slot you are on,
+    /// leaving its chord and its offset alone. Never returned by `hotkey()`.
+    PasteSinko,
     /// Delete the chord under the progression cursor.
     DeleteChord,
     /// Undo the last progression edit. Shift selects `Redo` instead.
     Undo,
     /// Redo the last undone progression edit.
     Redo,
+    /// Set the selected progression slot to the chord in the registers.
+    ///
+    /// Keeps that entry's rhythm pattern and offset, so a chord can be corrected
+    /// without losing its syncopation — which delete-and-insert would.
+    ReplaceChord,
     /// Recall the chord under the progression cursor into the registers.
     ///
     /// Bound to `LeftInner`, the one home-row position the chord grammar
     /// ignores. Deliberately explicit: selecting a row must not clobber a
     /// latched register mid-performance.
     LoadSelectedChord,
+    /// Tap one beat of the rhythm being recorded in the Sinko panel.
+    ///
+    /// Bound to `TopLeft` (`$` on Programmer Dvorak). Global rather than scoped
+    /// to the panel: the point is to tap while watching the progression, and the
+    /// key is reachable without moving either hand off the home row.
+    SinkoTap,
+    /// Start or stop the metronome click.
+    ///
+    /// Bound to `TopRow1` (`&` on Programmer Dvorak), the next key along from
+    /// the tap key.
+    MetronomeToggle,
+    /// Tap the transport: once plays or pauses, twice restarts from bar 1,
+    /// three times seeks to the middle.
+    ///
+    /// Bound to `TopRow3` (`{` on Programmer Dvorak). It used to be the space
+    /// bar, which is now the both-hands chord latch.
+    TransportTap,
 }
 
 impl KeyPosition {
@@ -117,9 +177,9 @@ impl KeyPosition {
     /// The left pinky below home row locks the *right* register, and vice
     /// versa: the gesture mirrors the register being targeted.
     ///
-    /// `Redo` is never returned: it shares a position with `Undo` and is
-    /// selected with Shift by the input layer, so this stays a pure function
-    /// of the physical key.
+    /// `Redo`, `CopySinko` and `PasteSinko` are never returned: they share a
+    /// position with another action and are selected with Shift by the input
+    /// layer, so this stays a pure function of the physical key.
     pub fn hotkey(self) -> Option<Hotkey> {
         use Hotkey::*;
         match self {
@@ -130,6 +190,10 @@ impl KeyPosition {
             KeyPosition::LeftMiddleBelow => Some(PasteChord),
             KeyPosition::LeftIndexBelow => Some(DeleteChord),
             KeyPosition::LeftInnerBelow => Some(Undo),
+            KeyPosition::RightInnerBelow => Some(ReplaceChord),
+            KeyPosition::TopLeft => Some(SinkoTap),
+            KeyPosition::TopRow1 => Some(MetronomeToggle),
+            KeyPosition::TopRow3 | KeyPosition::TopRow4 => Some(TransportTap),
             _ => None,
         }
     }
@@ -158,6 +222,11 @@ impl KeyPosition {
             RightMiddleBelow => ',',
             RightRingBelow => '.',
             RightPinkyBelow => '/',
+            // The QWERTY label is the keycap, not the character P.D. types.
+            TopLeft => '`',
+            TopRow1 => '1',
+            TopRow3 => '3',
+            TopRow4 => '4',
         }
     }
 }
@@ -204,6 +273,16 @@ impl Layout {
             (Layout::Qwerty, ',') => RightMiddleBelow,
             (Layout::Qwerty, '.') => RightRingBelow,
             (Layout::Qwerty, '/') => RightPinkyBelow,
+            // Top-left, above the home row. Both shifted and unshifted reach
+            // the same physical key, as everywhere else.
+            (Layout::Qwerty, '`') => TopLeft,
+            (Layout::Qwerty, '~') => TopLeft,
+            (Layout::Qwerty, '1') => TopRow1,
+            (Layout::Qwerty, '!') => TopRow1,
+            (Layout::Qwerty, '3') => TopRow3,
+            (Layout::Qwerty, '#') => TopRow3,
+            (Layout::Qwerty, '4') => TopRow4,
+            (Layout::Qwerty, '$') => TopRow4,
 
             // ---- Programmer Dvorak ----
             // Home row
@@ -228,6 +307,17 @@ impl Layout {
             (Layout::ProgrammerDvorak, 'w') => RightMiddleBelow,
             (Layout::ProgrammerDvorak, 'v') => RightRingBelow,
             (Layout::ProgrammerDvorak, 'z') => RightPinkyBelow,
+            // P.D. puts `$` on the top-left key, with `~` shifted.
+            (Layout::ProgrammerDvorak, '$') => TopLeft,
+            (Layout::ProgrammerDvorak, '~') => TopLeft,
+            // And `&` on the `1` key next to it, with `1` shifted.
+            (Layout::ProgrammerDvorak, '&') => TopRow1,
+            (Layout::ProgrammerDvorak, '1') => TopRow1,
+            // And `{` two keys along on the `3` key, with `3` shifted.
+            (Layout::ProgrammerDvorak, '{') => TopRow3,
+            (Layout::ProgrammerDvorak, '3') => TopRow3,
+            (Layout::ProgrammerDvorak, '}') => TopRow4,
+            (Layout::ProgrammerDvorak, '4') => TopRow4,
 
             _ => return None,
         })
@@ -237,6 +327,24 @@ impl Layout {
         match self {
             Layout::Qwerty => "QWERTY",
             Layout::ProgrammerDvorak => "Programmer Dvorak",
+        }
+    }
+
+    /// The register-lock keys as `(keycap, character typed)`, for the right and
+    /// left registers.
+    ///
+    /// The keycap and the typed character for the two register locks.
+    ///
+    /// Test-only. It fed the `Lock:` line on screen until that line was removed
+    /// for costing a row; what is worth keeping is the check it enables —
+    /// `the_lock_hint_names_keys_that_really_work` asserts each *typed*
+    /// character resolves to the lock it claims, so the README's table cannot
+    /// drift from [`Layout::position`].
+    #[cfg(test)]
+    pub fn register_lock_keys(self) -> ((char, char), (char, char)) {
+        match self {
+            Layout::ProgrammerDvorak => (('z', '\''), ('/', 'z')),
+            Layout::Qwerty => (('z', 'z'), ('/', '/')),
         }
     }
 }
@@ -315,10 +423,19 @@ mod tests {
 
     #[test]
     fn off_keyboard_characters_are_ignored() {
-        assert_eq!(Layout::Qwerty.position('1'), None);
-        assert_eq!(Layout::ProgrammerDvorak.position('1'), None);
-        assert_eq!(Layout::Qwerty.position(' '), None);
-        assert_eq!(Layout::ProgrammerDvorak.position(' '), None);
+        // Only the number-row keys the app actually binds are mapped; the rest
+        // of the row is not part of any gesture.
+        // `3` is deliberately absent: it is the shifted half of the transport
+        // tap key and must keep reaching it.
+        for c in ['2', '9', '0', '-', '=', ' '] {
+            assert_eq!(Layout::Qwerty.position(c), None, "QWERTY {:?}", c);
+            assert_eq!(
+                Layout::ProgrammerDvorak.position(c),
+                None,
+                "Programmer Dvorak {:?}",
+                c
+            );
+        }
     }
 
     #[test]
@@ -402,16 +519,29 @@ mod tests {
 
     #[test]
     fn unassigned_below_home_row_positions_are_inert() {
-        // These four right-hand slots are deliberately unbound, reserved for
-        // later progression operations.
+        // These three right-hand slots are deliberately unbound, reserved for
+        // later progression operations. `RightInnerBelow` was the fourth until it
+        // became "replace the selected chord from the registers".
         for p in [
-            KeyPosition::RightInnerBelow,
             KeyPosition::RightIndexBelow,
             KeyPosition::RightMiddleBelow,
             KeyPosition::RightRingBelow,
         ] {
             assert_eq!(p.hotkey(), None, "{:?} should be inert", p);
         }
+    }
+
+    #[test]
+    fn the_replace_hotkey_is_bound_and_is_not_a_chord_key() {
+        assert_eq!(
+            KeyPosition::RightInnerBelow.hotkey(),
+            Some(Hotkey::ReplaceChord)
+        );
+        assert!(!KeyPosition::RightInnerBelow.is_home_row());
+
+        // The documented key under Programmer Dvorak.
+        let pos = Layout::ProgrammerDvorak.position('b').unwrap();
+        assert_eq!(pos.hotkey(), Some(Hotkey::ReplaceChord));
     }
 
     #[test]
@@ -430,6 +560,27 @@ mod tests {
         for (c, expected) in cases {
             let pos = l.position(c).unwrap_or_else(|| panic!("{:?} is unmapped", c));
             assert_eq!(pos.hotkey(), Some(expected), "char {:?}", c);
+        }
+    }
+
+    #[test]
+    fn the_rhythm_clipboard_rides_the_chord_clipboard_positions() {
+        // Shift selects a second action on one position, so the physical key
+        // stays a pure function: `q`/`j` move whole entries, `Shift+Q`/`Shift+J`
+        // move rhythms. The typed characters are the P.D. ones, shifted.
+        let l = Layout::ProgrammerDvorak;
+        for (plain, shifted, plain_action, shifted_action) in [
+            ('q', 'Q', Hotkey::CopyChord, Hotkey::CopySinko),
+            ('j', 'J', Hotkey::PasteChord, Hotkey::PasteSinko),
+        ] {
+            let plain_pos = l.position(plain).expect("the unshifted key");
+            let shifted_pos = l.position(shifted).expect("the shifted key");
+            assert_eq!(plain_pos, shifted_pos, "{:?} and {:?}", plain, shifted);
+            assert_eq!(plain_pos.hotkey(), Some(plain_action));
+            // The position reports the unshifted action; the input layer turns
+            // it into the shifted one, so `hotkey()` never returns either.
+            assert_eq!(plain_pos.hotkey(), Some(plain_action));
+            assert_ne!(plain_pos.hotkey(), Some(shifted_action));
         }
     }
 
@@ -471,6 +622,143 @@ mod tests {
             assert!(!p.is_right(), "{:?} should not be is_right", p);
             assert!(!p.is_home_row(), "{:?} should not be is_home_row", p);
         }
+    }
+
+    #[test]
+    fn the_top_left_key_is_the_sinko_tap_on_both_layouts() {
+        // The character P.D. actually produces, and the QWERTY keycap.
+        assert_eq!(
+            Layout::ProgrammerDvorak.position('$'),
+            Some(KeyPosition::TopLeft)
+        );
+        assert_eq!(
+            Layout::ProgrammerDvorak.position('~'),
+            Some(KeyPosition::TopLeft),
+            "the shifted half of the same physical key"
+        );
+        assert_eq!(Layout::Qwerty.position('`'), Some(KeyPosition::TopLeft));
+        assert_eq!(KeyPosition::TopLeft.qwerty_label(), '`');
+    }
+
+    #[test]
+    fn the_tap_key_is_a_hotkey_and_never_a_chord_key() {
+        // It has to stay usable while both hands hold a chord, which means it
+        // must never reach the held `PositionSet`.
+        assert_eq!(KeyPosition::TopLeft.hotkey(), Some(Hotkey::SinkoTap));
+        assert!(!KeyPosition::TopLeft.is_left());
+        assert!(!KeyPosition::TopLeft.is_right());
+        assert!(!KeyPosition::TopLeft.is_home_row());
+    }
+
+    #[test]
+    fn the_key_next_to_the_transport_tap_does_the_same_thing() {
+        // `{` and `}` are neighbours on Programmer Dvorak, and a one-key miss at
+        // a performance control is worth tolerating: both tap the transport.
+        let l = Layout::ProgrammerDvorak;
+        assert_eq!(l.position('{'), Some(KeyPosition::TopRow3));
+        assert_eq!(l.position('}'), Some(KeyPosition::TopRow4));
+        assert_eq!(l.position('3'), Some(KeyPosition::TopRow3), "the shift pair");
+        assert_eq!(l.position('4'), Some(KeyPosition::TopRow4), "the shift pair");
+
+        assert_eq!(KeyPosition::TopRow3.hotkey(), Some(Hotkey::TransportTap));
+        assert_eq!(KeyPosition::TopRow4.hotkey(), Some(Hotkey::TransportTap));
+
+        // Neither is a chord key, so both stay usable mid-performance.
+        for p in [KeyPosition::TopRow3, KeyPosition::TopRow4] {
+            assert!(!p.is_left() && !p.is_right() && !p.is_home_row());
+        }
+        assert_eq!(KeyPosition::TopRow4.qwerty_label(), '4');
+        assert_eq!(Layout::Qwerty.position('4'), Some(KeyPosition::TopRow4));
+    }
+
+    #[test]
+    fn the_metronome_key_is_next_to_the_tap_key() {
+        // `&` sits immediately right of `$` on Programmer Dvorak, which is why
+        // both are reachable without leaving the home row.
+        assert_eq!(
+            Layout::ProgrammerDvorak.position('&'),
+            Some(KeyPosition::TopRow1)
+        );
+        assert_eq!(
+            Layout::ProgrammerDvorak.position('1'),
+            Some(KeyPosition::TopRow1),
+            "the shifted half of the same physical key"
+        );
+        assert_eq!(Layout::Qwerty.position('1'), Some(KeyPosition::TopRow1));
+        assert_eq!(KeyPosition::TopRow1.qwerty_label(), '1');
+
+        assert_eq!(KeyPosition::TopRow1.hotkey(), Some(Hotkey::MetronomeToggle));
+        assert!(!KeyPosition::TopRow1.is_left());
+        assert!(!KeyPosition::TopRow1.is_right());
+        assert!(!KeyPosition::TopRow1.is_home_row());
+    }
+
+    #[test]
+    fn the_transport_key_is_the_third_number_row_key() {
+        // The three performance controls sit in a row along the top: `$`, `&`,
+        // `{` on Programmer Dvorak.
+        assert_eq!(
+            Layout::ProgrammerDvorak.position('{'),
+            Some(KeyPosition::TopRow3)
+        );
+        assert_eq!(
+            Layout::ProgrammerDvorak.position('3'),
+            Some(KeyPosition::TopRow3),
+            "the shifted half of the same physical key"
+        );
+        assert_eq!(Layout::Qwerty.position('3'), Some(KeyPosition::TopRow3));
+        assert_eq!(KeyPosition::TopRow3.qwerty_label(), '3');
+
+        assert_eq!(KeyPosition::TopRow3.hotkey(), Some(Hotkey::TransportTap));
+        assert!(!KeyPosition::TopRow3.is_left());
+        assert!(!KeyPosition::TopRow3.is_right());
+        assert!(!KeyPosition::TopRow3.is_home_row());
+    }
+
+    #[test]
+    fn the_three_performance_keys_are_three_distinct_positions() {
+        let keys = [
+            ('$', Hotkey::SinkoTap),
+            ('&', Hotkey::MetronomeToggle),
+            ('{', Hotkey::TransportTap),
+        ];
+        let mut seen = std::collections::BTreeSet::new();
+        for (c, expected) in keys {
+            let pos = Layout::ProgrammerDvorak
+                .position(c)
+                .unwrap_or_else(|| panic!("{:?} is unmapped", c));
+            assert_eq!(pos.hotkey(), Some(expected), "char {:?}", c);
+            assert!(seen.insert(pos), "{:?} is shared by two keys", pos);
+        }
+        assert_eq!(seen.len(), 3);
+    }
+
+    #[test]
+    fn the_lock_hint_names_keys_that_really_work() {
+        // The regression: this line hardcoded the QWERTY names, which under
+        // Programmer Dvorak listed the registers backwards.
+        let ((right_cap, right_typed), (left_cap, left_typed)) =
+            Layout::ProgrammerDvorak.register_lock_keys();
+        assert_eq!((right_cap, right_typed), ('z', '\''));
+        assert_eq!((left_cap, left_typed), ('/', 'z'));
+
+        // Each typed character must resolve to the lock it claims.
+        assert_eq!(
+            Layout::ProgrammerDvorak
+                .position(right_typed)
+                .and_then(|p| p.hotkey()),
+            Some(Hotkey::LockRightRegister)
+        );
+        assert_eq!(
+            Layout::ProgrammerDvorak
+                .position(left_typed)
+                .and_then(|p| p.hotkey()),
+            Some(Hotkey::LockLeftRegister)
+        );
+
+        // QWERTY types what it draws.
+        let ((rc, rt), (lc, lt)) = Layout::Qwerty.register_lock_keys();
+        assert_eq!((rc, rt, lc, lt), ('z', 'z', '/', '/'));
     }
 
     #[test]

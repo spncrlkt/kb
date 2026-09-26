@@ -1,18 +1,47 @@
 9/23/26
+
 deepseek for bozos
+
 motivation:
 chinese ai allows us to ethically build custom local tooling
 bad for my bank account, good for my ears
 the ability for anyone to create their own highly complex custom software instruments
+https://www.youtube.com/watch?v=-gHvQTGi5bk
 
 setup:
 install dsh + dependencies (npm/node, brew?) different 4 u
 deepseek api key
 run dsh, setup harness w/ api key
 
+done:
+- [x] midi roll export
+- [x] reverb on second channel (additive / don't duck master)
+- [x] jazilyn@144 32 bars
+- [x] found yt basis
+
+done:
+- [x] sinko (rhythm patterns: tap a bar on `$`, stack takes, assign to a chord,
+      nudge chords off the downbeat — see README "Rhythm patterns")
+    - syncopation in general is really varied, so
+    - we probably need to break it down into multiple smaller components
+    - i suspect like basic rhythm tapping over a 4/4 beat, multiple overlapping takes with previous takes playing at decreasing volume each measure.
+    - rough quantization over the average of the last few full takes, with like 4/8/16/32/64 beats / measure quantization as an option.
+    - the rhythm patterns should be saved as a list, with pattern saving/loading to/from the file system
+    - each chord in the progression can be assigned one of our rhythm patterns
+    - we also want to be able to offset our chords across the measure boundary,
+    - so there should be an offset option that can play the chord up to a whole note before/after the beginning of a measure.
+
+
+friday 9/25/26
 next steps:
-- midi roll export
-- reverb on second channel (additive / don't duck master)
-- sinko
-- absolute root on one above home row
-- midi live output
+- [] absolute root on one above home row
+- [] chord inversion
+    - inversions can have 1 of 3 targets: low, mids, high.
+    - low cycles the bottommost note.
+    - mids cycles the voicing of the middle notes.
+    - high cycles which not is topmost.
+    - each inversion operation will cycle through the notes of the chord
+    - rotate note w/ modulo arith to keep close to original octave
+    - we'll try to keep the chord compact within reason
+- [] midi live output
+- []

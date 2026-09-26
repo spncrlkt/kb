@@ -46,6 +46,7 @@ reverb_size = 0.5
 master_volume = 5.0
 master_mute = false
 preview_fade = 0.029999999329447746
+note_length = 1.0
 
 [[patches]]
 name = "Warm Pad"
@@ -95,6 +96,7 @@ reverb_size = 0.699999988079071
 master_volume = 5.0
 master_mute = false
 preview_fade = 0.05000000074505806
+note_length = 1.0
 
 [[patches]]
 name = "Plucky"
@@ -144,6 +146,7 @@ reverb_size = 0.4000000059604645
 master_volume = 5.0
 master_mute = false
 preview_fade = 0.019999999552965164
+note_length = 1.0
 
 [[patches]]
 name = "Bassy"
@@ -193,6 +196,7 @@ reverb_size = 0.4000000059604645
 master_volume = 5.0
 master_mute = false
 preview_fade = 0.029999999329447746
+note_length = 1.0
 
 [[patches]]
 name = "Glass"
@@ -242,6 +246,7 @@ reverb_size = 0.8500000238418579
 master_volume = 5.0
 master_mute = false
 preview_fade = 0.05999999865889549
+note_length = 1.0
 
 [[patches]]
 name = "gaywaditis"
@@ -291,3 +296,54 @@ reverb_size = 0.5999999642372131
 master_volume = 6.0
 master_mute = false
 preview_fade = 0.01156530063599348
+note_length = 1.0
+
+[[patches]]
+name = "cunk"
+
+[patches.low]
+volume = 4.0
+waveform = "saw"
+attack = 0.004999999888241291
+decay = 0.05000000074505806
+sustain = 0.699999988079071
+release = 0.10000000149011612
+cutoff = 349.80126953125
+resonance = 0.36000004410743713
+transpose = -12.0
+reverb_send = 0.0
+pan = 0.0
+
+[patches.mid]
+volume = 5.0
+waveform = "sine"
+attack = 0.010056786239147186
+decay = 0.028587665408849716
+sustain = 1.0
+release = 0.30590227246284485
+cutoff = 988.7390747070313
+resonance = 0.20000000298023224
+transpose = 0.0
+reverb_send = 1.0
+pan = 0.0
+
+[patches.high]
+volume = 3.0
+waveform = "square"
+attack = 0.004999999888241291
+decay = 0.05000000074505806
+sustain = 0.699999988079071
+release = 0.10000000149011612
+cutoff = 3458.6220703125
+resonance = 0.14000001549720764
+transpose = 0.0
+reverb_send = 0.3500000238418579
+pan = 0.0
+
+[patches.mixer]
+reverb_mix = 0.40000003576278687
+reverb_size = 0.6000000238418579
+master_volume = 5.0
+master_mute = false
+preview_fade = 0.011278115212917328
+note_length = 1.0

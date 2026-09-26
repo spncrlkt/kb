@@ -1,0 +1,55 @@
+[[rhythms]]
+name = "Quarters"
+hold = 768
+
+[[rhythms.layers]]
+gain = 1.0
+steps = "xxxx"
+
+[[rhythms]]
+name = "Eighths"
+hold = 240
+
+[[rhythms.layers]]
+gain = 1.0
+steps = "xxxxxxxx"
+
+[[rhythms]]
+name = "Offbeat Eighths"
+hold = 240
+
+[[rhythms.layers]]
+gain = 1.0
+steps = "-x-x-x-x"
+
+[[rhythms]]
+name = "Syncopated 16ths"
+hold = 120
+
+[[rhythms.layers]]
+gain = 1.0
+steps = "x--x--x-x--x-x--"
+
+[[rhythms]]
+name = "Sixteenth Pulse"
+hold = 72
+
+[[rhythms.layers]]
+gain = 1.0
+steps = "xxxxxxxxxxxxxxxx"
+
+[[rhythms]]
+name = "Held Half"
+hold = 1920
+
+[[rhythms.layers]]
+gain = 1.0
+steps = "x---"
+
+[[rhythms]]
+name = "Held 3/4"
+hold = 2880
+
+[[rhythms.layers]]
+gain = 1.0
+steps = "x---"

@@ -1,4 +1,4 @@
-mod chime;
+mod arrangement;
 mod debug_log;
 mod export;
 mod grammar;
@@ -8,6 +8,8 @@ mod music;
 mod presets;
 mod progression;
 mod project;
+mod rhythm;
+mod rhythm_store;
 mod smf;
 mod synth;
 mod transport;

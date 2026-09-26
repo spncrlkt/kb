@@ -1,12 +1,10 @@
 //! Transport state and playback scheduler.
 //!
-//! Each bar is split into a *hold* phase (note_length × bar_duration) and a
-//! *rest* phase (the remainder). The scheduler always sends StopChord at the
-//! end of the hold, so chords never sustain past their intended length.
-//!
-//! Chimes fire on a 4-bar cadence while the transport is idle. Once the user
-//! has produced a live chord, `chime_suppressed` latches on and chimes never
-//! fire again for the session.
+//! Each bar is played from the timings plan `crate::arrangement` produces — the
+//! same plan the MIDI exporter reads — so a pattern's onsets, a hold that
+//! crosses the bar line and a chord offset across the loop boundary all land
+//! where the file says they do. Events are walked against **absolute**
+//! deadlines, so a bar of 64th notes cannot accumulate drift.
 
 use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU32, AtomicUsize, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
@@ -14,8 +12,8 @@ use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
-use crate::chime::{CHIMES, CHIME_GLIDE_SECS, CHIME_HOLD_SECS};
-use crate::music::{Key, Scale};
+use crate::arrangement::{self, BarEvent};
+use crate::music::{Key, Scale, BAR_TICKS};
 use crate::progression::Progression;
 
 // -----------------------------------------------------------------------------
@@ -32,11 +30,23 @@ pub struct Transport {
     pub progression_len: AtomicUsize,
     pub track_key_tonic: AtomicU32,
     pub track_key_minor: AtomicBool,
-    pub chime_index: AtomicUsize,
-    pub chime_bar_count: AtomicUsize,
-    pub chime_suppressed: AtomicBool,
     pub note_length_bits: AtomicU32,
     pub live_chord: Mutex<Option<Vec<u8>>>,
+    /// When the current bar began, and which bar it is.
+    ///
+    /// The scheduler owns the bar clock; tap capture lives on the UI thread and
+    /// timestamps key presses against this. Without it a tap has no position in
+    /// the bar at all.
+    bar_started_at: Mutex<Option<(Instant, usize)>>,
+    /// Whether the metronome clicks. Set while a rhythm take is being recorded.
+    pub metronome: AtomicBool,
+    /// Stop now, and silence, without moving the bar.
+    ///
+    /// Pausing only takes effect at the next bar: the scheduler finishes the one
+    /// it is on. That is wrong for a panic stop — a chord would ring on for up
+    /// to a bar — so this abandons the bar instead, leaving the position alone
+    /// so the next play resumes where you left off.
+    pub stop_now: AtomicBool,
 }
 
 impl Transport {
@@ -51,12 +61,22 @@ impl Transport {
             progression_len: AtomicUsize::new(0),
             track_key_tonic: AtomicU32::new(key.tonic as u32),
             track_key_minor: AtomicBool::new(key.scale == Scale::Minor),
-            chime_index: AtomicUsize::new(0),
-            chime_bar_count: AtomicUsize::new(0),
-            chime_suppressed: AtomicBool::new(false),
             note_length_bits: AtomicU32::new(1.0f32.to_bits()),
             live_chord: Mutex::new(None),
+            bar_started_at: Mutex::new(None),
+            metronome: AtomicBool::new(false),
+            stop_now: AtomicBool::new(false),
         })
+    }
+
+    /// Publish the start of a bar, for tap capture.
+    pub fn publish_bar(&self, at: Instant, bar: usize) {
+        *self.bar_started_at.lock().unwrap() = Some((at, bar));
+    }
+
+    /// The current bar's start instant and index, once the clock has run.
+    pub fn bar_started(&self) -> Option<(Instant, usize)> {
+        *self.bar_started_at.lock().unwrap()
     }
 
     pub fn key(&self) -> Key {
@@ -109,16 +129,21 @@ impl Transport {
 // -----------------------------------------------------------------------------
 
 pub enum SchedulerEvent {
-    PlayChord(Vec<u8>),
-    StopChord,
-    PlayChime {
-        start: [u8; 3],
-        end: [u8; 3],
-        glide_secs: f32,
-        hold_secs: f32,
+    /// Start a chord on one stab group, at a gain of 0..1.
+    Stab {
+        group: usize,
+        notes: Vec<u8>,
+        gain: f32,
     },
-    RecordChime {
-        index: usize,
+    /// Release one stab group.
+    ReleaseStab {
+        group: usize,
+    },
+    /// Release every group: the schedule was abandoned mid-bar.
+    Silence,
+    /// One metronome tick, while a rhythm take is being recorded.
+    Click {
+        strong: bool,
     },
 }
 
@@ -161,11 +186,36 @@ impl Drop for Scheduler {
     }
 }
 
-/// What the scheduler should do for the current bar.
-enum BarAction {
-    Play(Vec<u8>),
-    Chime,
-    Silent,
+/// Ticks a whole-bar chord holds for.
+fn hold_ticks(note_length: f32) -> u64 {
+    let ticks = (BAR_TICKS as f64 * note_length.clamp(0.0, 1.0) as f64).round() as u64;
+    ticks.clamp(1, BAR_TICKS)
+}
+
+/// The live chord as a whole-bar stab.
+///
+/// Used for the "+1 bar" a player jams over, and for auditioning while the
+/// transport is stopped — both of which are the behaviour this tool had before
+/// rhythm patterns.
+fn live_events(notes: Vec<u8>, note_length: f32) -> Vec<BarEvent> {
+    vec![
+        BarEvent::On {
+            at: 0,
+            group: 0,
+            notes,
+            gain: 1.0,
+        },
+        BarEvent::Off {
+            at: hold_ticks(note_length),
+            group: 0,
+        },
+    ]
+}
+
+/// How long `ticks` lasts at the current tempo.
+fn ticks_to_duration(ticks: u64, bar_dur: Duration) -> Duration {
+    let fraction = ticks.min(BAR_TICKS) as f64 / BAR_TICKS as f64;
+    Duration::from_secs_f64(bar_dur.as_secs_f64() * fraction)
 }
 
 fn scheduler_loop(
@@ -189,105 +239,160 @@ fn scheduler_loop(
         if transport.restart.swap(false, Ordering::Relaxed) {
             transport.current_bar.store(0, Ordering::Relaxed);
         }
+        // A panic stop outranks everything: it must be silent before the bar's
+        // remaining events are considered.
+        if transport.stop_now.swap(false, Ordering::Relaxed) {
+            transport.playing.store(false, Ordering::Relaxed);
+        }
 
         let playing = transport.playing.load(Ordering::Relaxed);
         let live = transport.live_chord.lock().unwrap().clone();
-        // `live` is moved into `BarAction` below, so remember its presence
-        // now for the bar-advance arithmetic at the end of the iteration.
         let live_present = live.is_some();
         let prog_len = transport.progression_len.load(Ordering::Relaxed);
         let bar = transport.current_bar.load(Ordering::Relaxed);
         let bar_dur = transport.bar_duration();
         let note_len = transport.note_length();
-        let hold_dur = bar_dur.mul_f64(note_len as f64);
-        let rest_dur = bar_dur.saturating_sub(hold_dur);
-        let chime_off = transport.chime_suppressed.load(Ordering::Relaxed);
+        let metronome = transport.metronome.load(Ordering::Relaxed);
+        let total = prog_len + usize::from(live_present);
 
-        // Decide what this bar is.
-        let action = if playing {
-            let total = prog_len + if live_present { 1 } else { 0 };
-            if total == 0 {
-                if chime_off {
-                    BarAction::Silent
-                } else {
-                    BarAction::Chime
-                }
-            } else {
-                let idx = bar % total;
-                if idx < prog_len {
+        let bar_start = Instant::now();
+        transport.publish_bar(bar_start, bar);
+
+        // Decide what this bar holds. `None` means silence.
+        let mut content: Option<Vec<BarEvent>> = if playing && total > 0 {
+            let index = bar % total;
+            Some(if index < prog_len {
+                // Rebuilt every bar, so a pattern assignment or an offset edit
+                // takes effect within one bar.
+                // The entry owns its rhythm, so the progression lock is all
+                // the scheduler needs — there is no second lock to take, and no
+                // order to keep between them.
+                let plan = {
                     let prog = progression.lock().unwrap();
-                    let key = transport.key();
-                    match prog.slots.get(idx).and_then(|s| s.notes(&key)) {
-                        Some(n) => BarAction::Play(n),
-                        None => BarAction::Silent,
-                    }
-                } else {
-                    match live {
-                        Some(n) => BarAction::Play(n),
-                        None => BarAction::Silent,
-                    }
-                }
-            }
+                    arrangement::arrangement(&prog.slots, &transport.key(), note_len)
+                };
+                arrangement::bar_events(&plan, index, BAR_TICKS, arrangement::RHYTHM_LAYERS)
+            } else {
+                // The live bar appended after the progression.
+                live_events(live.clone().unwrap_or_default(), note_len)
+            })
         } else if let Some(notes) = live {
-            BarAction::Play(notes)
-        } else if chime_off {
-            BarAction::Silent
+            // Stopped, with a chord under the hands: sound it for its length.
+            Some(live_events(notes, note_len))
         } else {
-            BarAction::Chime
+            None
         };
 
-        // Execute the bar.
+        // The metronome is layered on top of whatever else the bar holds, and it
+        // is the *whole* bar when nothing else does — a click to practise
+        // against, with the transport stopped and no progression.
+        if metronome {
+            let clicks = arrangement::metronome_events(BAR_TICKS);
+            content = Some(match content {
+                Some(mut events) => {
+                    events.extend(clicks);
+                    arrangement::sort_events(&mut events);
+                    events
+                }
+                None => clicks,
+            });
+        }
+
         let mut interrupted = false;
-        match action {
-            BarAction::Play(notes) => {
-                events.send(SchedulerEvent::PlayChord(notes)).ok();
-                if !sleep_watching(&transport, &stop, hold_dur) {
-                    interrupted = true;
-                }
-                // Always stop, even if interrupted, to clean up the note.
-                events.send(SchedulerEvent::StopChord).ok();
-                if !interrupted && !sleep_watching(&transport, &stop, rest_dur) {
+        match content {
+            Some(planned) => {
+                if !play_bar(&transport, &stop, &events, bar_start, bar_dur, &planned) {
                     interrupted = true;
                 }
             }
-            BarAction::Chime => {
-                fire_idle_tick(&transport, &events);
-                if !sleep_watching(&transport, &stop, bar_dur) {
-                    interrupted = true;
-                }
-            }
-            BarAction::Silent => {
-                if !sleep_watching(&transport, &stop, bar_dur) {
+            None => {
+                // Nothing to play this bar: wait it out, watching for a stop.
+                if !sleep_until_watching(&transport, &stop, bar_start + bar_dur) {
                     interrupted = true;
                 }
             }
         }
 
         if interrupted {
+            // The schedule was abandoned, so the releases it still owed will
+            // never be delivered; cut whatever is sounding.
+            events.send(SchedulerEvent::Silence).ok();
             continue;
         }
 
         // Advance the bar counter for progression playback.
-        if playing {
-            let total = prog_len + if live_present { 1 } else { 0 };
-            if total > 0 {
-                let next = (bar + 1) % total;
-                if next == 0 && !transport.looping.load(Ordering::Relaxed) {
-                    transport.playing.store(false, Ordering::Relaxed);
-                    transport.current_bar.store(0, Ordering::Relaxed);
-                } else {
-                    transport.current_bar.store(next, Ordering::Relaxed);
-                }
+        if playing && total > 0 {
+            let next = (bar + 1) % total;
+            if next == 0 && !transport.looping.load(Ordering::Relaxed) {
+                transport.playing.store(false, Ordering::Relaxed);
+                transport.current_bar.store(0, Ordering::Relaxed);
+            } else {
+                transport.current_bar.store(next, Ordering::Relaxed);
             }
         }
     }
 }
 
-/// Sleep for `dur`, checking for external interrupts every few ms.
+/// Play one bar's events at their due times, then wait out the rest of the bar.
+///
+/// Returns false if an interrupt (stop, seek, restart) fired first. Deadlines
+/// are absolute against the bar's start, so a long bar of fast onsets cannot
+/// accumulate the sleep rounding the old hold/rest split had.
+fn play_bar(
+    transport: &Arc<Transport>,
+    stop: &Arc<AtomicBool>,
+    events_out: &Sender<SchedulerEvent>,
+    bar_start: Instant,
+    bar_dur: Duration,
+    planned: &[BarEvent],
+) -> bool {
+    for event in planned {
+        let due = bar_start + ticks_to_duration(event.at(), bar_dur);
+        if !sleep_until_watching(transport, stop, due) {
+            return false;
+        }
+        match event {
+            BarEvent::On {
+                group,
+                notes,
+                gain,
+                ..
+            } => {
+                events_out
+                    .send(SchedulerEvent::Stab {
+                        group: *group,
+                        notes: notes.clone(),
+                        gain: *gain,
+                    })
+                    .ok();
+            }
+            BarEvent::Off { group, .. } => {
+                events_out
+                    .send(SchedulerEvent::ReleaseStab { group: *group })
+                    .ok();
+            }
+            BarEvent::Click { strong, .. } => {
+                events_out
+                    .send(SchedulerEvent::Click { strong: *strong })
+                    .ok();
+            }
+        }
+    }
+    sleep_until_watching(transport, stop, bar_start + bar_dur)
+}
+
+/// Sleep until `deadline`, checking for external interrupts every few ms.
 /// Returns false if an interrupt (stop, seek, restart) fired.
-fn sleep_watching(transport: &Arc<Transport>, stop: &Arc<AtomicBool>, dur: Duration) -> bool {
-    let start = Instant::now();
-    while start.elapsed() < dur {
+fn sleep_until_watching(
+    transport: &Arc<Transport>,
+    stop: &Arc<AtomicBool>,
+    deadline: Instant,
+) -> bool {
+    loop {
+        let now = Instant::now();
+        if now >= deadline {
+            return true;
+        }
         if stop.load(Ordering::Relaxed) {
             return false;
         }
@@ -297,33 +402,11 @@ fn sleep_watching(transport: &Arc<Transport>, stop: &Arc<AtomicBool>, dur: Durat
         if transport.restart.load(Ordering::Relaxed) {
             return false;
         }
-        let remaining = dur.saturating_sub(start.elapsed());
-        thread::sleep(remaining.min(Duration::from_millis(5)));
+        if transport.stop_now.load(Ordering::Relaxed) {
+            return false;
+        }
+        thread::sleep((deadline - now).min(Duration::from_millis(5)));
     }
-    true
-}
-
-/// Fire an idle chime if the 4-bar cadence says it's time.
-fn fire_idle_tick(transport: &Arc<Transport>, events: &Sender<SchedulerEvent>) {
-    let count = transport.chime_bar_count.load(Ordering::Relaxed);
-    if count % 4 == 0 {
-        let idx = transport.chime_index.load(Ordering::Relaxed) % CHIMES.len();
-        let chime = &CHIMES[idx];
-        events
-            .send(SchedulerEvent::PlayChime {
-                start: chime.start,
-                end: chime.end,
-                glide_secs: CHIME_GLIDE_SECS,
-                hold_secs: CHIME_HOLD_SECS,
-            })
-            .ok();
-        events.send(SchedulerEvent::RecordChime { index: idx }).ok();
-        transport.chime_index.store(idx + 1, Ordering::Relaxed);
-    }
-    transport
-        .chime_bar_count
-        .store(count + 1, Ordering::Relaxed);
-    transport.current_bar.store(0, Ordering::Relaxed);
 }
 
 // -----------------------------------------------------------------------------
@@ -398,8 +481,150 @@ mod tests {
     }
 
     #[test]
-    fn chime_suppressed_starts_false() {
+    fn a_panic_stop_interrupts_the_wait_immediately() {
+        // The point of `stop_now`: a paused transport still finishes its bar, so
+        // a note can ring for a whole bar. This must not.
         let t = Transport::new(c_major());
-        assert!(!t.chime_suppressed.load(Ordering::Relaxed));
+        let stop = Arc::new(AtomicBool::new(false));
+        let deadline = Instant::now() + Duration::from_secs(30);
+
+        let flag = t.clone();
+        let start = Instant::now();
+        let stopper = thread::spawn(move || {
+            thread::sleep(Duration::from_millis(30));
+            flag.stop_now.store(true, Ordering::Relaxed);
+        });
+
+        assert!(
+            !sleep_until_watching(&t, &stop, deadline),
+            "the wait must report an interrupt, not run to the deadline"
+        );
+        assert!(
+            start.elapsed() < Duration::from_secs(5),
+            "it returned after {:?}",
+            start.elapsed()
+        );
+        stopper.join().unwrap();
+    }
+
+    #[test]
+    fn a_restart_interrupts_the_wait_too() {
+        let t = Transport::new(c_major());
+        let stop = Arc::new(AtomicBool::new(false));
+        let deadline = Instant::now() + Duration::from_secs(30);
+
+        let flag = t.clone();
+        let stopper = thread::spawn(move || {
+            thread::sleep(Duration::from_millis(30));
+            flag.restart.store(true, Ordering::Relaxed);
+        });
+
+        assert!(!sleep_until_watching(&t, &stop, deadline));
+        stopper.join().unwrap();
+    }
+
+    #[test]
+    fn the_metronome_starts_off() {
+        let t = Transport::new(c_major());
+        assert!(!t.metronome.load(Ordering::Relaxed));
+    }
+
+    // ---- the bar clock ----
+
+    #[test]
+    fn the_bar_clock_is_unset_until_the_scheduler_publishes_one() {
+        let t = Transport::new(c_major());
+        assert!(t.bar_started().is_none());
+    }
+
+    #[test]
+    fn publishing_a_bar_round_trips_the_instant_and_the_index() {
+        let t = Transport::new(c_major());
+        let now = Instant::now();
+        t.publish_bar(now, 3);
+        let (at, bar) = t.bar_started().expect("a published bar");
+        assert_eq!(at, now);
+        assert_eq!(bar, 3);
+    }
+
+    // ---- the bar's timings ----
+
+    #[test]
+    fn hold_ticks_scale_with_the_note_length() {
+        assert_eq!(hold_ticks(1.0), BAR_TICKS);
+        assert_eq!(hold_ticks(0.5), BAR_TICKS / 2);
+        assert_eq!(hold_ticks(0.25), BAR_TICKS / 4);
+    }
+
+    #[test]
+    fn hold_ticks_are_clamped_into_the_bar() {
+        assert_eq!(hold_ticks(4.0), BAR_TICKS);
+        assert_eq!(hold_ticks(-1.0), 1);
+        assert!(hold_ticks(0.0001) >= 1, "a note can never be zero-length");
+    }
+
+    #[test]
+    fn ticks_map_onto_the_bar_duration() {
+        let bar = Duration::from_secs(2);
+        assert_eq!(ticks_to_duration(0, bar), Duration::ZERO);
+        assert_eq!(ticks_to_duration(BAR_TICKS, bar), bar);
+        assert_eq!(ticks_to_duration(BAR_TICKS / 2, bar), Duration::from_secs(1));
+        assert_eq!(
+            ticks_to_duration(BAR_TICKS / 4, bar),
+            Duration::from_millis(500)
+        );
+    }
+
+    #[test]
+    fn ticks_past_the_bar_line_are_clamped() {
+        let bar = Duration::from_secs(2);
+        assert_eq!(ticks_to_duration(BAR_TICKS * 10, bar), bar);
+    }
+
+    #[test]
+    fn ticks_land_on_the_same_instant_as_the_bar_arithmetic() {
+        // 64th notes are the tightest grid, and their spacing must not drift.
+        let bar = Duration::from_secs(2);
+        let step = BAR_TICKS / 64;
+        for i in 0..=64 {
+            let expected = Duration::from_secs_f64(2.0 * (i * step) as f64 / BAR_TICKS as f64);
+            let got = ticks_to_duration(i * step, bar);
+            assert!(
+                (got.as_secs_f64() - expected.as_secs_f64()).abs() < 1e-9,
+                "step {} was {:?}, expected {:?}",
+                i,
+                got,
+                expected
+            );
+        }
+    }
+
+    // ---- the live bar ----
+
+    #[test]
+    fn the_live_chord_is_one_whole_bar_stab() {
+        let events = live_events(vec![60, 64, 67], 0.5);
+        assert_eq!(events.len(), 2);
+        match &events[0] {
+            BarEvent::On {
+                at,
+                group,
+                notes,
+                gain,
+            } => {
+                assert_eq!(*at, 0);
+                assert_eq!(*group, 0);
+                assert_eq!(notes, &vec![60, 64, 67]);
+                assert_eq!(*gain, 1.0);
+            }
+            other => panic!("expected an onset, got {:?}", other),
+        }
+        match &events[1] {
+            BarEvent::Off { at, group } => {
+                assert_eq!(*at, BAR_TICKS / 2);
+                assert_eq!(*group, 0);
+            }
+            other => panic!("expected a release, got {:?}", other),
+        }
     }
 }

@@ -473,7 +473,7 @@ mod tests {
     use super::*;
     use crate::midi;
     use crate::music::{Key, Scale, ScaleDegree, Transformation};
-    use crate::progression::{Progression, ProgressionEntry, Registers, Slot};
+    use crate::progression::{Progression, ProgressionEntry, Slot};
 
     // ---- a small SMF reader, so tests assert on meaning, not golden bytes ----
 
@@ -607,15 +607,14 @@ mod tests {
     fn score_with(slots: Vec<Slot>) -> Score {
         let mut prog = Progression::new();
         prog.slots = slots;
-        midi::render_progression(&prog, &Key::new(60, Scale::Major), 120, 1.0)
+        midi::render_progression(&prog.slots, &Key::new(60, Scale::Major),
+            120,
+            1.0,
+        )
     }
 
     fn chord(degree: ScaleDegree, transformation: Option<Transformation>) -> Slot {
-        Slot::Chord(ProgressionEntry {
-            degree,
-            transformation,
-            registers: Registers::default(),
-        })
+        Slot::Chord(ProgressionEntry::new(degree, transformation))
     }
 
     fn single(score: &Score) -> Parsed {
@@ -685,13 +684,12 @@ mod tests {
 
     #[test]
     fn note_offs_land_at_the_rendered_duration() {
-        let score = midi::render_progression(
-            &{
-                let mut p = Progression::new();
-                p.slots = vec![chord(ScaleDegree::I, None)];
-                p
-            },
-            &Key::new(60, Scale::Major),
+        let prog = {
+            let mut p = Progression::new();
+            p.slots = vec![chord(ScaleDegree::I, None)];
+            p
+        };
+        let score = midi::render_progression(&prog.slots, &Key::new(60, Scale::Major),
             120,
             0.5, // half a bar
         );
@@ -815,13 +813,12 @@ mod tests {
 
     #[test]
     fn a_very_slow_tempo_saturates_instead_of_wrapping() {
-        let score = midi::render_progression(
-            &{
-                let mut p = Progression::new();
-                p.slots = vec![chord(ScaleDegree::I, None)];
-                p
-            },
-            &Key::new(60, Scale::Major),
+        let prog = {
+            let mut p = Progression::new();
+            p.slots = vec![chord(ScaleDegree::I, None)];
+            p
+        };
+        let score = midi::render_progression(&prog.slots, &Key::new(60, Scale::Major),
             1,
             1.0,
         );

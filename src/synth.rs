@@ -2,7 +2,7 @@
 //!
 //! Three channels (low, mid, high), each with its own sound-design params
 //! and its own pair of voice pools: one for the progression, one for the
-//! preview chord / idle chime. Voices support linear portamento (glide)
+//! preview chord. Voices support linear portamento (glide)
 //! and auto-release after a fixed hold time.
 
 use std::error::Error;
@@ -19,12 +19,26 @@ use crate::presets::{ChannelPatch, MixerPatch, Patch};
 // Voice pool sizes
 // -----------------------------------------------------------------------------
 
-const PROG_LOW: usize = 1;
-const PROG_MID: usize = 4;
-const PROG_HIGH: usize = 1;
-const PREVIEW_LOW: usize = 1;
-const PREVIEW_MID: usize = 1;
-const PREVIEW_HIGH: usize = 1;
+/// Voices in one stab group: one low, up to four mid and one high.
+///
+/// The widest voicing this tool can produce is six notes, so that covers it.
+const GROUP_LOW: usize = 1;
+const GROUP_MID: usize = 4;
+const GROUP_HIGH: usize = 1;
+
+/// Stab groups, one per overlapping take.
+///
+/// Shared with the arrangement planner, which never puts two simultaneous hits
+/// in the same group while a free one exists — so the number here is the deepest
+/// a stack of takes can sound before something has to be cut.
+const STAB_GROUPS: usize = crate::arrangement::RHYTHM_LAYERS;
+
+/// The click pool: one voice, used by the metronome.
+///
+/// Its own voice rather than a stab group, because a click is wanted while a
+/// take is being recorded — the very moment the groups are busy with the
+/// progression — and it must not retrigger anything the player is hearing.
+const CLICK_VOICES: usize = 1;
 
 // -----------------------------------------------------------------------------
 // SharedF32
@@ -176,6 +190,12 @@ struct Voice {
     glide_duration_secs: SharedF32,
     hold_secs: SharedF32,
     release_override: SharedF32,
+    /// Per-voice gain, 0..1.
+    ///
+    /// The channels already have a volume, but a rhythm take needs its own: the
+    /// layers of one pattern share a channel and must still be able to sit at
+    /// different levels, which is what "each earlier take is quieter" means.
+    gain: SharedF32,
     channel: ChannelParams,
     sample_rate: f32,
 
@@ -197,6 +217,7 @@ impl Voice {
             glide_duration_secs: SharedF32::new(0.0),
             hold_secs: SharedF32::new(0.0),
             release_override: SharedF32::new(0.0),
+            gain: SharedF32::new(1.0),
             channel,
             sample_rate,
             phase: 0.0,
@@ -217,6 +238,7 @@ impl Voice {
             glide_duration_secs: self.glide_duration_secs.clone(),
             hold_secs: self.hold_secs.clone(),
             release_override: self.release_override.clone(),
+            gain: self.gain.clone(),
         }
     }
 
@@ -341,7 +363,8 @@ impl Voice {
         self.svf_low = low;
         self.svf_band = band;
 
-        low
+        // Gain last, so one take sitting quieter also feeds less reverb.
+        low * self.gain.get().clamp(0.0, 1.0)
     }
 }
 
@@ -356,6 +379,7 @@ struct VoiceHandle {
     glide_duration_secs: SharedF32,
     hold_secs: SharedF32,
     release_override: SharedF32,
+    gain: SharedF32,
 }
 
 impl VoiceHandle {
@@ -365,16 +389,12 @@ impl VoiceHandle {
         self.gate.set(0.0);
     }
 
-    fn duck(&self, release_secs: f32) {
-        self.release_override.set(release_secs);
-        self.gate.set(0.0);
-    }
-
-    /// Instant pitch change: no glide.
-    fn trigger(&self, note: u8) {
+    /// Instant pitch change at a given level: no glide.
+    fn trigger_at(&self, note: u8, gain: f32) {
         self.release_override.set(0.0);
         self.glide_duration_secs.set(0.0);
         self.hold_secs.set(0.0);
+        self.gain.set(gain.clamp(0.0, 1.0));
         self.glide_from.set(note as f32);
         self.midi_note.set(note as f32);
         self.gate.set(1.0);
@@ -384,6 +404,7 @@ impl VoiceHandle {
     /// then hold for `hold_secs` before auto-releasing.
     fn trigger_glide(&self, from: u8, to: u8, duration_secs: f32, hold_secs: f32) {
         self.release_override.set(0.0);
+        self.gain.set(1.0);
         self.glide_from.set(from as f32);
         self.midi_note.set(to as f32);
         self.glide_duration_secs.set(duration_secs);
@@ -546,14 +567,78 @@ fn allocate(notes: &[u8]) -> (Vec<u8>, Vec<u8>, Vec<u8>) {
 // Synth
 // -----------------------------------------------------------------------------
 
+/// The handles for one stab group.
+struct StabGroup {
+    low: Vec<VoiceHandle>,
+    mid: Vec<VoiceHandle>,
+    high: Vec<VoiceHandle>,
+}
+
+impl StabGroup {
+    /// Every handle in the group.
+    fn handles(&self) -> impl Iterator<Item = &VoiceHandle> {
+        self.low.iter().chain(&self.mid).chain(&self.high)
+    }
+
+    fn reset(&self) {
+        for handle in self.handles() {
+            handle.reset();
+        }
+    }
+}
+
+/// The audio-side voices for one stab group, owned by the callback.
+struct GroupVoices {
+    low: Vec<Voice>,
+    mid: Vec<Voice>,
+    high: Vec<Voice>,
+}
+
+/// Build one group's voices and their handles.
+fn build_group(params: &SynthParams, sample_rate: f32) -> (StabGroup, GroupVoices) {
+    let mut handles_low = Vec::with_capacity(GROUP_LOW);
+    let mut handles_mid = Vec::with_capacity(GROUP_MID);
+    let mut handles_high = Vec::with_capacity(GROUP_HIGH);
+    let mut audio_low = Vec::with_capacity(GROUP_LOW);
+    let mut audio_mid = Vec::with_capacity(GROUP_MID);
+    let mut audio_high = Vec::with_capacity(GROUP_HIGH);
+
+    for _ in 0..GROUP_LOW {
+        let v = Voice::new(params.low.clone(), sample_rate);
+        handles_low.push(v.handle());
+        audio_low.push(v);
+    }
+    for _ in 0..GROUP_MID {
+        let v = Voice::new(params.mid.clone(), sample_rate);
+        handles_mid.push(v.handle());
+        audio_mid.push(v);
+    }
+    for _ in 0..GROUP_HIGH {
+        let v = Voice::new(params.high.clone(), sample_rate);
+        handles_high.push(v.handle());
+        audio_high.push(v);
+    }
+
+    (
+        StabGroup {
+            low: handles_low,
+            mid: handles_mid,
+            high: handles_high,
+        },
+        GroupVoices {
+            low: audio_low,
+            mid: audio_mid,
+            high: audio_high,
+        },
+    )
+}
+
 pub struct Synth {
     params: SynthParams,
-    prog_low: Vec<VoiceHandle>,
-    prog_mid: Vec<VoiceHandle>,
-    prog_high: Vec<VoiceHandle>,
-    chime_low: Vec<VoiceHandle>,
-    chime_mid: Vec<VoiceHandle>,
-    chime_high: Vec<VoiceHandle>,
+    /// One per stab group: an onset retriggers only its own group, so
+    /// overlapping takes layer instead of cutting each other.
+    groups: Vec<StabGroup>,
+    click: Vec<VoiceHandle>,
     _stream: cpal::Stream,
 }
 
@@ -569,49 +654,22 @@ impl Synth {
 
         let params = SynthParams::defaults();
 
-        let mut audio_prog_low: Vec<Voice> = Vec::with_capacity(PROG_LOW);
-        let mut audio_prog_mid: Vec<Voice> = Vec::with_capacity(PROG_MID);
-        let mut audio_prog_high: Vec<Voice> = Vec::with_capacity(PROG_HIGH);
-        let mut audio_chime_low: Vec<Voice> = Vec::with_capacity(PREVIEW_LOW);
-        let mut audio_chime_mid: Vec<Voice> = Vec::with_capacity(PREVIEW_MID);
-        let mut audio_chime_high: Vec<Voice> = Vec::with_capacity(PREVIEW_HIGH);
+        let mut groups = Vec::with_capacity(STAB_GROUPS);
+        let mut audio_groups: Vec<GroupVoices> = Vec::with_capacity(STAB_GROUPS);
+        for _ in 0..STAB_GROUPS {
+            let (group, voices) = build_group(&params, sample_rate);
+            groups.push(group);
+            audio_groups.push(voices);
+        }
 
-        let mut prog_low = Vec::with_capacity(PROG_LOW);
-        let mut prog_mid = Vec::with_capacity(PROG_MID);
-        let mut prog_high = Vec::with_capacity(PROG_HIGH);
-        let mut chime_low = Vec::with_capacity(PREVIEW_LOW);
-        let mut chime_mid = Vec::with_capacity(PREVIEW_MID);
-        let mut chime_high = Vec::with_capacity(PREVIEW_HIGH);
-
-        for _ in 0..PROG_LOW {
-            let v = Voice::new(params.low.clone(), sample_rate);
-            prog_low.push(v.handle());
-            audio_prog_low.push(v);
-        }
-        for _ in 0..PROG_MID {
+        let mut audio_click: Vec<Voice> = Vec::with_capacity(CLICK_VOICES);
+        let mut click = Vec::with_capacity(CLICK_VOICES);
+        for _ in 0..CLICK_VOICES {
+            // The mid channel, because a click sits in the range the player is
+            // already listening to.
             let v = Voice::new(params.mid.clone(), sample_rate);
-            prog_mid.push(v.handle());
-            audio_prog_mid.push(v);
-        }
-        for _ in 0..PROG_HIGH {
-            let v = Voice::new(params.high.clone(), sample_rate);
-            prog_high.push(v.handle());
-            audio_prog_high.push(v);
-        }
-        for _ in 0..PREVIEW_LOW {
-            let v = Voice::new(params.low.clone(), sample_rate);
-            chime_low.push(v.handle());
-            audio_chime_low.push(v);
-        }
-        for _ in 0..PREVIEW_MID {
-            let v = Voice::new(params.mid.clone(), sample_rate);
-            chime_mid.push(v.handle());
-            audio_chime_mid.push(v);
-        }
-        for _ in 0..PREVIEW_HIGH {
-            let v = Voice::new(params.high.clone(), sample_rate);
-            chime_high.push(v.handle());
-            audio_chime_high.push(v);
+            click.push(v.handle());
+            audio_click.push(v);
         }
 
         let mut reverb = Reverb::new();
@@ -659,32 +717,28 @@ impl Synth {
                     let mut prog_l = 0.0;
                     let mut prog_m = 0.0;
                     let mut prog_h = 0.0;
-                    let mut chime_l = 0.0;
-                    let mut chime_m = 0.0;
-                    let mut chime_h = 0.0;
+                    let mut click_out = 0.0;
 
-                    for v in audio_prog_low.iter_mut() {
-                        prog_l += v.tick();
+                    for group in audio_groups.iter_mut() {
+                        for v in group.low.iter_mut() {
+                            prog_l += v.tick();
+                        }
+                        for v in group.mid.iter_mut() {
+                            prog_m += v.tick();
+                        }
+                        for v in group.high.iter_mut() {
+                            prog_h += v.tick();
+                        }
                     }
-                    for v in audio_prog_mid.iter_mut() {
-                        prog_m += v.tick();
-                    }
-                    for v in audio_prog_high.iter_mut() {
-                        prog_h += v.tick();
-                    }
-                    for v in audio_chime_low.iter_mut() {
-                        chime_l += v.tick();
-                    }
-                    for v in audio_chime_mid.iter_mut() {
-                        chime_m += v.tick();
-                    }
-                    for v in audio_chime_high.iter_mut() {
-                        chime_h += v.tick();
+                    // The click bypasses the progression's mute and gain: it is
+                    // a rehearsal aid, not part of the music.
+                    for v in audio_click.iter_mut() {
+                        click_out += v.tick();
                     }
 
-                    let low_out = (prog_l * prog_mute + chime_l) * low_gain;
-                    let mid_out = (prog_m * prog_mute + chime_m) * mid_gain;
-                    let high_out = (prog_h * prog_mute + chime_h) * high_gain;
+                    let low_out = prog_l * prog_mute * low_gain;
+                    let mid_out = (prog_m * prog_mute * mid_gain) + click_out;
+                    let high_out = prog_h * prog_mute * high_gain;
 
                     let left = low_out * low_l + mid_out * mid_l + high_out * high_l;
                     let right = low_out * low_r + mid_out * mid_r + high_out * high_r;
@@ -724,12 +778,8 @@ impl Synth {
 
         Ok(Synth {
             params,
-            prog_low,
-            prog_mid,
-            prog_high,
-            chime_low,
-            chime_mid,
-            chime_high,
+            groups,
+            click,
             _stream: stream,
         })
     }
@@ -738,64 +788,55 @@ impl Synth {
         &self.params
     }
 
-    // ---- progression ----
+    // ---- stab groups ----
 
-    pub fn play_progression_chord(&self, notes: &[u8]) {
-        for h in self.prog_low.iter().chain(&self.prog_mid).chain(&self.prog_high) {
-            h.reset();
-        }
+    /// Start a chord on one stab group at a given gain.
+    ///
+    /// Only that group is retriggered, which is what lets the layers of a
+    /// pattern overlap: a hit on take 2 never cuts take 1.
+    pub fn play_stab(&self, group: usize, notes: &[u8], gain: f32) {
+        let Some(slot) = self.groups.get(group) else {
+            return;
+        };
+        slot.reset();
         let (l, m, h) = allocate(notes);
-        for (handle, &note) in self.prog_low.iter().zip(l.iter()) {
-            handle.trigger(note);
+        for (handle, &note) in slot.low.iter().zip(l.iter()) {
+            handle.trigger_at(note, gain);
         }
-        for (handle, &note) in self.prog_mid.iter().zip(m.iter()) {
-            handle.trigger(note);
+        for (handle, &note) in slot.mid.iter().zip(m.iter()) {
+            handle.trigger_at(note, gain);
         }
-        for (handle, &note) in self.prog_high.iter().zip(h.iter()) {
-            handle.trigger(note);
-        }
-    }
-
-    pub fn duck_progression(&self, fade_secs: f32) {
-        for h in self.prog_low.iter().chain(&self.prog_mid).chain(&self.prog_high) {
-            h.duck(fade_secs);
+        for (handle, &note) in slot.high.iter().zip(h.iter()) {
+            handle.trigger_at(note, gain);
         }
     }
 
-    pub fn stop_progression(&self) {
-        for h in self.prog_low.iter().chain(&self.prog_mid).chain(&self.prog_high) {
-            h.reset();
+    /// Release one stab group.
+    pub fn stop_stab(&self, group: usize) {
+        if let Some(slot) = self.groups.get(group) {
+            slot.reset();
         }
     }
 
-    // ---- chime ----
-
-    /// Fire a chime: three voices (low, mid, high) glide from start to end
-    /// over `glide_secs`, then hold for `hold_secs`, then auto-release.
-    pub fn play_chime(
-        &self,
-        start: [u8; 3],
-        end: [u8; 3],
-        glide_secs: f32,
-        hold_secs: f32,
-    ) {
-        for h in self.chime_low.iter().chain(&self.chime_mid).chain(&self.chime_high) {
-            h.reset();
-        }
-        if let Some(h) = self.chime_low.first() {
-            h.trigger_glide(start[0], end[0], glide_secs, hold_secs);
-        }
-        if let Some(h) = self.chime_mid.first() {
-            h.trigger_glide(start[1], end[1], glide_secs, hold_secs);
-        }
-        if let Some(h) = self.chime_high.first() {
-            h.trigger_glide(start[2], end[2], glide_secs, hold_secs);
+    /// Release every group.
+    ///
+    /// Used when playback is interrupted: a seek or a stop abandons the
+    /// schedule, so the releases the plan still owed will never arrive and the
+    /// notes have to be cut here.
+    pub fn silence(&self) {
+        for group in &self.groups {
+            group.reset();
         }
     }
 
-    pub fn stop_chime(&self) {
-        for h in self.chime_low.iter().chain(&self.chime_mid).chain(&self.chime_high) {
-            h.reset();
+    // ---- metronome ----
+
+    /// A short metronome blip, audible only while a rhythm is being recorded.
+    pub fn play_click(&self, strong: bool) {
+        if let Some(handle) = self.click.first() {
+            handle.reset();
+            let note = if strong { 84 } else { 79 };
+            handle.trigger_glide(note, note, 0.002, 0.03);
         }
     }
 

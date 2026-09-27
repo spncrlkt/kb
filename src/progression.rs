@@ -72,10 +72,6 @@ impl Registers {
 
         out
     }
-
-    pub fn is_empty(&self) -> bool {
-        self.left.is_none() && self.right.is_none()
-    }
 }
 
 // -----------------------------------------------------------------------------
@@ -166,11 +162,22 @@ const HISTORY_LIMIT: usize = 128;
 #[derive(Default)]
 pub struct Progression {
     pub slots: Vec<Slot>,
-    pub clipboard: Option<ProgressionEntry>,
+    /// A run of slots waiting to be pasted — one entry is a single chord, several
+    /// are a phrase. `None` means nothing has been copied.
+    pub clipboard: Option<Vec<Slot>>,
     /// Snapshots of `slots` taken immediately before each change.
     undo_stack: Vec<Vec<Slot>>,
     /// Snapshots discarded by `undo`, available to `redo`.
     redo_stack: Vec<Vec<Slot>>,
+}
+
+/// A range the caller may have given either way round.
+fn ordered(start: usize, end: usize) -> (usize, usize) {
+    if start <= end {
+        (start, end)
+    } else {
+        (end, start)
+    }
 }
 
 impl Progression {
@@ -242,7 +249,9 @@ impl Progression {
         idx
     }
 
-    /// Delete the slot at `index`. Returns true if anything was removed.
+    /// Delete the slot at `index`. The one-row spelling of
+    /// [`Self::delete_range`], for tests. Returns true if anything was removed.
+    #[cfg(test)]
     pub fn delete(&mut self, index: usize) -> bool {
         if index < self.slots.len() {
             self.record();
@@ -250,14 +259,6 @@ impl Progression {
             true
         } else {
             false
-        }
-    }
-
-    /// Delete all slots.
-    pub fn delete_all(&mut self) {
-        if !self.slots.is_empty() {
-            self.record();
-            self.slots.clear();
         }
     }
 
@@ -277,33 +278,223 @@ impl Progression {
 
     /// Copy the entry at `index` into the clipboard.
     ///
-    /// This does not mutate `slots`, so it stays out of the undo history.
+    /// The one-row spelling of [`Self::copy_range`], which is what the panel
+    /// calls: every group action is the range form, so there is one code path to
+    /// keep correct. This stays because a test reads better saying `copy(1)`.
+    #[cfg(test)]
     pub fn copy(&mut self, index: usize) -> bool {
-        match self.slots.get(index) {
-            Some(Slot::Chord(e)) => {
-                self.clipboard = Some(e.clone());
-                true
-            }
-            _ => false,
+        self.copy_range(index, index)
+    }
+
+    /// Copy a run of slots — rests included — into the clipboard.
+    ///
+    /// The clipboard is a *list* rather than one entry because a selection is a
+    /// phrase: copying four chords and pasting them somewhere else has to keep
+    /// their order, and a rest in the middle is part of the figure. A one-row
+    /// copy is just the one-element case, so there is no second clipboard.
+    pub fn copy_range(&mut self, start: usize, end: usize) -> bool {
+        let (start, end) = ordered(start, end);
+        if start >= self.slots.len() {
+            return false;
+        }
+        let end = end.min(self.slots.len() - 1);
+        self.clipboard = Some(self.slots[start..=end].to_vec());
+        true
+    }
+
+    /// Paste the clipboard at `index` — before the slot that is there now.
+    ///
+    /// Returns how many slots landed, so the caller can put the cursor on them.
+    /// `index` at or past the end appends, which is how a paste at the end of the
+    /// list and a paste into the gap above position 1 are the same call.
+    pub fn paste_at(&mut self, index: usize) -> usize {
+        let Some(entries) = self.clipboard.clone() else {
+            return 0;
+        };
+        if entries.is_empty() {
+            return 0;
+        }
+        self.record();
+        let at = index.min(self.slots.len());
+        let count = entries.len();
+        for (offset, slot) in entries.into_iter().enumerate() {
+            self.slots.insert(at + offset, slot);
+        }
+        count
+    }
+
+    /// Paste the clipboard after `index`. If `index` is None, append.
+    ///
+    /// The positional spelling of [`Self::paste_at`], for tests.
+    #[cfg(test)]
+    pub fn paste_after(&mut self, index: Option<usize>) -> usize {
+        match index {
+            Some(i) => self.paste_at(i + 1),
+            None => self.paste_at(self.slots.len()),
         }
     }
 
-    /// Paste the clipboard entry after `index`. If `index` is None, append.
-    /// Returns true if anything was pasted.
-    pub fn paste_after(&mut self, index: Option<usize>) -> bool {
-        let Some(entry) = self.clipboard.clone() else {
+    /// Delete a run of slots in one undoable edit.
+    pub fn delete_range(&mut self, start: usize, end: usize) -> bool {
+        let (start, end) = ordered(start, end);
+        if start >= self.slots.len() {
             return false;
-        };
-        match index {
-            Some(i) => {
-                self.insert_at(i + 1, Slot::Chord(entry));
-                true
-            }
-            None => {
-                self.append(Slot::Chord(entry));
-                true
+        }
+        let end = end.min(self.slots.len() - 1);
+        self.record();
+        self.slots.drain(start..=end);
+        true
+    }
+
+    /// Turn a run of slots around in place.
+    pub fn reverse_range(&mut self, start: usize, end: usize) -> bool {
+        let (start, end) = ordered(start, end);
+        if start >= self.slots.len() {
+            return false;
+        }
+        let end = end.min(self.slots.len() - 1);
+        if start == end {
+            return false;
+        }
+        self.record();
+        self.slots[start..=end].reverse();
+        true
+    }
+
+    /// Roll a run of slots along by `by` places, wrapping inside the run.
+    ///
+    /// `by = 1` moves every chord one place later and brings the last to the
+    /// front, which is the turnaround a four-chord loop usually wants; `-1` goes
+    /// the other way. The run's *length* is fixed, so rotating a selection never
+    /// changes the progression's shape.
+    pub fn rotate_range(&mut self, start: usize, end: usize, by: i32) -> bool {
+        let (start, end) = ordered(start, end);
+        if start >= self.slots.len() {
+            return false;
+        }
+        let end = end.min(self.slots.len() - 1);
+        let len = end - start + 1;
+        if len < 2 {
+            return false;
+        }
+        let by = by.rem_euclid(len as i32) as usize;
+        if by == 0 {
+            return false;
+        }
+        self.record();
+        self.slots[start..=end].rotate_right(by);
+        true
+    }
+
+    /// Take the rhythms and offsets off a run of slots, leaving the chords.
+    ///
+    /// "Clear sinko" as one edit: the chords keep their registers and their
+    /// place in the loop, and go back to a plain whole-bar stab. A rest is
+    /// already unstyled, so it is left alone.
+    pub fn strip_rhythms(&mut self, start: usize, end: usize) -> bool {
+        let (start, end) = ordered(start, end);
+        if start >= self.slots.len() {
+            return false;
+        }
+        let end = end.min(self.slots.len() - 1);
+        let changes = self.slots[start..=end].iter().any(|slot| match slot {
+            Slot::Chord(entry) => entry.pattern.is_some() || entry.offset_ticks != 0,
+            Slot::Rest => false,
+        });
+        if !changes {
+            return false;
+        }
+        self.record();
+        for slot in &mut self.slots[start..=end] {
+            if let Slot::Chord(entry) = slot {
+                entry.pattern = None;
+                entry.offset_ticks = 0;
             }
         }
+        true
+    }
+
+    /// Lay a run of rhythms across a run of slots, in order, repeating.
+    ///
+    /// One entry per target slot is the phrase case; a single entry is "put this
+    /// rhythm on all of them", which is why the clipboard is cycled rather than
+    /// requiring a length match. An entry of `None` clears that slot's rhythm, so
+    /// a copy of "no rhythm here" pastes as one.
+    pub fn assign_patterns(
+        &mut self,
+        start: usize,
+        end: usize,
+        patterns: &[Option<RhythmPattern>],
+    ) -> bool {
+        let (start, end) = ordered(start, end);
+        if patterns.is_empty() || start >= self.slots.len() {
+            return false;
+        }
+        let end = end.min(self.slots.len() - 1);
+        let changes = (start..=end).any(|index| match self.slots.get(index) {
+            Some(Slot::Chord(entry)) => {
+                entry.pattern != patterns[(index - start) % patterns.len()]
+            }
+            _ => false,
+        });
+        if !changes {
+            return false;
+        }
+        self.record();
+        for index in start..=end {
+            let pattern = patterns[(index - start) % patterns.len()].clone();
+            if let Some(Slot::Chord(entry)) = self.slots.get_mut(index) {
+                entry.pattern = pattern;
+            }
+        }
+        true
+    }
+
+    /// Give every slot in a run the chord in the registers, keeping each one's
+    /// rhythm and offset.
+    ///
+    /// The range form of [`Self::replace_chord`], and one undoable edit for the
+    /// same reason `replace` is: retargeting a phrase is one decision, not four.
+    pub fn replace_chord_range(
+        &mut self,
+        start: usize,
+        end: usize,
+        degree: ScaleDegree,
+        transformation: Option<Transformation>,
+        registers: Registers,
+    ) -> bool {
+        let (start, end) = ordered(start, end);
+        if start >= self.slots.len() {
+            return false;
+        }
+        let end = end.min(self.slots.len() - 1);
+        let changes = (start..=end).any(|index| match self.slots.get(index) {
+            Some(Slot::Chord(entry)) => {
+                entry.degree != degree
+                    || entry.transformation != transformation
+                    || entry.registers != registers
+            }
+            Some(Slot::Rest) => true,
+            None => false,
+        });
+        if !changes {
+            return false;
+        }
+        self.record();
+        for index in start..=end {
+            let rhythms = match self.slots.get(index) {
+                Some(Slot::Chord(entry)) => (entry.pattern.clone(), entry.offset_ticks),
+                _ => (None, 0),
+            };
+            self.slots[index] = Slot::Chord(ProgressionEntry {
+                degree,
+                transformation,
+                registers: registers.clone(),
+                pattern: rhythms.0,
+                offset_ticks: rhythms.1,
+            });
+        }
+        true
     }
 
     /// Give a slot a rhythm, or take its rhythm away.
@@ -366,6 +557,7 @@ impl Progression {
     /// caller, so there is no way to pass a pattern here by accident. One
     /// undoable edit; a no-op for an out-of-range index or an unchanged chord,
     /// which keeps scrolling-and-pressing out of the history.
+    #[cfg(test)]
     pub fn replace_chord(
         &mut self,
         index: usize,
@@ -398,25 +590,6 @@ impl Progression {
         true
     }
 
-    /// Move the slot at `index` up one position. Returns true if moved.
-    pub fn move_up(&mut self, index: usize) -> bool {
-        if index == 0 || index >= self.slots.len() {
-            return false;
-        }
-        self.record();
-        self.slots.swap(index - 1, index);
-        true
-    }
-
-    /// Move the slot at `index` down one position. Returns true if moved.
-    pub fn move_down(&mut self, index: usize) -> bool {
-        if index + 1 >= self.slots.len() {
-            return false;
-        }
-        self.record();
-        self.slots.swap(index, index + 1);
-        true
-    }
 }
 
 // -----------------------------------------------------------------------------
@@ -497,12 +670,14 @@ mod tests {
     }
 
     #[test]
-    fn delete_all_clears_progression() {
+    fn deleting_the_whole_range_clears_the_progression() {
+        // The model has one delete: a range. "Clear all" is `Cmd+A` then delete,
+        // so there is no second method that could drift from it.
         let mut p = Progression::new();
         for d in [ScaleDegree::I, ScaleDegree::V, ScaleDegree::VI] {
             p.append(Slot::Chord(entry(d, None)));
         }
-        p.delete_all();
+        assert!(p.delete_range(0, 2));
         assert!(p.is_empty());
     }
 
@@ -512,7 +687,7 @@ mod tests {
         p.append(Slot::Chord(entry(ScaleDegree::I, None)));
         p.append(Slot::Chord(entry(ScaleDegree::V, Some(Transformation::Dom7))));
         assert!(p.copy(1));
-        assert!(p.paste_after(Some(0)));
+        assert_eq!(p.paste_after(Some(0)), 1);
         assert_eq!(p.len(), 3);
         match &p.slots[1] {
             Slot::Chord(e) => {
@@ -527,7 +702,7 @@ mod tests {
     fn paste_without_copy_is_noop() {
         let mut p = Progression::new();
         p.append(Slot::Chord(entry(ScaleDegree::I, None)));
-        assert!(!p.paste_after(Some(0)));
+        assert_eq!(p.paste_after(Some(0)), 0);
         assert_eq!(p.len(), 1);
     }
 
@@ -536,42 +711,41 @@ mod tests {
         let mut p = Progression::new();
         p.append(Slot::Chord(entry(ScaleDegree::I, None)));
         p.copy(0);
-        assert!(p.paste_after(None));
+        assert_eq!(p.paste_after(None), 1);
         assert_eq!(p.len(), 2);
     }
 
     #[test]
-    fn copy_of_rest_does_nothing() {
+    fn a_rest_copies_and_pastes_like_any_other_slot() {
+        // A rest is part of a phrase's shape, so a range copy has to carry it —
+        // otherwise pasting four bars would close the gap where the silence was.
         let mut p = Progression::new();
+        p.append(Slot::Chord(entry(ScaleDegree::I, None)));
         p.append(Slot::Rest);
-        assert!(!p.copy(0));
+        assert!(p.copy_range(0, 1));
+        assert_eq!(p.paste_at(2), 2);
+        assert_eq!(p.len(), 4);
+        assert!(matches!(p.slots[2], Slot::Chord(_)));
+        assert!(matches!(p.slots[3], Slot::Rest));
     }
 
     #[test]
-    fn move_up_and_down() {
+    fn reordering_a_pair_moves_one_past_the_other() {
+        // Single-step movement is the two-slot rotate: the model has one way to
+        // reorder, not two.
         let mut p = Progression::new();
         p.append(Slot::Chord(entry(ScaleDegree::I, None)));
         p.append(Slot::Chord(entry(ScaleDegree::II, None)));
-        p.append(Slot::Chord(entry(ScaleDegree::V, None)));
-        assert!(p.move_down(0));
-        match &p.slots[0] {
-            Slot::Chord(e) => assert_eq!(e.degree, ScaleDegree::II),
-            _ => panic!(),
-        }
-        assert!(p.move_up(1));
-        match &p.slots[0] {
-            Slot::Chord(e) => assert_eq!(e.degree, ScaleDegree::I),
-            _ => panic!(),
-        }
-    }
-
-    #[test]
-    fn move_at_boundaries_is_noop() {
-        let mut p = Progression::new();
-        p.append(Slot::Chord(entry(ScaleDegree::I, None)));
-        p.append(Slot::Chord(entry(ScaleDegree::II, None)));
-        assert!(!p.move_up(0));
-        assert!(!p.move_down(1));
+        assert!(p.rotate_range(0, 1, 1));
+        assert_eq!(
+            degrees(&p),
+            vec![Some(ScaleDegree::II), Some(ScaleDegree::I)]
+        );
+        assert!(p.rotate_range(0, 1, 1));
+        assert_eq!(
+            degrees(&p),
+            vec![Some(ScaleDegree::I), Some(ScaleDegree::II)]
+        );
     }
 
     #[test]
@@ -679,14 +853,14 @@ mod tests {
     }
 
     #[test]
-    fn undo_reverses_delete_and_delete_all() {
+    fn undo_reverses_delete_and_a_range_delete() {
         let mut p = filled(&[ScaleDegree::I, ScaleDegree::IV, ScaleDegree::V]);
         assert!(p.delete(1));
         assert_eq!(
             degrees(&p),
             vec![Some(ScaleDegree::I), Some(ScaleDegree::V)]
         );
-        p.delete_all();
+        assert!(p.delete_range(0, 1));
         assert!(p.is_empty());
         assert!(p.undo());
         assert_eq!(
@@ -701,15 +875,21 @@ mod tests {
     }
 
     #[test]
-    fn undo_reverses_move_and_paste() {
+    fn undo_reverses_reorder_and_paste() {
         let mut p = filled(&[ScaleDegree::I, ScaleDegree::V]);
-        assert!(p.move_down(0));
-        assert_eq!(degrees(&p), vec![Some(ScaleDegree::V), Some(ScaleDegree::I)]);
+        assert!(p.rotate_range(0, 1, 1));
+        assert_eq!(
+            degrees(&p),
+            vec![Some(ScaleDegree::V), Some(ScaleDegree::I)]
+        );
         assert!(p.undo());
-        assert_eq!(degrees(&p), vec![Some(ScaleDegree::I), Some(ScaleDegree::V)]);
+        assert_eq!(
+            degrees(&p),
+            vec![Some(ScaleDegree::I), Some(ScaleDegree::V)]
+        );
 
         assert!(p.copy(0));
-        assert!(p.paste_after(Some(0)));
+        assert_eq!(p.paste_after(Some(0)), 1);
         assert_eq!(
             degrees(&p),
             vec![Some(ScaleDegree::I), Some(ScaleDegree::I), Some(ScaleDegree::V)]
@@ -724,9 +904,9 @@ mod tests {
         // Out of range / boundary operations change nothing, so there must be
         // nothing extra to undo afterwards.
         assert!(!p.delete(9));
-        assert!(!p.move_up(0));
-        assert!(!p.move_down(0));
-        assert!(!p.paste_after(None)); // nothing on the clipboard
+        assert!(!p.rotate_range(0, 0, 1));
+        // Nothing on the clipboard, so nothing to paste.
+        assert_eq!(p.paste_after(None), 0);
         // Only the original append is undoable, so one undo empties it.
         assert!(p.undo());
         assert!(p.is_empty());
@@ -734,9 +914,9 @@ mod tests {
     }
 
     #[test]
-    fn an_empty_delete_all_records_nothing() {
+    fn deleting_an_empty_range_records_nothing() {
         let mut p = Progression::new();
-        p.delete_all();
+        assert!(!p.delete_range(0, 0));
         assert!(!p.can_undo());
     }
 
@@ -1105,6 +1285,195 @@ mod tests {
         assert_eq!(p.undo_stack.len(), 1, "only the real move is undoable");
     }
 
+    // ---- ranges ----
+
+    #[test]
+    fn a_range_copies_and_pastes_in_order() {
+        let mut p = filled(&[ScaleDegree::I, ScaleDegree::V, ScaleDegree::VI]);
+        assert!(p.copy_range(0, 1));
+        assert_eq!(p.paste_at(3), 2, "two slots landed");
+        assert_eq!(
+            degrees(&p),
+            vec![
+                Some(ScaleDegree::I),
+                Some(ScaleDegree::V),
+                Some(ScaleDegree::VI),
+                Some(ScaleDegree::I),
+                Some(ScaleDegree::V),
+            ],
+            "the phrase keeps its order"
+        );
+    }
+
+    #[test]
+    fn pasting_at_zero_is_how_a_chord_reaches_position_one() {
+        // The gap above the first chord: `paste_after` cannot reach it, which is
+        // what `paste_at` exists for.
+        let mut p = filled(&[ScaleDegree::I, ScaleDegree::V]);
+        p.copy(1);
+        assert_eq!(p.paste_at(0), 1);
+        assert_eq!(
+            degrees(&p),
+            vec![
+                Some(ScaleDegree::V),
+                Some(ScaleDegree::I),
+                Some(ScaleDegree::V)
+            ]
+        );
+    }
+
+    #[test]
+    fn pasting_a_range_is_one_undoable_edit() {
+        let mut p = filled(&[ScaleDegree::I, ScaleDegree::V, ScaleDegree::VI]);
+        p.copy_range(0, 2);
+        p.paste_at(0);
+        assert_eq!(p.len(), 6);
+        assert!(p.undo());
+        assert_eq!(p.len(), 3, "one undo takes the whole paste back");
+    }
+
+    #[test]
+    fn deleting_a_range_takes_exactly_those_slots() {
+        let mut p = filled(&[
+            ScaleDegree::I,
+            ScaleDegree::V,
+            ScaleDegree::VI,
+            ScaleDegree::IV,
+        ]);
+        assert!(p.delete_range(1, 2));
+        assert_eq!(
+            degrees(&p),
+            vec![Some(ScaleDegree::I), Some(ScaleDegree::IV)]
+        );
+        assert!(p.undo());
+        assert_eq!(p.len(), 4, "and it is one undoable edit");
+    }
+
+    #[test]
+    fn reversing_a_run_leaves_its_ends_and_its_length_alone() {
+        let mut p = filled(&[
+            ScaleDegree::I,
+            ScaleDegree::V,
+            ScaleDegree::VI,
+            ScaleDegree::IV,
+        ]);
+        assert!(p.reverse_range(1, 2));
+        assert_eq!(
+            degrees(&p),
+            vec![
+                Some(ScaleDegree::I),
+                Some(ScaleDegree::VI),
+                Some(ScaleDegree::V),
+                Some(ScaleDegree::IV),
+            ]
+        );
+        assert_eq!(p.len(), 4);
+        assert!(!p.reverse_range(0, 0), "one chord has nothing to reverse");
+    }
+
+    #[test]
+    fn rotating_a_run_wraps_inside_it() {
+        let mut p = filled(&[
+            ScaleDegree::I,
+            ScaleDegree::V,
+            ScaleDegree::VI,
+            ScaleDegree::IV,
+        ]);
+        assert!(p.rotate_range(0, 3, 1));
+        assert_eq!(
+            degrees(&p),
+            vec![
+                Some(ScaleDegree::IV),
+                Some(ScaleDegree::I),
+                Some(ScaleDegree::V),
+                Some(ScaleDegree::VI),
+            ],
+            "the last chord comes round to the front"
+        );
+        assert!(p.rotate_range(0, 3, -1));
+        assert_eq!(degrees(&p)[0], Some(ScaleDegree::I), "and back");
+
+        // The run's length never changes, whichever way it goes.
+        assert!(p.rotate_range(1, 2, 1));
+        assert_eq!(p.len(), 4);
+        assert!(!p.rotate_range(2, 2, 1), "one chord cannot rotate");
+    }
+
+    #[test]
+    fn clearing_rhythms_keeps_the_chords_and_the_offsets_go_too() {
+        let mut p = filled(&[ScaleDegree::I, ScaleDegree::V]);
+        p.assign_pattern(0, Some(pattern("Syncopated 16ths")));
+        p.set_offset(1, 480);
+
+        assert!(p.strip_rhythms(0, 1));
+        assert_eq!(pattern_of(&p, 0), None);
+        assert_eq!(offset_of(&p, 1), 0);
+        assert_eq!(
+            degrees(&p),
+            vec![Some(ScaleDegree::I), Some(ScaleDegree::V)],
+            "the chords are untouched"
+        );
+
+        // Nothing left to clear: the second call is a no-op, not an edit.
+        assert!(!p.strip_rhythms(0, 1));
+    }
+
+    #[test]
+    fn one_rhythm_lays_across_a_whole_selection() {
+        let mut p = filled(&[ScaleDegree::I, ScaleDegree::V, ScaleDegree::VI]);
+        let patterns = vec![Some(pattern("Quarters"))];
+        assert!(p.assign_patterns(0, 2, &patterns));
+        for i in 0..3 {
+            assert_eq!(pattern_of(&p, i), Some(pattern("Quarters")), "at {}", i);
+        }
+    }
+
+    #[test]
+    fn a_phrase_of_rhythms_pastes_in_order_and_repeats() {
+        let mut p = filled(&[ScaleDegree::I, ScaleDegree::V, ScaleDegree::VI]);
+        let patterns = vec![Some(pattern("A")), Some(pattern("B"))];
+        assert!(p.assign_patterns(0, 2, &patterns));
+        assert_eq!(pattern_of(&p, 0), Some(pattern("A")));
+        assert_eq!(pattern_of(&p, 1), Some(pattern("B")));
+        assert_eq!(pattern_of(&p, 2), Some(pattern("A")), "and it repeats");
+    }
+
+    #[test]
+    fn a_phrase_of_rhythms_can_clear_as_well_as_set() {
+        // A copied chord with no rhythm pastes as "no rhythm", so a phrase's shape
+        // survives the round trip.
+        let mut p = filled(&[ScaleDegree::I, ScaleDegree::V]);
+        p.assign_pattern(0, Some(pattern("A")));
+        p.assign_pattern(1, Some(pattern("B")));
+        let patterns = vec![None, Some(pattern("B"))];
+        assert!(p.assign_patterns(0, 1, &patterns));
+        assert_eq!(pattern_of(&p, 0), None);
+        assert_eq!(pattern_of(&p, 1), Some(pattern("B")));
+    }
+
+    #[test]
+    fn replacing_a_range_keeps_each_slots_own_rhythm() {
+        let mut p = filled(&[ScaleDegree::I, ScaleDegree::V]);
+        p.assign_pattern(1, Some(pattern("Quarters")));
+        p.set_offset(1, 240);
+
+        assert!(p.replace_chord_range(
+            0,
+            1,
+            ScaleDegree::IV,
+            Some(Transformation::Dom7),
+            Registers::default()
+        ));
+        assert_eq!(degrees(&p), vec![Some(ScaleDegree::IV), Some(ScaleDegree::IV)]);
+        assert_eq!(pattern_of(&p, 0), None, "the first had none");
+        assert_eq!(
+            pattern_of(&p, 1),
+            Some(pattern("Quarters")),
+            "the second kept its own"
+        );
+        assert_eq!(offset_of(&p, 1), 240);
+    }
+
     #[test]
     fn copy_and_paste_carry_the_pattern_and_the_offset() {
         let mut p = filled(&[ScaleDegree::I, ScaleDegree::V]);
@@ -1112,7 +1481,7 @@ mod tests {
         p.set_offset(1, 480);
 
         assert!(p.copy(1));
-        assert!(p.paste_after(Some(1)));
+        assert_eq!(p.paste_after(Some(1)), 1);
         assert_eq!(p.len(), 3);
         assert_eq!(pattern_of(&p, 2), Some(pattern("Syncopated 16ths")));
         assert_eq!(offset_of(&p, 2), 480);

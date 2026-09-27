@@ -114,7 +114,7 @@ musical content, so the MIDI split uses pure chord tones.
 For v1 every `Note` still carries its `Layer`, and `ChannelMap` still exists —
 they are simply projected to "one track, channel 1" by the writer. Switching to
 per-layer channels later is a writer change plus surfacing `ChannelMap` as a
-`MixerPatch` field; no data is lost in the meantime.
+`MixerSettings` field; no data is lost in the meantime.
 
 Recommended follow-up (not v1): refactor `synth::allocate` to call
 `split_layers` and add the audio-only doubling on top, so audio and MIDI can
@@ -290,7 +290,7 @@ pub trait MidiSink {
 | 3 | `[Export MIDI]` button on Transport, `chrono` filename, buttons-win Enter | **Done** — writes `progression-<timestamp>.mid`; verified against an independent parser |
 | 4 | `project.rs` session document + `[Import MIDI]` button | **Done** — embedded as an `FF 7F` event, refused if absent; see below |
 | 5 | `MidiSink` trait + `FileSink` | Not started |
-| 6 *(later)* | `midir` live output; `ChannelMap` on `MixerPatch` + mixer UI | Not started |
+| 6 *(later)* | `midir` live output; `ChannelMap` on `MixerSettings` + mixer UI | Not started |
 | 7 *(later)* | MIDI clock/transport, CC from the mixer | Not started |
 
 ## What shipped
@@ -473,10 +473,10 @@ not.
   degrees were recovered.
 - Persist the session document independently of audio (also unblocks
   "save/load progressions" in `TODO.md` §6).
-- Decide whether `ChannelMap` lives in `MixerPatch` (per-preset routing) or in
+- Decide whether `ChannelMap` lives in `MixerSettings` (per-ensemble routing) or in
   `Transport` (global routing).
 - Decide whether export should optionally include a count-in or the live bar.
-- Consider a configurable export directory (next to `patches.toml`, say) if the
+- Consider a configurable export directory (next to `ensembles.toml`, say) if the
   working directory proves awkward.
 - Refactor `synth::allocate` onto `midi::split_layers` so the audio and MIDI
   notions of "low / mid / high" share one definition.

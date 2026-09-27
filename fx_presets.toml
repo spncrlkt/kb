@@ -1,0 +1,492 @@
+# The shipped effects presets.
+#
+# This file is the source, compiled in with `include_str!`. Each entry is one
+# named effect: a `kind` (the algorithm family), a `subtype` (the variant within
+# it) and the five parameter slots that make it that particular sound.
+#
+# The parameter slots are shared storage whose meaning is declared by the kind,
+# so they are always written as five numbers. Read them against this table:
+#
+#   reverb       size %   damp %   predelay ms   mix %
+#   delay        time ms  feedback %   tone %   mix %   sync
+#   chorus       rate Hz  depth %  spread %  mix %
+#   flanger      rate Hz  depth %  feedback %  mix %
+#   phaser       rate Hz  depth %  feedback %  mix %
+#   distortion   drive dB  tone %  level dB  mix %
+#   fuzz         drive dB  bias %  gate %  level dB
+#   bitcrusher   bits  rate %  mix %
+#   ringmod      freq Hz  depth %  mix %
+#   tremolo      rate Hz  depth %  mix %
+#   filter       cutoff Hz  resonance %  drive dB  mix %
+#   wah          sens %  range %  resonance %  rate Hz  mix %
+#   compressor   threshold dB  ratio  attack ms  release ms  makeup dB
+#   gate         threshold dB  attack ms  hold ms  release ms  rate Hz
+#
+# The reverb and delay mixes are 0 in the *defaults* on purpose: `hall` and
+# `digital` are the tank and the line this crate has always had, and every shipped
+# ensemble is silent on both. A preset here turns one up, which is what the
+# `preset` row is for — one press from `custom` to a sound with a name.
+#
+# Every kind and variant ships with at least one preset, so no `preset` row is
+# ever an empty list. Each preset's parameters are inside the range its kind
+# declares, and a test holds that.
+
+# ---- reverb: voicings of one tank, not physical models ----
+
+[[presets]]
+name = "Hall"
+kind = "reverb"
+subtype = "hall"
+params = [0.50, 0.20, 0.0, 0.35, 0.0, 0.0]
+
+[[presets]]
+name = "Big Hall"
+kind = "reverb"
+subtype = "hall"
+params = [0.78, 0.18, 25.0, 0.40, 0.0, 0.0]
+
+[[presets]]
+name = "Room"
+kind = "reverb"
+subtype = "room"
+params = [0.38, 0.35, 0.0, 0.30, 0.0, 0.0]
+
+[[presets]]
+name = "Tight Room"
+kind = "reverb"
+subtype = "room"
+params = [0.22, 0.48, 0.0, 0.28, 0.0, 0.0]
+
+[[presets]]
+name = "Plate"
+kind = "reverb"
+subtype = "plate"
+params = [0.62, 0.12, 0.0, 0.32, 0.0, 0.0]
+
+[[presets]]
+name = "Bright Plate"
+kind = "reverb"
+subtype = "plate"
+params = [0.70, 0.06, 0.0, 0.38, 0.0, 0.0]
+
+[[presets]]
+name = "Chamber"
+kind = "reverb"
+subtype = "chamber"
+params = [0.55, 0.28, 0.0, 0.33, 0.0, 0.0]
+
+[[presets]]
+name = "Ambience"
+kind = "reverb"
+subtype = "ambience"
+params = [0.26, 0.45, 0.0, 0.22, 0.0, 0.0]
+
+# ---- delay ----
+
+[[presets]]
+name = "Digital Delay"
+kind = "delay"
+subtype = "digital"
+params = [375.0, 0.35, 0.85, 0.30, 0.0, 0.0]
+
+[[presets]]
+name = "Quarter Note"
+kind = "delay"
+subtype = "digital"
+params = [500.0, 0.40, 0.80, 0.28, 1.0, 7.0]
+
+[[presets]]
+name = "Dotted Eighth"
+kind = "delay"
+subtype = "digital"
+params = [375.0, 0.45, 0.75, 0.30, 1.0, 6.0]
+
+[[presets]]
+name = "Tape Echo"
+kind = "delay"
+subtype = "tape"
+params = [375.0, 0.45, 0.45, 0.32, 0.0, 0.0]
+
+[[presets]]
+name = "Worn Tape"
+kind = "delay"
+subtype = "tape"
+params = [300.0, 0.55, 0.35, 0.35, 0.0, 0.0]
+
+[[presets]]
+name = "Analog Delay"
+kind = "delay"
+subtype = "analog"
+params = [300.0, 0.40, 0.35, 0.30, 0.0, 0.0]
+
+[[presets]]
+name = "Bucket Brigade"
+kind = "delay"
+subtype = "analog"
+params = [220.0, 0.50, 0.30, 0.33, 0.0, 0.0]
+
+[[presets]]
+name = "Slapback"
+kind = "delay"
+subtype = "slapback"
+params = [95.0, 0.10, 0.60, 0.28, 0.0, 0.0]
+
+[[presets]]
+name = "Rockabilly"
+kind = "delay"
+subtype = "slapback"
+params = [110.0, 0.05, 0.70, 0.30, 0.0, 0.0]
+
+# ---- chorus ----
+
+[[presets]]
+name = "Chorus"
+kind = "chorus"
+subtype = "chorus"
+params = [0.80, 0.45, 0.50, 0.50, 0.0, 0.0]
+
+[[presets]]
+name = "Lush Chorus"
+kind = "chorus"
+subtype = "chorus"
+params = [0.55, 0.65, 0.70, 0.55, 0.0, 0.0]
+
+[[presets]]
+name = "Ensemble"
+kind = "chorus"
+subtype = "ensemble"
+params = [0.50, 0.60, 0.80, 0.50, 0.0, 0.0]
+
+[[presets]]
+name = "String Machine"
+kind = "chorus"
+subtype = "ensemble"
+params = [0.35, 0.75, 0.95, 0.60, 0.0, 0.0]
+
+[[presets]]
+name = "Vibrato"
+kind = "chorus"
+subtype = "vibrato"
+params = [4.50, 0.35, 0.0, 1.0, 0.0, 0.0]
+
+[[presets]]
+name = "Slow Vibrato"
+kind = "chorus"
+subtype = "vibrato"
+params = [2.20, 0.25, 0.0, 1.0, 0.0, 0.0]
+
+[[presets]]
+name = "Dimension"
+kind = "chorus"
+subtype = "dimension"
+params = [1.20, 0.30, 0.60, 0.50, 0.0, 0.0]
+
+[[presets]]
+name = "Rotary"
+kind = "chorus"
+subtype = "rotary"
+params = [5.50, 0.55, 0.70, 0.70, 0.0, 0.0]
+
+[[presets]]
+name = "Slow Rotary"
+kind = "chorus"
+subtype = "rotary"
+params = [0.80, 0.60, 0.80, 0.75, 0.0, 0.0]
+
+# ---- flanger ----
+
+[[presets]]
+name = "Flanger"
+kind = "flanger"
+subtype = "flanger"
+params = [0.30, 0.60, 0.55, 0.50, 0.0, 0.0]
+
+[[presets]]
+name = "Slow Sweep"
+kind = "flanger"
+subtype = "flanger"
+params = [0.08, 0.75, 0.65, 0.50, 0.0, 0.0]
+
+[[presets]]
+name = "Jet Flange"
+kind = "flanger"
+subtype = "jet"
+params = [0.15, 0.85, 0.80, 0.50, 0.0, 0.0]
+
+[[presets]]
+name = "Through Zero"
+kind = "flanger"
+subtype = "thru-zero"
+params = [0.25, 0.70, 0.60, 0.50, 0.0, 0.0]
+
+# ---- phaser ----
+
+[[presets]]
+name = "Phaser"
+kind = "phaser"
+subtype = "phaser"
+params = [0.40, 0.65, 0.45, 0.50, 0.0, 0.0]
+
+[[presets]]
+name = "Deep Phaser"
+kind = "phaser"
+subtype = "phaser"
+params = [0.25, 0.85, 0.60, 0.55, 0.0, 0.0]
+
+[[presets]]
+name = "Vibe"
+kind = "phaser"
+subtype = "vibe"
+params = [0.90, 0.55, 0.10, 0.50, 0.0, 0.0]
+
+[[presets]]
+name = "Stepped Phaser"
+kind = "phaser"
+subtype = "stepped"
+params = [2.50, 0.70, 0.40, 0.50, 0.0, 0.0]
+
+# ---- distortion ----
+
+[[presets]]
+name = "Warm Drive"
+kind = "distortion"
+subtype = "overdrive"
+params = [14.0, 0.60, 0.0, 1.0, 0.0, 0.0]
+
+[[presets]]
+name = "Screaming"
+kind = "distortion"
+subtype = "overdrive"
+params = [28.0, 0.70, -2.0, 1.0, 0.0, 0.0]
+
+[[presets]]
+name = "Soft Clip"
+kind = "distortion"
+subtype = "soft"
+params = [18.0, 0.70, 0.0, 1.0, 0.0, 0.0]
+
+[[presets]]
+name = "Hard Clip"
+kind = "distortion"
+subtype = "hard"
+params = [12.0, 0.55, -3.0, 1.0, 0.0, 0.0]
+
+[[presets]]
+name = "Tube Saturate"
+kind = "distortion"
+subtype = "tube"
+params = [20.0, 0.65, 0.0, 1.0, 0.0, 0.0]
+
+[[presets]]
+name = "Wavefolder"
+kind = "distortion"
+subtype = "fold"
+params = [6.0, 0.80, -6.0, 1.0, 0.0, 0.0]
+
+[[presets]]
+name = "Octave Up"
+kind = "distortion"
+subtype = "rectify"
+params = [10.0, 0.50, -6.0, 1.0, 0.0, 0.0]
+
+# ---- fuzz ----
+
+[[presets]]
+name = "Fuzz"
+kind = "fuzz"
+subtype = "fuzz"
+params = [30.0, 0.50, 0.0, -3.0, 0.0, 0.0]
+
+[[presets]]
+name = "Germanium"
+kind = "fuzz"
+subtype = "germanium"
+params = [26.0, 0.70, 0.0, -3.0, 0.0, 0.0]
+
+[[presets]]
+name = "Gated Fuzz"
+kind = "fuzz"
+subtype = "gate"
+params = [34.0, 0.50, 0.25, -3.0, 0.0, 0.0]
+
+[[presets]]
+name = "Spitting Fuzz"
+kind = "fuzz"
+subtype = "spit"
+params = [32.0, 0.60, 0.0, -4.0, 0.0, 0.0]
+
+# ---- bitcrusher ----
+
+[[presets]]
+name = "Crush"
+kind = "bitcrusher"
+subtype = "crush"
+params = [8.0, 0.35, 1.0, 0.0, 0.0, 0.0]
+
+[[presets]]
+name = "Decimate"
+kind = "bitcrusher"
+subtype = "decimate"
+params = [16.0, 0.55, 1.0, 0.0, 0.0, 0.0]
+
+[[presets]]
+name = "AM Radio"
+kind = "bitcrusher"
+subtype = "radio"
+params = [6.0, 0.45, 0.90, 0.0, 0.0, 0.0]
+
+# ---- ring modulator ----
+
+[[presets]]
+name = "Ring Mod"
+kind = "ringmod"
+subtype = "ring"
+params = [220.0, 0.80, 1.0, 0.0, 0.0, 0.0]
+
+[[presets]]
+name = "Bell Tone"
+kind = "ringmod"
+subtype = "bell"
+params = [440.0, 0.60, 1.0, 0.0, 0.0, 0.0]
+
+[[presets]]
+name = "Amplitude Mod"
+kind = "ringmod"
+subtype = "am"
+params = [110.0, 0.70, 1.0, 0.0, 0.0, 0.0]
+
+# ---- tremolo ----
+
+[[presets]]
+name = "Tremolo"
+kind = "tremolo"
+subtype = "sine"
+params = [5.0, 0.60, 1.0, 0.0, 0.0, 0.0]
+
+[[presets]]
+name = "Square Chop"
+kind = "tremolo"
+subtype = "square"
+params = [5.0, 0.80, 1.0, 0.0, 0.0, 0.0]
+
+[[presets]]
+name = "Ramp Tremolo"
+kind = "tremolo"
+subtype = "ramp"
+params = [3.0, 0.70, 1.0, 0.0, 0.0, 0.0]
+
+[[presets]]
+name = "Chop"
+kind = "tremolo"
+subtype = "chop"
+params = [8.0, 1.0, 1.0, 0.0, 0.0, 0.0]
+
+# ---- filter ----
+
+[[presets]]
+name = "Low Pass"
+kind = "filter"
+subtype = "lowpass"
+params = [1200.0, 0.35, 0.0, 1.0, 0.0, 0.0]
+
+[[presets]]
+name = "Dark Low Pass"
+kind = "filter"
+subtype = "lowpass"
+params = [320.0, 0.55, 3.0, 1.0, 0.0, 0.0]
+
+[[presets]]
+name = "High Pass"
+kind = "filter"
+subtype = "highpass"
+params = [120.0, 0.30, 0.0, 1.0, 0.0, 0.0]
+
+[[presets]]
+name = "Telephone Band"
+kind = "filter"
+subtype = "bandpass"
+params = [1400.0, 0.60, 0.0, 1.0, 0.0, 0.0]
+
+[[presets]]
+name = "Notch"
+kind = "filter"
+subtype = "notch"
+params = [700.0, 0.45, 0.0, 1.0, 0.0, 0.0]
+
+[[presets]]
+name = "Resonant Peak"
+kind = "filter"
+subtype = "peak"
+params = [1500.0, 0.70, 4.0, 1.0, 0.0, 0.0]
+
+# ---- wah ----
+
+[[presets]]
+name = "Auto Wah"
+kind = "wah"
+subtype = "auto"
+params = [0.60, 0.65, 0.70, 1.00, 0.70, 0.0]
+
+[[presets]]
+name = "Funk Wah"
+kind = "wah"
+subtype = "auto"
+params = [0.85, 0.80, 0.85, 1.00, 0.75, 0.0]
+
+[[presets]]
+name = "Cocked Wah"
+kind = "wah"
+subtype = "pedal"
+params = [0.50, 0.50, 0.60, 1.00, 0.70, 0.0]
+
+[[presets]]
+name = "LFO Wah"
+kind = "wah"
+subtype = "lfo"
+params = [0.0, 0.70, 0.65, 1.60, 0.70, 0.0]
+
+# ---- compressor ----
+
+[[presets]]
+name = "Compressor"
+kind = "compressor"
+subtype = "comp"
+params = [-18.0, 3.0, 12.0, 180.0, 4.0, 0.0]
+
+[[presets]]
+name = "Gentle Glue"
+kind = "compressor"
+subtype = "comp"
+params = [-12.0, 2.0, 30.0, 300.0, 2.0, 0.0]
+
+[[presets]]
+name = "Limiter"
+kind = "compressor"
+subtype = "limiter"
+params = [-3.0, 20.0, 1.0, 60.0, 0.0, 0.0]
+
+[[presets]]
+name = "Punch"
+kind = "compressor"
+subtype = "punch"
+params = [-16.0, 4.0, 40.0, 220.0, 6.0, 0.0]
+
+# ---- gate ----
+
+[[presets]]
+name = "Noise Gate"
+kind = "gate"
+subtype = "gate"
+params = [-45.0, 2.0, 40.0, 120.0, 8.0, 0.0]
+
+[[presets]]
+name = "Stutter"
+kind = "gate"
+subtype = "stutter"
+params = [-40.0, 1.0, 0.0, 30.0, 8.0, 0.0]
+
+[[presets]]
+name = "Ducker"
+kind = "gate"
+subtype = "duck"
+params = [-30.0, 5.0, 10.0, 250.0, 4.0, 0.0]

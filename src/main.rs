@@ -1,22 +1,8 @@
-mod arrangement;
-mod debug_log;
-mod export;
-mod grammar;
-mod keyboard;
-mod midi;
-mod music;
-mod presets;
-mod progression;
-mod project;
-mod rhythm;
-mod rhythm_store;
-mod smf;
-mod synth;
-mod transport;
-mod tui;
+//! The binary. Everything it does lives in the library, so that the same code
+//! can be rendered, stressed and benchmarked from a test.
 
 use std::io;
 
 fn main() -> io::Result<()> {
-    tui::run_interactive()
+    chord_tool::tui::run_interactive()
 }

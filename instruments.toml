@@ -1,0 +1,4605 @@
+# The shipped instrument library: one register-neutral voice per entry.
+#
+# This file is the source. It is compiled into the binary with `include_str!`
+# and parsed at start-up, so editing it here is how the library is changed —
+# there is no Rust to keep in step and nothing to regenerate.
+#
+# An instrument holds no level, no pan and no transpose: those are decisions
+# about where a sound sits, and they live in the placement that puts it in an
+# ensemble.
+
+[[instruments]]
+name = "Electric Bass"
+
+[instruments.voice]
+waveform = "sine"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.004000000189989805
+decay = 0.07999999821186066
+sustain = 0.949999988079071
+release = 0.10000000149011612
+env_curve = 0.4000000059604645
+glide = 0.0
+cutoff = 600.0
+resonance = 0.05000000074505806
+filter_type = "lowpass"
+filter_env = 0.0
+filter_attack = 0.009999999776482582
+filter_decay = 0.20000000298023224
+key_track = 0.25
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Upright Bass"
+
+[instruments.voice]
+waveform = "nylon"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.006000000052154064
+decay = 0.4000000059604645
+sustain = 0.10000000149011612
+release = 0.25
+env_curve = 0.800000011920929
+glide = 0.029999999329447746
+cutoff = 700.0
+resonance = 0.15000000596046448
+filter_type = "lowpass"
+filter_env = 0.0
+filter_attack = 0.009999999776482582
+filter_decay = 0.20000000298023224
+key_track = 0.25
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Acid Bass"
+
+[instruments.voice]
+waveform = "saw"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.003000000026077032
+decay = 0.25
+sustain = 0.3499999940395355
+release = 0.07999999821186066
+env_curve = 0.800000011920929
+glide = 0.05999999865889549
+cutoff = 500.0
+resonance = 0.7200000286102295
+filter_type = "lowpass"
+filter_env = 0.6000000238418579
+filter_attack = 0.0010000000474974513
+filter_decay = 0.25
+key_track = 0.4000000059604645
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Deep Sine"
+
+[instruments.voice]
+waveform = "sine"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.006000000052154064
+decay = 0.20000000298023224
+sustain = 0.800000011920929
+release = 0.18000000715255737
+env_curve = 0.5
+glide = 0.0
+cutoff = 500.0
+resonance = 0.15000000596046448
+filter_type = "lowpass"
+filter_env = 0.25
+filter_attack = 0.009999999776482582
+filter_decay = 0.25
+key_track = 0.30000001192092896
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Rhodes"
+
+[instruments.voice]
+waveform = "triangle"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.0020000000949949026
+decay = 0.25
+sustain = 0.25
+release = 0.3499999940395355
+env_curve = 0.699999988079071
+glide = 0.0
+cutoff = 2600.0
+resonance = 0.15000000596046448
+filter_type = "lowpass"
+filter_env = 0.25
+filter_attack = 0.0010000000474974513
+filter_decay = 0.11999999731779099
+key_track = 0.5
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Rhodes Bright"
+
+[instruments.voice]
+waveform = "triangle"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.0010000000474974513
+decay = 0.2199999988079071
+sustain = 0.20000000298023224
+release = 0.30000001192092896
+env_curve = 0.699999988079071
+glide = 0.0
+cutoff = 3200.0
+resonance = 0.15000000596046448
+filter_type = "lowpass"
+filter_env = 0.4000000059604645
+filter_attack = 0.0010000000474974513
+filter_decay = 0.1599999964237213
+key_track = 0.550000011920929
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Rhodes Dark"
+
+[instruments.voice]
+waveform = "sine"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.004999999888241291
+decay = 0.44999998807907104
+sustain = 0.30000001192092896
+release = 0.5
+env_curve = 0.550000011920929
+glide = 0.0
+cutoff = 1600.0
+resonance = 0.10000000149011612
+filter_type = "lowpass"
+filter_env = 0.10000000149011612
+filter_attack = 0.0020000000949949026
+filter_decay = 0.30000001192092896
+key_track = 0.3499999940395355
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Wurli"
+
+[instruments.voice]
+waveform = "square"
+noise_level = 0.0
+pulse_width = 0.3799999952316284
+attack = 0.0020000000949949026
+decay = 0.30000001192092896
+sustain = 0.3499999940395355
+release = 0.30000001192092896
+env_curve = 0.75
+glide = 0.0
+cutoff = 2200.0
+resonance = 0.44999998807907104
+filter_type = "lowpass"
+filter_env = 0.30000001192092896
+filter_attack = 0.0010000000474974513
+filter_decay = 0.18000000715255737
+key_track = 0.0
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Wurli Bark"
+
+[instruments.voice]
+waveform = "square"
+noise_level = 0.0
+pulse_width = 0.3199999928474426
+attack = 0.0010000000474974513
+decay = 0.25
+sustain = 0.3199999928474426
+release = 0.25999999046325684
+env_curve = 0.8500000238418579
+glide = 0.0
+cutoff = 2400.0
+resonance = 0.5799999833106995
+filter_type = "lowpass"
+filter_env = 0.550000011920929
+filter_attack = 0.0010000000474974513
+filter_decay = 0.11999999731779099
+key_track = 0.30000001192092896
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Clav"
+
+[instruments.voice]
+waveform = "square"
+noise_level = 0.0
+pulse_width = 0.3199999928474426
+attack = 0.0010000000474974513
+decay = 0.15000000596046448
+sustain = 0.03999999910593033
+release = 0.10000000149011612
+env_curve = 0.800000011920929
+glide = 0.0
+cutoff = 2000.0
+resonance = 0.6000000238418579
+filter_type = "lowpass"
+filter_env = 0.4000000059604645
+filter_attack = 0.0010000000474974513
+filter_decay = 0.09000000357627869
+key_track = 0.5
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Grand Piano"
+
+[instruments.voice]
+waveform = "piano"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.0010000000474974513
+decay = 0.949999988079071
+sustain = 0.15000000596046448
+release = 0.6000000238418579
+env_curve = 0.8500000238418579
+glide = 0.0
+cutoff = 4000.0
+resonance = 0.11999999731779099
+filter_type = "lowpass"
+filter_env = 0.2199999988079071
+filter_attack = 0.0010000000474974513
+filter_decay = 0.3799999952316284
+key_track = 0.4000000059604645
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 2.0
+detune = 3.5
+
+[[instruments]]
+name = "Honky Tonk Tine"
+
+[instruments.voice]
+waveform = "piano"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.0010000000474974513
+decay = 0.6000000238418579
+sustain = 0.10000000149011612
+release = 0.6499999761581421
+env_curve = 0.8500000238418579
+glide = 0.0
+cutoff = 5000.0
+resonance = 0.10000000149011612
+filter_type = "lowpass"
+filter_env = 0.25
+filter_attack = 0.0010000000474974513
+filter_decay = 0.30000001192092896
+key_track = 0.44999998807907104
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 2.0
+detune = 4.0
+
+[[instruments]]
+name = "Drawbar Organ"
+
+[instruments.voice]
+waveform = "organfull"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.004000000189989805
+decay = 0.05000000074505806
+sustain = 1.0
+release = 0.05999999865889549
+env_curve = 0.0
+glide = 0.0
+cutoff = 8000.0
+resonance = 0.20000000298023224
+filter_type = "lowpass"
+filter_env = 0.0
+filter_attack = 0.009999999776482582
+filter_decay = 0.20000000298023224
+key_track = 0.0
+lfo_pitch = 0.10000000149011612
+lfo_cutoff = 0.05000000074505806
+lfo_amp = 0.25
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Rock Organ"
+
+[instruments.voice]
+waveform = "organfull"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.006000000052154064
+decay = 0.10000000149011612
+sustain = 1.0
+release = 0.10000000149011612
+env_curve = 0.0
+glide = 0.0
+cutoff = 2400.0
+resonance = 0.47999998927116394
+filter_type = "lowpass"
+filter_env = 0.0
+filter_attack = 0.009999999776482582
+filter_decay = 0.20000000298023224
+key_track = 0.0
+lfo_pitch = 0.11999999731779099
+lfo_cutoff = 0.10000000149011612
+lfo_amp = 0.2199999988079071
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Pipe Organ"
+
+[instruments.voice]
+waveform = "principal"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.03500000014901161
+decay = 0.20000000298023224
+sustain = 1.0
+release = 0.4000000059604645
+env_curve = 0.44999998807907104
+glide = 0.0
+cutoff = 7000.0
+resonance = 0.18000000715255737
+filter_type = "lowpass"
+filter_env = 0.0
+filter_attack = 0.009999999776482582
+filter_decay = 0.20000000298023224
+key_track = 0.0
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Gospel Organ"
+
+[instruments.voice]
+waveform = "organfull"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.004000000189989805
+decay = 0.05999999865889549
+sustain = 1.0
+release = 0.07999999821186066
+env_curve = 0.0
+glide = 0.0
+cutoff = 8000.0
+resonance = 0.20000000298023224
+filter_type = "lowpass"
+filter_env = 0.0
+filter_attack = 0.009999999776482582
+filter_decay = 0.20000000298023224
+key_track = 0.0
+lfo_pitch = 0.10000000149011612
+lfo_cutoff = 0.05999999865889549
+lfo_amp = 0.23999999463558197
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Gedeckt"
+
+[instruments.voice]
+waveform = "gedeckt"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.05000000074505806
+decay = 0.15000000596046448
+sustain = 0.949999988079071
+release = 0.2800000011920929
+env_curve = 0.4000000059604645
+glide = 0.0
+cutoff = 3800.0
+resonance = 0.10000000149011612
+filter_type = "lowpass"
+filter_env = 0.0
+filter_attack = 0.009999999776482582
+filter_decay = 0.20000000298023224
+key_track = 0.0
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Vibraphone"
+
+[instruments.voice]
+waveform = "vibes"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.0020000000949949026
+decay = 1.2000000476837158
+sustain = 0.0
+release = 1.399999976158142
+env_curve = 0.8500000238418579
+glide = 0.0
+cutoff = 6000.0
+resonance = 0.10000000149011612
+filter_type = "lowpass"
+filter_env = 0.0
+filter_attack = 0.009999999776482582
+filter_decay = 0.20000000298023224
+key_track = 0.0
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.4000000059604645
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Marimba"
+
+[instruments.voice]
+waveform = "triangle"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.0010000000474974513
+decay = 0.30000001192092896
+sustain = 0.0
+release = 0.20000000298023224
+env_curve = 0.8999999761581421
+glide = 0.0
+cutoff = 3000.0
+resonance = 0.15000000596046448
+filter_type = "lowpass"
+filter_env = 0.30000001192092896
+filter_attack = 0.0010000000474974513
+filter_decay = 0.10000000149011612
+key_track = 0.44999998807907104
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Kalimba"
+
+[instruments.voice]
+waveform = "piano"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.0010000000474974513
+decay = 0.2800000011920929
+sustain = 0.0
+release = 0.2199999988079071
+env_curve = 0.8999999761581421
+glide = 0.0
+cutoff = 2000.0
+resonance = 0.15000000596046448
+filter_type = "lowpass"
+filter_env = 0.0
+filter_attack = 0.009999999776482582
+filter_decay = 0.20000000298023224
+key_track = 0.4000000059604645
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Bell"
+
+[instruments.voice]
+waveform = "sine"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.0020000000949949026
+decay = 0.8999999761581421
+sustain = 0.05000000074505806
+release = 1.399999976158142
+env_curve = 0.800000011920929
+glide = 0.0
+cutoff = 5000.0
+resonance = 0.10000000149011612
+filter_type = "lowpass"
+filter_env = 0.30000001192092896
+filter_attack = 0.0010000000474974513
+filter_decay = 0.699999988079071
+key_track = 0.0
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 2.0
+detune = 5.0
+
+[[instruments]]
+name = "Glass Bell"
+
+[instruments.voice]
+waveform = "sine"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.15000000596046448
+decay = 0.20000000298023224
+sustain = 0.6000000238418579
+release = 1.5
+env_curve = 0.6000000238418579
+glide = 0.0
+cutoff = 5000.0
+resonance = 0.20000000298023224
+filter_type = "lowpass"
+filter_env = 0.0
+filter_attack = 0.009999999776482582
+filter_decay = 0.20000000298023224
+key_track = 0.0
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 2.0
+detune = 6.0
+
+[[instruments]]
+name = "Celesta"
+
+[instruments.voice]
+waveform = "sine"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.0010000000474974513
+decay = 0.11999999731779099
+sustain = 0.0
+release = 0.15000000596046448
+env_curve = 0.8999999761581421
+glide = 0.0
+cutoff = 5000.0
+resonance = 0.10000000149011612
+filter_type = "lowpass"
+filter_env = 0.3499999940395355
+filter_attack = 0.0010000000474974513
+filter_decay = 0.05999999865889549
+key_track = 0.5
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Nylon Guitar"
+
+[instruments.voice]
+waveform = "nylon"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.0020000000949949026
+decay = 0.5
+sustain = 0.10000000149011612
+release = 0.3799999952316284
+env_curve = 0.8799999952316284
+glide = 0.0
+cutoff = 2800.0
+resonance = 0.2199999988079071
+filter_type = "lowpass"
+filter_env = 0.2800000011920929
+filter_attack = 0.0010000000474974513
+filter_decay = 0.1599999964237213
+key_track = 0.44999998807907104
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Pizzicato"
+
+[instruments.voice]
+waveform = "nylon"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.0010000000474974513
+decay = 0.2199999988079071
+sustain = 0.0
+release = 0.18000000715255737
+env_curve = 0.9200000166893005
+glide = 0.0
+cutoff = 2400.0
+resonance = 0.30000001192092896
+filter_type = "lowpass"
+filter_env = 0.3799999952316284
+filter_attack = 0.0010000000474974513
+filter_decay = 0.07000000029802322
+key_track = 0.44999998807907104
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Harp"
+
+[instruments.voice]
+waveform = "triangle"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.0020000000949949026
+decay = 0.699999988079071
+sustain = 0.20000000298023224
+release = 1.0
+env_curve = 0.800000011920929
+glide = 0.0
+cutoff = 3500.0
+resonance = 0.11999999731779099
+filter_type = "lowpass"
+filter_env = 0.20000000298023224
+filter_attack = 0.0010000000474974513
+filter_decay = 0.4000000059604645
+key_track = 0.4000000059604645
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Pluck"
+
+[instruments.voice]
+waveform = "saw"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.004000000189989805
+decay = 0.23999999463558197
+sustain = 0.0
+release = 0.15000000596046448
+env_curve = 0.8500000238418579
+glide = 0.0
+cutoff = 1200.0
+resonance = 0.3499999940395355
+filter_type = "lowpass"
+filter_env = 0.5
+filter_attack = 0.0020000000949949026
+filter_decay = 0.18000000715255737
+key_track = 0.4000000059604645
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Warm Pad"
+
+[instruments.voice]
+waveform = "saw"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.25
+decay = 0.30000001192092896
+sustain = 0.75
+release = 0.8999999761581421
+env_curve = 0.3499999940395355
+glide = 0.0
+cutoff = 2500.0
+resonance = 0.25
+filter_type = "lowpass"
+filter_env = 0.0
+filter_attack = 0.009999999776482582
+filter_decay = 0.20000000298023224
+key_track = 0.0
+lfo_pitch = 0.0
+lfo_cutoff = 0.11999999731779099
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 2.0
+detune = 7.0
+
+[[instruments]]
+name = "String Ensemble"
+
+[instruments.voice]
+waveform = "saw"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.4000000059604645
+decay = 0.5
+sustain = 0.8500000238418579
+release = 1.600000023841858
+env_curve = 0.5
+glide = 0.0
+cutoff = 2000.0
+resonance = 0.25
+filter_type = "lowpass"
+filter_env = 0.0
+filter_attack = 0.009999999776482582
+filter_decay = 0.20000000298023224
+key_track = 0.0
+lfo_pitch = 0.05999999865889549
+lfo_cutoff = 0.10000000149011612
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 3.0
+detune = 13.0
+
+[[instruments]]
+name = "PWM Pad"
+
+[instruments.voice]
+waveform = "square"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.3499999940395355
+decay = 0.4000000059604645
+sustain = 0.8999999761581421
+release = 1.5
+env_curve = 0.44999998807907104
+glide = 0.0
+cutoff = 2200.0
+resonance = 0.4000000059604645
+filter_type = "lowpass"
+filter_env = 0.0
+filter_attack = 0.009999999776482582
+filter_decay = 0.20000000298023224
+key_track = 0.0
+lfo_pitch = 0.0
+lfo_cutoff = 0.07999999821186066
+lfo_amp = 0.0
+lfo_pwm = 0.550000011920929
+unison = 2.0
+detune = 8.0
+
+[[instruments]]
+name = "Vox Pad"
+
+[instruments.voice]
+waveform = "vox"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.5
+decay = 0.5
+sustain = 0.8500000238418579
+release = 1.7000000476837158
+env_curve = 0.4000000059604645
+glide = 0.0
+cutoff = 2200.0
+resonance = 0.3499999940395355
+filter_type = "lowpass"
+filter_env = 0.0
+filter_attack = 0.009999999776482582
+filter_decay = 0.20000000298023224
+key_track = 0.0
+lfo_pitch = 0.05999999865889549
+lfo_cutoff = 0.10000000149011612
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 2.0
+detune = 11.0
+
+[[instruments]]
+name = "Choir Aah"
+
+[instruments.voice]
+waveform = "voxaah"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.3400000035762787
+decay = 0.4000000059604645
+sustain = 0.8999999761581421
+release = 1.399999976158142
+env_curve = 0.4000000059604645
+glide = 0.0
+cutoff = 2000.0
+resonance = 0.2800000011920929
+filter_type = "lowpass"
+filter_env = 0.0
+filter_attack = 0.009999999776482582
+filter_decay = 0.20000000298023224
+key_track = 0.0
+lfo_pitch = 0.05999999865889549
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 3.0
+detune = 12.0
+
+[[instruments]]
+name = "Choir Ooh"
+
+[instruments.voice]
+waveform = "voxooh"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.4000000059604645
+decay = 0.4000000059604645
+sustain = 0.8999999761581421
+release = 1.5
+env_curve = 0.4000000059604645
+glide = 0.0
+cutoff = 1300.0
+resonance = 0.2199999988079071
+filter_type = "lowpass"
+filter_env = 0.0
+filter_attack = 0.009999999776482582
+filter_decay = 0.20000000298023224
+key_track = 0.0
+lfo_pitch = 0.05000000074505806
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 2.0
+detune = 9.0
+
+[[instruments]]
+name = "Soft Horn"
+
+[instruments.voice]
+waveform = "saw"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.10000000149011612
+decay = 0.30000001192092896
+sustain = 1.0
+release = 0.11999999731779099
+env_curve = 0.4000000059604645
+glide = 0.0
+cutoff = 1300.0
+resonance = 0.25
+filter_type = "lowpass"
+filter_env = 0.6000000238418579
+filter_attack = 0.30000001192092896
+filter_decay = 0.8999999761581421
+key_track = 0.699999988079071
+lfo_pitch = 0.03999999910593033
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Trumpet"
+
+[instruments.voice]
+waveform = "reed"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.03400000184774399
+decay = 0.25
+sustain = 1.0
+release = 0.10000000149011612
+env_curve = 0.5
+glide = 0.0
+cutoff = 1900.0
+resonance = 0.3199999928474426
+filter_type = "lowpass"
+filter_env = 0.6000000238418579
+filter_attack = 0.10000000149011612
+filter_decay = 0.5
+key_track = 0.6000000238418579
+lfo_pitch = 0.05000000074505806
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Clarinet"
+
+[instruments.voice]
+waveform = "clarinet"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.05999999865889549
+decay = 0.25
+sustain = 0.8999999761581421
+release = 0.2199999988079071
+env_curve = 0.4000000059604645
+glide = 0.0
+cutoff = 2200.0
+resonance = 0.2800000011920929
+filter_type = "lowpass"
+filter_env = 0.0
+filter_attack = 0.009999999776482582
+filter_decay = 0.20000000298023224
+key_track = 0.30000001192092896
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Oboe"
+
+[instruments.voice]
+waveform = "reed"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.04500000178813934
+decay = 0.2199999988079071
+sustain = 0.8999999761581421
+release = 0.18000000715255737
+env_curve = 0.44999998807907104
+glide = 0.0
+cutoff = 3200.0
+resonance = 0.3799999952316284
+filter_type = "lowpass"
+filter_env = 0.0
+filter_attack = 0.009999999776482582
+filter_decay = 0.20000000298023224
+key_track = 0.30000001192092896
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Flute"
+
+[instruments.voice]
+waveform = "gedeckt"
+noise_level = 0.20000000298023224
+pulse_width = 0.5
+attack = 0.10000000149011612
+decay = 0.20000000298023224
+sustain = 0.8500000238418579
+release = 0.20000000298023224
+env_curve = 0.3499999940395355
+glide = 0.0
+cutoff = 3800.0
+resonance = 0.15000000596046448
+filter_type = "lowpass"
+filter_env = 0.0
+filter_attack = 0.009999999776482582
+filter_decay = 0.20000000298023224
+key_track = 0.25
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Buzz Lead"
+
+[instruments.voice]
+waveform = "buzz"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.009999999776482582
+decay = 0.2800000011920929
+sustain = 0.5
+release = 0.20000000298023224
+env_curve = 0.699999988079071
+glide = 0.0
+cutoff = 2000.0
+resonance = 0.41999998688697815
+filter_type = "lowpass"
+filter_env = 0.550000011920929
+filter_attack = 0.004000000189989805
+filter_decay = 0.20000000298023224
+key_track = 0.44999998807907104
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Kick"
+
+[instruments.voice]
+waveform = "sine"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.0010000000474974513
+decay = 0.054999999701976776
+sustain = 0.0
+release = 0.03999999910593033
+env_curve = 0.9200000166893005
+glide = 0.0
+cutoff = 200.0
+resonance = 0.10000000149011612
+filter_type = "lowpass"
+filter_env = 0.0
+filter_attack = 0.009999999776482582
+filter_decay = 0.20000000298023224
+key_track = 0.0
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Hi-Hat"
+
+[instruments.voice]
+waveform = "noise"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.0010000000474974513
+decay = 0.03999999910593033
+sustain = 0.0
+release = 0.029999999329447746
+env_curve = 0.8999999761581421
+glide = 0.0
+cutoff = 7000.0
+resonance = 0.10000000149011612
+filter_type = "highpass"
+filter_env = 0.0
+filter_attack = 0.009999999776482582
+filter_decay = 0.20000000298023224
+key_track = 0.0
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Snare"
+
+[instruments.voice]
+waveform = "noise"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.0010000000474974513
+decay = 0.12999999523162842
+sustain = 0.0
+release = 0.05000000074505806
+env_curve = 0.8500000238418579
+glide = 0.0
+cutoff = 3500.0
+resonance = 0.20000000298023224
+filter_type = "bandpass"
+filter_env = 0.0
+filter_attack = 0.009999999776482582
+filter_decay = 0.20000000298023224
+key_track = 0.0
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Wind"
+
+[instruments.voice]
+waveform = "noise"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.6499999761581421
+decay = 1.2000000476837158
+sustain = 0.699999988079071
+release = 1.600000023841858
+env_curve = 0.30000001192092896
+glide = 0.0
+cutoff = 700.0
+resonance = 0.5
+filter_type = "lowpass"
+filter_env = 0.75
+filter_attack = 1.100000023841858
+filter_decay = 1.600000023841858
+key_track = 0.0
+lfo_pitch = 0.0
+lfo_cutoff = 0.2199999988079071
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Default low"
+
+[instruments.voice]
+waveform = "sine"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.004999999888241291
+decay = 0.05000000074505806
+sustain = 0.699999988079071
+release = 0.10000000149011612
+env_curve = 0.0
+glide = 0.0
+cutoff = 4000.0
+resonance = 0.20000000298023224
+filter_type = "lowpass"
+filter_env = 0.0
+filter_attack = 0.009999999776482582
+filter_decay = 0.20000000298023224
+key_track = 0.0
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Warm Pad low"
+
+[instruments.voice]
+waveform = "triangle"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.20000000298023224
+decay = 0.30000001192092896
+sustain = 0.800000011920929
+release = 0.800000011920929
+env_curve = 0.3499999940395355
+glide = 0.0
+cutoff = 1500.0
+resonance = 0.30000001192092896
+filter_type = "lowpass"
+filter_env = 0.0
+filter_attack = 0.009999999776482582
+filter_decay = 0.20000000298023224
+key_track = 0.0
+lfo_pitch = 0.029999999329447746
+lfo_cutoff = 0.10000000149011612
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 2.0
+detune = 6.0
+
+[[instruments]]
+name = "Warm Pad high"
+
+[instruments.voice]
+waveform = "sine"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.30000001192092896
+decay = 0.30000001192092896
+sustain = 0.699999988079071
+release = 1.0
+env_curve = 0.3499999940395355
+glide = 0.0
+cutoff = 4000.0
+resonance = 0.25
+filter_type = "lowpass"
+filter_env = 0.0
+filter_attack = 0.009999999776482582
+filter_decay = 0.20000000298023224
+key_track = 0.0
+lfo_pitch = 0.03999999910593033
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 2.0
+detune = 8.0
+
+[[instruments]]
+name = "Plucky low"
+
+[instruments.voice]
+waveform = "saw"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.004000000189989805
+decay = 0.2800000011920929
+sustain = 0.0
+release = 0.15000000596046448
+env_curve = 0.8500000238418579
+glide = 0.0
+cutoff = 700.0
+resonance = 0.3499999940395355
+filter_type = "lowpass"
+filter_env = 0.44999998807907104
+filter_attack = 0.0020000000949949026
+filter_decay = 0.2199999988079071
+key_track = 0.3499999940395355
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Plucky high"
+
+[instruments.voice]
+waveform = "square"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.003000000026077032
+decay = 0.18000000715255737
+sustain = 0.0
+release = 0.11999999731779099
+env_curve = 0.8500000238418579
+glide = 0.0
+cutoff = 2200.0
+resonance = 0.30000001192092896
+filter_type = "lowpass"
+filter_env = 0.5
+filter_attack = 0.0020000000949949026
+filter_decay = 0.14000000059604645
+key_track = 0.44999998807907104
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Bassy mid"
+
+[instruments.voice]
+waveform = "saw"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.00800000037997961
+decay = 0.2199999988079071
+sustain = 0.6000000238418579
+release = 0.20000000298023224
+env_curve = 0.5
+glide = 0.0
+cutoff = 900.0
+resonance = 0.30000001192092896
+filter_type = "lowpass"
+filter_env = 0.30000001192092896
+filter_attack = 0.009999999776482582
+filter_decay = 0.20000000298023224
+key_track = 0.3499999940395355
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Bassy high"
+
+[instruments.voice]
+waveform = "sine"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.00800000037997961
+decay = 0.20000000298023224
+sustain = 0.4000000059604645
+release = 0.2199999988079071
+env_curve = 0.0
+glide = 0.0
+cutoff = 1100.0
+resonance = 0.10000000149011612
+filter_type = "lowpass"
+filter_env = 0.0
+filter_attack = 0.009999999776482582
+filter_decay = 0.20000000298023224
+key_track = 0.0
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Glass low"
+
+[instruments.voice]
+waveform = "sine"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.10000000149011612
+decay = 0.20000000298023224
+sustain = 0.6000000238418579
+release = 1.2000000476837158
+env_curve = 0.6000000238418579
+glide = 0.0
+cutoff = 2000.0
+resonance = 0.15000000596046448
+filter_type = "lowpass"
+filter_env = 0.0
+filter_attack = 0.009999999776482582
+filter_decay = 0.20000000298023224
+key_track = 0.0
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 2.0
+detune = 5.0
+
+[[instruments]]
+name = "Glass high"
+
+[instruments.voice]
+waveform = "sine"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.20000000298023224
+decay = 0.20000000298023224
+sustain = 0.6000000238418579
+release = 2.0
+env_curve = 0.6000000238418579
+glide = 0.0
+cutoff = 8000.0
+resonance = 0.25
+filter_type = "lowpass"
+filter_env = 0.0
+filter_attack = 0.009999999776482582
+filter_decay = 0.20000000298023224
+key_track = 0.0
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 2.0
+detune = 7.0
+
+[[instruments]]
+name = "Drawbar Organ low"
+
+[instruments.voice]
+waveform = "organjazz"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.004000000189989805
+decay = 0.05000000074505806
+sustain = 1.0
+release = 0.05999999865889549
+env_curve = 0.0
+glide = 0.0
+cutoff = 8000.0
+resonance = 0.20000000298023224
+filter_type = "lowpass"
+filter_env = 0.0
+filter_attack = 0.009999999776482582
+filter_decay = 0.20000000298023224
+key_track = 0.0
+lfo_pitch = 0.07999999821186066
+lfo_cutoff = 0.05000000074505806
+lfo_amp = 0.2199999988079071
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Drawbar Organ high"
+
+[instruments.voice]
+waveform = "organbright"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.004000000189989805
+decay = 0.05000000074505806
+sustain = 1.0
+release = 0.05999999865889549
+env_curve = 0.0
+glide = 0.0
+cutoff = 8000.0
+resonance = 0.20000000298023224
+filter_type = "lowpass"
+filter_env = 0.0
+filter_attack = 0.009999999776482582
+filter_decay = 0.20000000298023224
+key_track = 0.0
+lfo_pitch = 0.11999999731779099
+lfo_cutoff = 0.05999999865889549
+lfo_amp = 0.2800000011920929
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Rock Organ low"
+
+[instruments.voice]
+waveform = "organfull"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.006000000052154064
+decay = 0.10000000149011612
+sustain = 1.0
+release = 0.10000000149011612
+env_curve = 0.0
+glide = 0.0
+cutoff = 1800.0
+resonance = 0.44999998807907104
+filter_type = "lowpass"
+filter_env = 0.0
+filter_attack = 0.009999999776482582
+filter_decay = 0.20000000298023224
+key_track = 0.0
+lfo_pitch = 0.10000000149011612
+lfo_cutoff = 0.10000000149011612
+lfo_amp = 0.20000000298023224
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Rock Organ high"
+
+[instruments.voice]
+waveform = "organbright"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.006000000052154064
+decay = 0.10000000149011612
+sustain = 0.8999999761581421
+release = 0.10000000149011612
+env_curve = 0.0
+glide = 0.0
+cutoff = 3400.0
+resonance = 0.41999998688697815
+filter_type = "lowpass"
+filter_env = 0.0
+filter_attack = 0.009999999776482582
+filter_decay = 0.20000000298023224
+key_track = 0.0
+lfo_pitch = 0.14000000059604645
+lfo_cutoff = 0.11999999731779099
+lfo_amp = 0.25
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Pipe Organ low"
+
+[instruments.voice]
+waveform = "principal"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.029999999329447746
+decay = 0.20000000298023224
+sustain = 1.0
+release = 0.3499999940395355
+env_curve = 0.44999998807907104
+glide = 0.0
+cutoff = 6000.0
+resonance = 0.15000000596046448
+filter_type = "lowpass"
+filter_env = 0.0
+filter_attack = 0.009999999776482582
+filter_decay = 0.20000000298023224
+key_track = 0.0
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Pipe Organ high"
+
+[instruments.voice]
+waveform = "principal"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.054999999701976776
+decay = 0.20000000298023224
+sustain = 1.0
+release = 0.5
+env_curve = 0.44999998807907104
+glide = 0.0
+cutoff = 8000.0
+resonance = 0.15000000596046448
+filter_type = "lowpass"
+filter_env = 0.0
+filter_attack = 0.009999999776482582
+filter_decay = 0.20000000298023224
+key_track = 0.0
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Gospel Organ low"
+
+[instruments.voice]
+waveform = "organjazz"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.004000000189989805
+decay = 0.05999999865889549
+sustain = 1.0
+release = 0.07999999821186066
+env_curve = 0.0
+glide = 0.0
+cutoff = 8000.0
+resonance = 0.20000000298023224
+filter_type = "lowpass"
+filter_env = 0.0
+filter_attack = 0.009999999776482582
+filter_decay = 0.20000000298023224
+key_track = 0.0
+lfo_pitch = 0.07999999821186066
+lfo_cutoff = 0.05999999865889549
+lfo_amp = 0.20000000298023224
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Gospel Organ high"
+
+[instruments.voice]
+waveform = "organbright"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.0020000000949949026
+decay = 0.1599999964237213
+sustain = 0.3499999940395355
+release = 0.10000000149011612
+env_curve = 0.8500000238418579
+glide = 0.0
+cutoff = 8000.0
+resonance = 0.30000001192092896
+filter_type = "lowpass"
+filter_env = 0.0
+filter_attack = 0.009999999776482582
+filter_decay = 0.20000000298023224
+key_track = 0.0
+lfo_pitch = 0.11999999731779099
+lfo_cutoff = 0.0
+lfo_amp = 0.2800000011920929
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Gedeckt low"
+
+[instruments.voice]
+waveform = "gedeckt"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.04500000178813934
+decay = 0.15000000596046448
+sustain = 0.949999988079071
+release = 0.25
+env_curve = 0.4000000059604645
+glide = 0.0
+cutoff = 3000.0
+resonance = 0.10000000149011612
+filter_type = "lowpass"
+filter_env = 0.0
+filter_attack = 0.009999999776482582
+filter_decay = 0.20000000298023224
+key_track = 0.0
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Gedeckt high"
+
+[instruments.voice]
+waveform = "gedeckt"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.05999999865889549
+decay = 0.15000000596046448
+sustain = 0.8999999761581421
+release = 0.3199999928474426
+env_curve = 0.4000000059604645
+glide = 0.0
+cutoff = 4600.0
+resonance = 0.10000000149011612
+filter_type = "lowpass"
+filter_env = 0.0
+filter_attack = 0.009999999776482582
+filter_decay = 0.20000000298023224
+key_track = 0.0
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Electric Piano low"
+
+[instruments.voice]
+waveform = "sine"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.0020000000949949026
+decay = 0.3499999940395355
+sustain = 0.30000001192092896
+release = 0.30000001192092896
+env_curve = 0.699999988079071
+glide = 0.0
+cutoff = 1800.0
+resonance = 0.10000000149011612
+filter_type = "lowpass"
+filter_env = 0.0
+filter_attack = 0.009999999776482582
+filter_decay = 0.20000000298023224
+key_track = 0.5
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Electric Piano high"
+
+[instruments.voice]
+waveform = "sine"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.0010000000474974513
+decay = 0.05999999865889549
+sustain = 0.019999999552965164
+release = 0.10000000149011612
+env_curve = 0.8999999761581421
+glide = 0.0
+cutoff = 6000.0
+resonance = 0.10000000149011612
+filter_type = "lowpass"
+filter_env = 0.44999998807907104
+filter_attack = 0.0010000000474974513
+filter_decay = 0.05000000074505806
+key_track = 0.6000000238418579
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Rhodes Bright low"
+
+[instruments.voice]
+waveform = "sine"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.0010000000474974513
+decay = 0.2800000011920929
+sustain = 0.2199999988079071
+release = 0.2800000011920929
+env_curve = 0.699999988079071
+glide = 0.0
+cutoff = 2400.0
+resonance = 0.10000000149011612
+filter_type = "lowpass"
+filter_env = 0.3499999940395355
+filter_attack = 0.0010000000474974513
+filter_decay = 0.20000000298023224
+key_track = 0.550000011920929
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Rhodes Bright high"
+
+[instruments.voice]
+waveform = "sine"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.0010000000474974513
+decay = 0.05000000074505806
+sustain = 0.019999999552965164
+release = 0.09000000357627869
+env_curve = 0.9200000166893005
+glide = 0.0
+cutoff = 7000.0
+resonance = 0.10000000149011612
+filter_type = "lowpass"
+filter_env = 0.6499999761581421
+filter_attack = 0.0010000000474974513
+filter_decay = 0.03999999910593033
+key_track = 0.6499999761581421
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Rhodes Dark low"
+
+[instruments.voice]
+waveform = "sine"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.004000000189989805
+decay = 0.550000011920929
+sustain = 0.3499999940395355
+release = 0.44999998807907104
+env_curve = 0.550000011920929
+glide = 0.0
+cutoff = 1100.0
+resonance = 0.07999999821186066
+filter_type = "lowpass"
+filter_env = 0.0
+filter_attack = 0.009999999776482582
+filter_decay = 0.20000000298023224
+key_track = 0.3499999940395355
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Rhodes Dark high"
+
+[instruments.voice]
+waveform = "sine"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.006000000052154064
+decay = 0.30000001192092896
+sustain = 0.20000000298023224
+release = 0.550000011920929
+env_curve = 0.550000011920929
+glide = 0.0
+cutoff = 2400.0
+resonance = 0.07999999821186066
+filter_type = "lowpass"
+filter_env = 0.0
+filter_attack = 0.009999999776482582
+filter_decay = 0.20000000298023224
+key_track = 0.3499999940395355
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Wurli low"
+
+[instruments.voice]
+waveform = "triangle"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.0020000000949949026
+decay = 0.5
+sustain = 0.44999998807907104
+release = 0.25
+env_curve = 0.75
+glide = 0.0
+cutoff = 1500.0
+resonance = 0.3499999940395355
+filter_type = "lowpass"
+filter_env = 0.0
+filter_attack = 0.009999999776482582
+filter_decay = 0.20000000298023224
+key_track = 0.0
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Wurli high"
+
+[instruments.voice]
+waveform = "square"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.0010000000474974513
+decay = 0.07999999821186066
+sustain = 0.05000000074505806
+release = 0.11999999731779099
+env_curve = 0.8999999761581421
+glide = 0.0
+cutoff = 3500.0
+resonance = 0.4000000059604645
+filter_type = "lowpass"
+filter_env = 0.4000000059604645
+filter_attack = 0.0010000000474974513
+filter_decay = 0.07999999821186066
+key_track = 0.0
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Wurli Bark low"
+
+[instruments.voice]
+waveform = "triangle"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.0010000000474974513
+decay = 0.3499999940395355
+sustain = 0.4000000059604645
+release = 0.2199999988079071
+env_curve = 0.8500000238418579
+glide = 0.0
+cutoff = 1700.0
+resonance = 0.5
+filter_type = "lowpass"
+filter_env = 0.44999998807907104
+filter_attack = 0.0010000000474974513
+filter_decay = 0.14000000059604645
+key_track = 0.30000001192092896
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Wurli Bark high"
+
+[instruments.voice]
+waveform = "square"
+noise_level = 0.0
+pulse_width = 0.23999999463558197
+attack = 0.0010000000474974513
+decay = 0.07000000029802322
+sustain = 0.03999999910593033
+release = 0.10000000149011612
+env_curve = 0.9200000166893005
+glide = 0.0
+cutoff = 3800.0
+resonance = 0.5199999809265137
+filter_type = "lowpass"
+filter_env = 0.6499999761581421
+filter_attack = 0.0010000000474974513
+filter_decay = 0.05000000074505806
+key_track = 0.3499999940395355
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Clav low"
+
+[instruments.voice]
+waveform = "square"
+noise_level = 0.0
+pulse_width = 0.2800000011920929
+attack = 0.0010000000474974513
+decay = 0.18000000715255737
+sustain = 0.05000000074505806
+release = 0.10000000149011612
+env_curve = 0.800000011920929
+glide = 0.0
+cutoff = 1200.0
+resonance = 0.550000011920929
+filter_type = "lowpass"
+filter_env = 0.3499999940395355
+filter_attack = 0.0010000000474974513
+filter_decay = 0.10000000149011612
+key_track = 0.5
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Clav high"
+
+[instruments.voice]
+waveform = "square"
+noise_level = 0.0
+pulse_width = 0.25
+attack = 0.0010000000474974513
+decay = 0.10000000149011612
+sustain = 0.019999999552965164
+release = 0.07999999821186066
+env_curve = 0.8500000238418579
+glide = 0.0
+cutoff = 3000.0
+resonance = 0.5
+filter_type = "lowpass"
+filter_env = 0.44999998807907104
+filter_attack = 0.0010000000474974513
+filter_decay = 0.07000000029802322
+key_track = 0.550000011920929
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Grand Piano low"
+
+[instruments.voice]
+waveform = "piano"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.0010000000474974513
+decay = 1.100000023841858
+sustain = 0.18000000715255737
+release = 0.550000011920929
+env_curve = 0.8500000238418579
+glide = 0.0
+cutoff = 3200.0
+resonance = 0.11999999731779099
+filter_type = "lowpass"
+filter_env = 0.20000000298023224
+filter_attack = 0.0010000000474974513
+filter_decay = 0.44999998807907104
+key_track = 0.4000000059604645
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 2.0
+detune = 3.0
+
+[[instruments]]
+name = "Bell low"
+
+[instruments.voice]
+waveform = "sine"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.0020000000949949026
+decay = 1.2000000476837158
+sustain = 0.07999999821186066
+release = 1.600000023841858
+env_curve = 0.800000011920929
+glide = 0.0
+cutoff = 4000.0
+resonance = 0.10000000149011612
+filter_type = "lowpass"
+filter_env = 0.30000001192092896
+filter_attack = 0.0010000000474974513
+filter_decay = 0.8999999761581421
+key_track = 0.0
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 2.0
+detune = 4.0
+
+[[instruments]]
+name = "Bell high"
+
+[instruments.voice]
+waveform = "sine"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.0010000000474974513
+decay = 0.5
+sustain = 0.019999999552965164
+release = 1.0
+env_curve = 0.8500000238418579
+glide = 0.0
+cutoff = 7000.0
+resonance = 0.10000000149011612
+filter_type = "lowpass"
+filter_env = 0.3499999940395355
+filter_attack = 0.0010000000474974513
+filter_decay = 0.4000000059604645
+key_track = 0.0
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 2.0
+detune = 6.0
+
+[[instruments]]
+name = "Marimba low"
+
+[instruments.voice]
+waveform = "triangle"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.0010000000474974513
+decay = 0.44999998807907104
+sustain = 0.0
+release = 0.25
+env_curve = 0.8999999761581421
+glide = 0.0
+cutoff = 2200.0
+resonance = 0.15000000596046448
+filter_type = "lowpass"
+filter_env = 0.25
+filter_attack = 0.0010000000474974513
+filter_decay = 0.11999999731779099
+key_track = 0.44999998807907104
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Vibraphone low"
+
+[instruments.voice]
+waveform = "vibes"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.0020000000949949026
+decay = 1.399999976158142
+sustain = 0.0
+release = 1.2000000476837158
+env_curve = 0.8500000238418579
+glide = 0.0
+cutoff = 5000.0
+resonance = 0.10000000149011612
+filter_type = "lowpass"
+filter_env = 0.0
+filter_attack = 0.009999999776482582
+filter_decay = 0.20000000298023224
+key_track = 0.0
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.3499999940395355
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Vibraphone high"
+
+[instruments.voice]
+waveform = "vibes"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.0020000000949949026
+decay = 0.8999999761581421
+sustain = 0.0
+release = 1.600000023841858
+env_curve = 0.8500000238418579
+glide = 0.0
+cutoff = 7000.0
+resonance = 0.10000000149011612
+filter_type = "lowpass"
+filter_env = 0.0
+filter_attack = 0.009999999776482582
+filter_decay = 0.20000000298023224
+key_track = 0.0
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.44999998807907104
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Kalimba low"
+
+[instruments.voice]
+waveform = "nylon"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.0010000000474974513
+decay = 0.3400000035762787
+sustain = 0.0
+release = 0.20000000298023224
+env_curve = 0.8999999761581421
+glide = 0.0
+cutoff = 1600.0
+resonance = 0.15000000596046448
+filter_type = "lowpass"
+filter_env = 0.0
+filter_attack = 0.009999999776482582
+filter_decay = 0.20000000298023224
+key_track = 0.4000000059604645
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Kalimba high"
+
+[instruments.voice]
+waveform = "vibes"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.0010000000474974513
+decay = 0.18000000715255737
+sustain = 0.0
+release = 0.23999999463558197
+env_curve = 0.8999999761581421
+glide = 0.0
+cutoff = 2600.0
+resonance = 0.11999999731779099
+filter_type = "lowpass"
+filter_env = 0.0
+filter_attack = 0.009999999776482582
+filter_decay = 0.20000000298023224
+key_track = 0.44999998807907104
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Harp low"
+
+[instruments.voice]
+waveform = "triangle"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.0020000000949949026
+decay = 0.8999999761581421
+sustain = 0.25
+release = 0.8999999761581421
+env_curve = 0.800000011920929
+glide = 0.0
+cutoff = 2500.0
+resonance = 0.11999999731779099
+filter_type = "lowpass"
+filter_env = 0.20000000298023224
+filter_attack = 0.0010000000474974513
+filter_decay = 0.5
+key_track = 0.4000000059604645
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Harp high"
+
+[instruments.voice]
+waveform = "sine"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.0020000000949949026
+decay = 0.4000000059604645
+sustain = 0.11999999731779099
+release = 1.100000023841858
+env_curve = 0.800000011920929
+glide = 0.0
+cutoff = 6000.0
+resonance = 0.10000000149011612
+filter_type = "lowpass"
+filter_env = 0.25
+filter_attack = 0.0010000000474974513
+filter_decay = 0.30000001192092896
+key_track = 0.44999998807907104
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Nylon Guitar low"
+
+[instruments.voice]
+waveform = "nylon"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.0020000000949949026
+decay = 0.6000000238418579
+sustain = 0.11999999731779099
+release = 0.3499999940395355
+env_curve = 0.8799999952316284
+glide = 0.0
+cutoff = 2200.0
+resonance = 0.2199999988079071
+filter_type = "lowpass"
+filter_env = 0.25
+filter_attack = 0.0010000000474974513
+filter_decay = 0.18000000715255737
+key_track = 0.44999998807907104
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Nylon Guitar high"
+
+[instruments.voice]
+waveform = "nylon"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.0020000000949949026
+decay = 0.3400000035762787
+sustain = 0.05999999865889549
+release = 0.4000000059604645
+env_curve = 0.8799999952316284
+glide = 0.0
+cutoff = 3600.0
+resonance = 0.18000000715255737
+filter_type = "lowpass"
+filter_env = 0.30000001192092896
+filter_attack = 0.0010000000474974513
+filter_decay = 0.12999999523162842
+key_track = 0.5
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Pizzicato low"
+
+[instruments.voice]
+waveform = "nylon"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.0010000000474974513
+decay = 0.25999999046325684
+sustain = 0.0
+release = 0.1599999964237213
+env_curve = 0.9200000166893005
+glide = 0.0
+cutoff = 1800.0
+resonance = 0.30000001192092896
+filter_type = "lowpass"
+filter_env = 0.3499999940395355
+filter_attack = 0.0010000000474974513
+filter_decay = 0.07999999821186066
+key_track = 0.44999998807907104
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Pizzicato high"
+
+[instruments.voice]
+waveform = "nylon"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.0010000000474974513
+decay = 0.1599999964237213
+sustain = 0.0
+release = 0.20000000298023224
+env_curve = 0.9200000166893005
+glide = 0.0
+cutoff = 3000.0
+resonance = 0.2800000011920929
+filter_type = "lowpass"
+filter_env = 0.4000000059604645
+filter_attack = 0.0010000000474974513
+filter_decay = 0.05999999865889549
+key_track = 0.5
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "String Pad low"
+
+[instruments.voice]
+waveform = "saw"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.3499999940395355
+decay = 0.5
+sustain = 0.8500000238418579
+release = 1.399999976158142
+env_curve = 0.5
+glide = 0.0
+cutoff = 1400.0
+resonance = 0.20000000298023224
+filter_type = "lowpass"
+filter_env = 0.0
+filter_attack = 0.009999999776482582
+filter_decay = 0.20000000298023224
+key_track = 0.0
+lfo_pitch = 0.05000000074505806
+lfo_cutoff = 0.07999999821186066
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 3.0
+detune = 11.0
+
+[[instruments]]
+name = "String Pad high"
+
+[instruments.voice]
+waveform = "saw"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.44999998807907104
+decay = 0.5
+sustain = 0.800000011920929
+release = 1.7999999523162842
+env_curve = 0.5
+glide = 0.0
+cutoff = 2800.0
+resonance = 0.25
+filter_type = "lowpass"
+filter_env = 0.0
+filter_attack = 0.009999999776482582
+filter_decay = 0.20000000298023224
+key_track = 0.0
+lfo_pitch = 0.07000000029802322
+lfo_cutoff = 0.11999999731779099
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 3.0
+detune = 15.0
+
+[[instruments]]
+name = "PWM Pad low"
+
+[instruments.voice]
+waveform = "square"
+noise_level = 0.0
+pulse_width = 0.41999998688697815
+attack = 0.30000001192092896
+decay = 0.4000000059604645
+sustain = 0.8999999761581421
+release = 1.2999999523162842
+env_curve = 0.44999998807907104
+glide = 0.0
+cutoff = 1600.0
+resonance = 0.3499999940395355
+filter_type = "lowpass"
+filter_env = 0.0
+filter_attack = 0.009999999776482582
+filter_decay = 0.20000000298023224
+key_track = 0.0
+lfo_pitch = 0.0
+lfo_cutoff = 0.05999999865889549
+lfo_amp = 0.0
+lfo_pwm = 0.44999998807907104
+unison = 2.0
+detune = 7.0
+
+[[instruments]]
+name = "PWM Pad high"
+
+[instruments.voice]
+waveform = "square"
+noise_level = 0.0
+pulse_width = 0.5799999833106995
+attack = 0.4000000059604645
+decay = 0.4000000059604645
+sustain = 0.8500000238418579
+release = 1.7000000476837158
+env_curve = 0.44999998807907104
+glide = 0.0
+cutoff = 3000.0
+resonance = 0.4000000059604645
+filter_type = "lowpass"
+filter_env = 0.0
+filter_attack = 0.009999999776482582
+filter_decay = 0.20000000298023224
+key_track = 0.0
+lfo_pitch = 0.0
+lfo_cutoff = 0.10000000149011612
+lfo_amp = 0.0
+lfo_pwm = 0.6499999761581421
+unison = 2.0
+detune = 9.0
+
+[[instruments]]
+name = "Vox Pad low"
+
+[instruments.voice]
+waveform = "vox"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.44999998807907104
+decay = 0.5
+sustain = 0.8500000238418579
+release = 1.5
+env_curve = 0.4000000059604645
+glide = 0.0
+cutoff = 1600.0
+resonance = 0.30000001192092896
+filter_type = "lowpass"
+filter_env = 0.0
+filter_attack = 0.009999999776482582
+filter_decay = 0.20000000298023224
+key_track = 0.0
+lfo_pitch = 0.05000000074505806
+lfo_cutoff = 0.07999999821186066
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 2.0
+detune = 9.0
+
+[[instruments]]
+name = "Vox Pad high"
+
+[instruments.voice]
+waveform = "vox"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.550000011920929
+decay = 0.5
+sustain = 0.800000011920929
+release = 1.899999976158142
+env_curve = 0.4000000059604645
+glide = 0.0
+cutoff = 3000.0
+resonance = 0.3499999940395355
+filter_type = "lowpass"
+filter_env = 0.0
+filter_attack = 0.009999999776482582
+filter_decay = 0.20000000298023224
+key_track = 0.0
+lfo_pitch = 0.07000000029802322
+lfo_cutoff = 0.11999999731779099
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 2.0
+detune = 13.0
+
+[[instruments]]
+name = "Choir Aah low"
+
+[instruments.voice]
+waveform = "voxaah"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.30000001192092896
+decay = 0.4000000059604645
+sustain = 0.8999999761581421
+release = 1.2000000476837158
+env_curve = 0.4000000059604645
+glide = 0.0
+cutoff = 1500.0
+resonance = 0.25
+filter_type = "lowpass"
+filter_env = 0.0
+filter_attack = 0.009999999776482582
+filter_decay = 0.20000000298023224
+key_track = 0.0
+lfo_pitch = 0.05000000074505806
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 3.0
+detune = 10.0
+
+[[instruments]]
+name = "Choir Aah high"
+
+[instruments.voice]
+waveform = "voxaah"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.3799999952316284
+decay = 0.4000000059604645
+sustain = 0.8500000238418579
+release = 1.600000023841858
+env_curve = 0.4000000059604645
+glide = 0.0
+cutoff = 2600.0
+resonance = 0.25
+filter_type = "lowpass"
+filter_env = 0.0
+filter_attack = 0.009999999776482582
+filter_decay = 0.20000000298023224
+key_track = 0.0
+lfo_pitch = 0.07000000029802322
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 3.0
+detune = 14.0
+
+[[instruments]]
+name = "Choir Ooh low"
+
+[instruments.voice]
+waveform = "voxooh"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.3499999940395355
+decay = 0.4000000059604645
+sustain = 0.8999999761581421
+release = 1.2999999523162842
+env_curve = 0.4000000059604645
+glide = 0.0
+cutoff = 1000.0
+resonance = 0.20000000298023224
+filter_type = "lowpass"
+filter_env = 0.0
+filter_attack = 0.009999999776482582
+filter_decay = 0.20000000298023224
+key_track = 0.0
+lfo_pitch = 0.03999999910593033
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 2.0
+detune = 8.0
+
+[[instruments]]
+name = "Choir Ooh high"
+
+[instruments.voice]
+waveform = "voxooh"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.44999998807907104
+decay = 0.4000000059604645
+sustain = 0.8500000238418579
+release = 1.7000000476837158
+env_curve = 0.4000000059604645
+glide = 0.0
+cutoff = 1700.0
+resonance = 0.20000000298023224
+filter_type = "lowpass"
+filter_env = 0.0
+filter_attack = 0.009999999776482582
+filter_decay = 0.20000000298023224
+key_track = 0.0
+lfo_pitch = 0.05000000074505806
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 2.0
+detune = 10.0
+
+[[instruments]]
+name = "Buzz Lead low"
+
+[instruments.voice]
+waveform = "buzz"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.009999999776482582
+decay = 0.30000001192092896
+sustain = 0.550000011920929
+release = 0.20000000298023224
+env_curve = 0.699999988079071
+glide = 0.0
+cutoff = 1400.0
+resonance = 0.4000000059604645
+filter_type = "lowpass"
+filter_env = 0.5
+filter_attack = 0.004000000189989805
+filter_decay = 0.2199999988079071
+key_track = 0.44999998807907104
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Buzz Lead high"
+
+[instruments.voice]
+waveform = "buzz"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.00800000037997961
+decay = 0.23999999463558197
+sustain = 0.44999998807907104
+release = 0.18000000715255737
+env_curve = 0.699999988079071
+glide = 0.0
+cutoff = 2800.0
+resonance = 0.4000000059604645
+filter_type = "lowpass"
+filter_env = 0.550000011920929
+filter_attack = 0.003000000026077032
+filter_decay = 0.18000000715255737
+key_track = 0.5
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Soft Horn low"
+
+[instruments.voice]
+waveform = "saw"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.09000000357627869
+decay = 0.30000001192092896
+sustain = 1.0
+release = 0.11999999731779099
+env_curve = 0.4000000059604645
+glide = 0.0
+cutoff = 900.0
+resonance = 0.2199999988079071
+filter_type = "lowpass"
+filter_env = 0.550000011920929
+filter_attack = 0.2800000011920929
+filter_decay = 0.8999999761581421
+key_track = 0.699999988079071
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Soft Horn high"
+
+[instruments.voice]
+waveform = "saw"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.10999999940395355
+decay = 0.30000001192092896
+sustain = 0.949999988079071
+release = 0.11999999731779099
+env_curve = 0.4000000059604645
+glide = 0.0
+cutoff = 1700.0
+resonance = 0.20000000298023224
+filter_type = "lowpass"
+filter_env = 0.6000000238418579
+filter_attack = 0.3199999928474426
+filter_decay = 1.0
+key_track = 0.699999988079071
+lfo_pitch = 0.03999999910593033
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Trumpet low"
+
+[instruments.voice]
+waveform = "reed"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.029999999329447746
+decay = 0.25
+sustain = 1.0
+release = 0.10000000149011612
+env_curve = 0.5
+glide = 0.0
+cutoff = 1400.0
+resonance = 0.30000001192092896
+filter_type = "lowpass"
+filter_env = 0.550000011920929
+filter_attack = 0.09000000357627869
+filter_decay = 0.5
+key_track = 0.6000000238418579
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Trumpet high"
+
+[instruments.voice]
+waveform = "reed"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.03799999877810478
+decay = 0.25
+sustain = 0.949999988079071
+release = 0.10000000149011612
+env_curve = 0.5
+glide = 0.0
+cutoff = 2400.0
+resonance = 0.2800000011920929
+filter_type = "lowpass"
+filter_env = 0.6000000238418579
+filter_attack = 0.10999999940395355
+filter_decay = 0.550000011920929
+key_track = 0.6000000238418579
+lfo_pitch = 0.05000000074505806
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Clarinet low"
+
+[instruments.voice]
+waveform = "clarinet"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.054999999701976776
+decay = 0.25
+sustain = 0.8999999761581421
+release = 0.20000000298023224
+env_curve = 0.4000000059604645
+glide = 0.0
+cutoff = 1800.0
+resonance = 0.25
+filter_type = "lowpass"
+filter_env = 0.0
+filter_attack = 0.009999999776482582
+filter_decay = 0.20000000298023224
+key_track = 0.30000001192092896
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Clarinet high"
+
+[instruments.voice]
+waveform = "clarinet"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.07000000029802322
+decay = 0.25
+sustain = 0.8500000238418579
+release = 0.23999999463558197
+env_curve = 0.4000000059604645
+glide = 0.0
+cutoff = 2800.0
+resonance = 0.25
+filter_type = "lowpass"
+filter_env = 0.0
+filter_attack = 0.009999999776482582
+filter_decay = 0.20000000298023224
+key_track = 0.3499999940395355
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Oboe low"
+
+[instruments.voice]
+waveform = "reed"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.03999999910593033
+decay = 0.2199999988079071
+sustain = 0.8999999761581421
+release = 0.1599999964237213
+env_curve = 0.44999998807907104
+glide = 0.0
+cutoff = 2600.0
+resonance = 0.3499999940395355
+filter_type = "lowpass"
+filter_env = 0.0
+filter_attack = 0.009999999776482582
+filter_decay = 0.20000000298023224
+key_track = 0.30000001192092896
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Oboe high"
+
+[instruments.voice]
+waveform = "reed"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.05000000074505806
+decay = 0.2199999988079071
+sustain = 0.8500000238418579
+release = 0.20000000298023224
+env_curve = 0.44999998807907104
+glide = 0.0
+cutoff = 4000.0
+resonance = 0.3499999940395355
+filter_type = "lowpass"
+filter_env = 0.0
+filter_attack = 0.009999999776482582
+filter_decay = 0.20000000298023224
+key_track = 0.3499999940395355
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Flute low"
+
+[instruments.voice]
+waveform = "gedeckt"
+noise_level = 0.1599999964237213
+pulse_width = 0.5
+attack = 0.09000000357627869
+decay = 0.20000000298023224
+sustain = 0.8500000238418579
+release = 0.18000000715255737
+env_curve = 0.3499999940395355
+glide = 0.0
+cutoff = 3000.0
+resonance = 0.15000000596046448
+filter_type = "lowpass"
+filter_env = 0.0
+filter_attack = 0.009999999776482582
+filter_decay = 0.20000000298023224
+key_track = 0.25
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Flute high"
+
+[instruments.voice]
+waveform = "sine"
+noise_level = 0.23999999463558197
+pulse_width = 0.5
+attack = 0.10999999940395355
+decay = 0.20000000298023224
+sustain = 0.800000011920929
+release = 0.2199999988079071
+env_curve = 0.3499999940395355
+glide = 0.0
+cutoff = 4600.0
+resonance = 0.11999999731779099
+filter_type = "lowpass"
+filter_env = 0.0
+filter_attack = 0.009999999776482582
+filter_decay = 0.20000000298023224
+key_track = 0.30000001192092896
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Sub Bass mid"
+
+[instruments.voice]
+waveform = "saw"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.006000000052154064
+decay = 0.11999999731779099
+sustain = 0.550000011920929
+release = 0.14000000059604645
+env_curve = 0.4000000059604645
+glide = 0.0
+cutoff = 900.0
+resonance = 0.25
+filter_type = "lowpass"
+filter_env = 0.20000000298023224
+filter_attack = 0.0020000000949949026
+filter_decay = 0.14000000059604645
+key_track = 0.30000001192092896
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Sub Bass high"
+
+[instruments.voice]
+waveform = "sine"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.006000000052154064
+decay = 0.10000000149011612
+sustain = 0.4000000059604645
+release = 0.1599999964237213
+env_curve = 0.0
+glide = 0.0
+cutoff = 1200.0
+resonance = 0.10000000149011612
+filter_type = "lowpass"
+filter_env = 0.0
+filter_attack = 0.009999999776482582
+filter_decay = 0.20000000298023224
+key_track = 0.0
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Acid Bass mid"
+
+[instruments.voice]
+waveform = "saw"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.003000000026077032
+decay = 0.20000000298023224
+sustain = 0.25
+release = 0.07999999821186066
+env_curve = 0.800000011920929
+glide = 0.05999999865889549
+cutoff = 700.0
+resonance = 0.6499999761581421
+filter_type = "lowpass"
+filter_env = 0.6000000238418579
+filter_attack = 0.0010000000474974513
+filter_decay = 0.20000000298023224
+key_track = 0.4000000059604645
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Acid Bass high"
+
+[instruments.voice]
+waveform = "square"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.003000000026077032
+decay = 0.15000000596046448
+sustain = 0.15000000596046448
+release = 0.05999999865889549
+env_curve = 0.800000011920929
+glide = 0.05999999865889549
+cutoff = 900.0
+resonance = 0.5
+filter_type = "lowpass"
+filter_env = 0.550000011920929
+filter_attack = 0.0010000000474974513
+filter_decay = 0.1599999964237213
+key_track = 0.4000000059604645
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Upright Bass mid"
+
+[instruments.voice]
+waveform = "nylon"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.00800000037997961
+decay = 0.30000001192092896
+sustain = 0.07999999821186066
+release = 0.2800000011920929
+env_curve = 0.800000011920929
+glide = 0.029999999329447746
+cutoff = 1100.0
+resonance = 0.18000000715255737
+filter_type = "lowpass"
+filter_env = 0.0
+filter_attack = 0.009999999776482582
+filter_decay = 0.20000000298023224
+key_track = 0.25
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Upright Bass high"
+
+[instruments.voice]
+waveform = "sine"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.00800000037997961
+decay = 0.20000000298023224
+sustain = 0.05999999865889549
+release = 0.30000001192092896
+env_curve = 0.800000011920929
+glide = 0.029999999329447746
+cutoff = 1500.0
+resonance = 0.10000000149011612
+filter_type = "lowpass"
+filter_env = 0.0
+filter_attack = 0.009999999776482582
+filter_decay = 0.20000000298023224
+key_track = 0.25
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Kick low"
+
+[instruments.voice]
+waveform = "sine"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.0010000000474974513
+decay = 0.07000000029802322
+sustain = 0.0
+release = 0.03999999910593033
+env_curve = 0.9200000166893005
+glide = 0.0
+cutoff = 260.0
+resonance = 0.10000000149011612
+filter_type = "lowpass"
+filter_env = 0.0
+filter_attack = 0.009999999776482582
+filter_decay = 0.20000000298023224
+key_track = 0.0
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Kick high"
+
+[instruments.voice]
+waveform = "triangle"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.0010000000474974513
+decay = 0.01600000075995922
+sustain = 0.0
+release = 0.01600000075995922
+env_curve = 0.949999988079071
+glide = 0.0
+cutoff = 1200.0
+resonance = 0.20000000298023224
+filter_type = "lowpass"
+filter_env = -0.3499999940395355
+filter_attack = 0.0010000000474974513
+filter_decay = 0.029999999329447746
+key_track = 0.0
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Hi-Hat low"
+
+[instruments.voice]
+waveform = "noise"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.0010000000474974513
+decay = 0.05000000074505806
+sustain = 0.0
+release = 0.029999999329447746
+env_curve = 0.8999999761581421
+glide = 0.0
+cutoff = 6000.0
+resonance = 0.10000000149011612
+filter_type = "highpass"
+filter_env = 0.0
+filter_attack = 0.009999999776482582
+filter_decay = 0.20000000298023224
+key_track = 0.0
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Hi-Hat high"
+
+[instruments.voice]
+waveform = "noise"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.0010000000474974513
+decay = 0.03500000014901161
+sustain = 0.0
+release = 0.019999999552965164
+env_curve = 0.8999999761581421
+glide = 0.0
+cutoff = 8000.0
+resonance = 0.10000000149011612
+filter_type = "highpass"
+filter_env = 0.0
+filter_attack = 0.009999999776482582
+filter_decay = 0.20000000298023224
+key_track = 0.0
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Snare low"
+
+[instruments.voice]
+waveform = "triangle"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.0010000000474974513
+decay = 0.10000000149011612
+sustain = 0.0
+release = 0.03999999910593033
+env_curve = 0.8500000238418579
+glide = 0.0
+cutoff = 400.0
+resonance = 0.20000000298023224
+filter_type = "lowpass"
+filter_env = 0.0
+filter_attack = 0.009999999776482582
+filter_decay = 0.20000000298023224
+key_track = 0.0
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Snare high"
+
+[instruments.voice]
+waveform = "noise"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.0010000000474974513
+decay = 0.09000000357627869
+sustain = 0.0
+release = 0.03999999910593033
+env_curve = 0.8500000238418579
+glide = 0.0
+cutoff = 6000.0
+resonance = 0.15000000596046448
+filter_type = "highpass"
+filter_env = 0.0
+filter_attack = 0.009999999776482582
+filter_decay = 0.20000000298023224
+key_track = 0.0
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Wind low"
+
+[instruments.voice]
+waveform = "noise"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.550000011920929
+decay = 1.2000000476837158
+sustain = 0.699999988079071
+release = 1.5
+env_curve = 0.30000001192092896
+glide = 0.0
+cutoff = 400.0
+resonance = 0.44999998807907104
+filter_type = "lowpass"
+filter_env = 0.699999988079071
+filter_attack = 0.8999999761581421
+filter_decay = 1.5
+key_track = 0.0
+lfo_pitch = 0.0
+lfo_cutoff = 0.18000000715255737
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+[[instruments]]
+name = "Wind high"
+
+[instruments.voice]
+waveform = "noise"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.75
+decay = 1.2000000476837158
+sustain = 0.6499999761581421
+release = 1.7999999523162842
+env_curve = 0.30000001192092896
+glide = 0.0
+cutoff = 1100.0
+resonance = 0.4000000059604645
+filter_type = "lowpass"
+filter_env = 0.699999988079071
+filter_attack = 1.2999999523162842
+filter_decay = 1.7999999523162842
+key_track = 0.0
+lfo_pitch = 0.0
+lfo_cutoff = 0.25
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+
+# ---------------------------------------------------------------------------
+# Added with the expanded voice: the plucked string, FM, the second oscillator,
+# the wavetable position, phase distortion, the notch and peak filter outputs,
+# drive, and velocity as a change of tone. Each one is here because the control
+# it uses did not exist before it.
+# ---------------------------------------------------------------------------
+
+[[instruments]]
+name = "Steel Guitar"
+
+[instruments.voice]
+waveform = "pluck"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.001
+decay = 0.001
+sustain = 1.0
+release = 0.25
+env_curve = 0.0
+glide = 0.0
+cutoff = 7000.0
+resonance = 0.1
+filter_type = "lowpass"
+filter_env = 0.0
+filter_attack = 0.01
+filter_decay = 0.2
+key_track = 0.35
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+drive = 0.0
+vel_cutoff = 0.0
+vel_pwm = 0.0
+position = 0.0
+phase_dist = 0.0
+osc2_waveform = "sine"
+osc2_interval = 0.0
+osc2_level = 0.0
+osc2_fm = 0.0
+pluck_decay = 4.5
+pluck_damp = 0.3
+pluck_burst = 0.5
+
+[[instruments]]
+name = "Nylon Pluck"
+
+[instruments.voice]
+waveform = "pluck"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.002
+decay = 0.001
+sustain = 1.0
+release = 0.3
+env_curve = 0.0
+glide = 0.0
+cutoff = 4200.0
+resonance = 0.08
+filter_type = "lowpass"
+filter_env = 0.0
+filter_attack = 0.01
+filter_decay = 0.2
+key_track = 0.4
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+drive = 0.0
+vel_cutoff = 0.0
+vel_pwm = 0.0
+position = 0.0
+phase_dist = 0.0
+osc2_waveform = "sine"
+osc2_interval = 0.0
+osc2_level = 0.0
+osc2_fm = 0.0
+pluck_decay = 2.4
+pluck_damp = 0.55
+pluck_burst = 0.95
+
+[[instruments]]
+name = "Harpsichord"
+
+[instruments.voice]
+waveform = "pluck"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.001
+decay = 0.001
+sustain = 1.0
+release = 0.2
+env_curve = 0.0
+glide = 0.0
+cutoff = 7500.0
+resonance = 0.05
+filter_type = "lowpass"
+filter_env = 0.0
+filter_attack = 0.01
+filter_decay = 0.2
+key_track = 0.5
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+drive = 0.12
+vel_cutoff = 0.0
+vel_pwm = 0.0
+position = 0.0
+phase_dist = 0.0
+osc2_waveform = "sine"
+osc2_interval = 0.0
+osc2_level = 0.0
+osc2_fm = 0.0
+pluck_decay = 1.6
+pluck_damp = 0.25
+pluck_burst = 0.22
+
+[[instruments]]
+name = "Bass Guitar"
+
+[instruments.voice]
+waveform = "pluck"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.001
+decay = 0.001
+sustain = 1.0
+release = 0.2
+env_curve = 0.0
+glide = 0.0
+cutoff = 1700.0
+resonance = 0.15
+filter_type = "lowpass"
+filter_env = 0.0
+filter_attack = 0.01
+filter_decay = 0.2
+key_track = 0.2
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+drive = 0.25
+vel_cutoff = 0.0
+vel_pwm = 0.0
+position = 0.0
+phase_dist = 0.0
+osc2_waveform = "sine"
+osc2_interval = 0.0
+osc2_level = 0.0
+osc2_fm = 0.0
+pluck_decay = 3.0
+pluck_damp = 0.6
+pluck_burst = 0.7
+
+[[instruments]]
+name = "Muted Guitar"
+
+[instruments.voice]
+waveform = "pluck"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.001
+decay = 0.001
+sustain = 1.0
+release = 0.12
+env_curve = 0.0
+glide = 0.0
+cutoff = 2400.0
+resonance = 0.2
+filter_type = "lowpass"
+filter_env = 0.0
+filter_attack = 0.01
+filter_decay = 0.2
+key_track = 0.3
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+drive = 0.0
+vel_cutoff = 0.0
+vel_pwm = 0.0
+position = 0.0
+phase_dist = 0.0
+osc2_waveform = "sine"
+osc2_interval = 0.0
+osc2_level = 0.0
+osc2_fm = 0.0
+pluck_decay = 0.45
+pluck_damp = 0.75
+pluck_burst = 0.85
+
+[[instruments]]
+name = "Sitar"
+
+[instruments.voice]
+waveform = "pluck"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.001
+decay = 0.001
+sustain = 1.0
+release = 0.6
+env_curve = 0.0
+glide = 0.0
+cutoff = 900.0
+resonance = 0.5
+filter_type = "peak"
+filter_env = 0.0
+filter_attack = 0.002
+filter_decay = 0.4
+key_track = 0.45
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+drive = 0.35
+vel_cutoff = 0.0
+vel_pwm = 0.0
+position = 0.0
+phase_dist = 0.0
+osc2_waveform = "sine"
+osc2_interval = 0.0
+osc2_level = 0.0
+osc2_fm = 0.0
+pluck_decay = 6.0
+pluck_damp = 0.2
+pluck_burst = 0.35
+
+[[instruments]]
+name = "FM Tine Piano"
+
+[instruments.voice]
+waveform = "sine"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.002
+decay = 1.2
+sustain = 0.25
+release = 0.45
+env_curve = 0.7
+glide = 0.0
+cutoff = 1300.0
+resonance = 0.1
+filter_type = "lowpass"
+filter_env = 0.85
+filter_attack = 0.001
+filter_decay = 0.3
+key_track = 0.35
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+drive = 0.0
+vel_cutoff = 0.0
+vel_pwm = 0.0
+position = 0.0
+phase_dist = 0.0
+osc2_waveform = "sine"
+osc2_interval = 19.0
+osc2_level = 0.0
+osc2_fm = 0.5
+pluck_decay = 2.5
+pluck_damp = 0.35
+pluck_burst = 0.9
+
+[[instruments]]
+name = "FM Bell"
+
+[instruments.voice]
+waveform = "sine"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.001
+decay = 3.2
+sustain = 0.0
+release = 2.2
+env_curve = 0.9
+glide = 0.0
+cutoff = 6000.0
+resonance = 0.0
+filter_type = "lowpass"
+filter_env = 0.0
+filter_attack = 0.01
+filter_decay = 0.2
+key_track = 0.2
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+drive = 0.0
+vel_cutoff = 0.0
+vel_pwm = 0.0
+position = 0.0
+phase_dist = 0.0
+osc2_waveform = "sine"
+osc2_interval = 18.0
+osc2_level = 0.18
+osc2_fm = 0.62
+pluck_decay = 2.5
+pluck_damp = 0.35
+pluck_burst = 0.9
+
+[[instruments]]
+name = "FM Marimba"
+
+[instruments.voice]
+waveform = "sine"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.001
+decay = 0.4
+sustain = 0.0
+release = 0.25
+env_curve = 0.6
+glide = 0.0
+cutoff = 3500.0
+resonance = 0.05
+filter_type = "lowpass"
+filter_env = 0.5
+filter_attack = 0.001
+filter_decay = 0.12
+key_track = 0.3
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+drive = 0.0
+vel_cutoff = 0.0
+vel_pwm = 0.0
+position = 0.0
+phase_dist = 0.0
+osc2_waveform = "sine"
+osc2_interval = 24.0
+osc2_level = 0.1
+osc2_fm = 0.3
+pluck_decay = 2.5
+pluck_damp = 0.35
+pluck_burst = 0.9
+
+[[instruments]]
+name = "FM Bass"
+
+[instruments.voice]
+waveform = "sine"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.002
+decay = 0.6
+sustain = 0.35
+release = 0.18
+env_curve = 0.5
+glide = 0.0
+cutoff = 1500.0
+resonance = 0.1
+filter_type = "lowpass"
+filter_env = 0.6
+filter_attack = 0.001
+filter_decay = 0.14
+key_track = 0.2
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+drive = 0.0
+vel_cutoff = 0.0
+vel_pwm = 0.0
+position = 0.0
+phase_dist = 0.0
+osc2_waveform = "sine"
+osc2_interval = 12.0
+osc2_level = 0.0
+osc2_fm = 0.32
+pluck_decay = 2.5
+pluck_damp = 0.35
+pluck_burst = 0.9
+
+[[instruments]]
+name = "FM Brass"
+
+[instruments.voice]
+waveform = "sine"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.05
+decay = 0.5
+sustain = 0.8
+release = 0.25
+env_curve = 0.3
+glide = 0.0
+cutoff = 2400.0
+resonance = 0.15
+filter_type = "lowpass"
+filter_env = 0.5
+filter_attack = 0.09
+filter_decay = 0.5
+key_track = 0.3
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+drive = 0.0
+vel_cutoff = 0.0
+vel_pwm = 0.0
+position = 0.0
+phase_dist = 0.0
+osc2_waveform = "sine"
+osc2_interval = 12.0
+osc2_level = 0.22
+osc2_fm = 0.4
+pluck_decay = 2.5
+pluck_damp = 0.35
+pluck_burst = 0.9
+
+[[instruments]]
+name = "Twin Registration Organ"
+
+[instruments.voice]
+waveform = "organjazz"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.004
+decay = 0.001
+sustain = 1.0
+release = 0.06
+env_curve = 0.0
+glide = 0.0
+cutoff = 6000.0
+resonance = 0.0
+filter_type = "lowpass"
+filter_env = 0.0
+filter_attack = 0.01
+filter_decay = 0.2
+key_track = 0.1
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+drive = 0.0
+vel_cutoff = 0.0
+vel_pwm = 0.0
+position = 0.0
+phase_dist = 0.0
+osc2_waveform = "organbright"
+osc2_interval = 12.0
+osc2_level = 0.45
+osc2_fm = 0.0
+pluck_decay = 2.5
+pluck_damp = 0.35
+pluck_burst = 0.9
+
+[[instruments]]
+name = "Morph Choir"
+
+[instruments.voice]
+waveform = "voxaah"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.35
+decay = 0.4
+sustain = 0.9
+release = 0.7
+env_curve = 0.2
+glide = 0.0
+cutoff = 3500.0
+resonance = 0.1
+filter_type = "lowpass"
+filter_env = 0.0
+filter_attack = 0.01
+filter_decay = 0.2
+key_track = 0.25
+lfo_pitch = 0.0
+lfo_cutoff = 0.12
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 2
+detune = 6.0
+drive = 0.0
+vel_cutoff = 0.0
+vel_pwm = 0.0
+position = 0.45
+phase_dist = 0.0
+osc2_waveform = "sine"
+osc2_interval = 0.0
+osc2_level = 0.0
+osc2_fm = 0.0
+pluck_decay = 2.5
+pluck_damp = 0.35
+pluck_burst = 0.9
+
+[[instruments]]
+name = "Glass Morph Pad"
+
+[instruments.voice]
+waveform = "glasstone"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.7
+decay = 0.5
+sustain = 0.9
+release = 1.1
+env_curve = 0.25
+glide = 0.0
+cutoff = 4000.0
+resonance = 0.15
+filter_type = "lowpass"
+filter_env = 0.0
+filter_attack = 0.01
+filter_decay = 0.2
+key_track = 0.2
+lfo_pitch = 0.0
+lfo_cutoff = 0.15
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 2
+detune = 8.0
+drive = 0.0
+vel_cutoff = 0.0
+vel_pwm = 0.0
+position = 0.5
+phase_dist = 0.0
+osc2_waveform = "sine"
+osc2_interval = 0.0
+osc2_level = 0.0
+osc2_fm = 0.0
+pluck_decay = 2.5
+pluck_damp = 0.35
+pluck_burst = 0.9
+
+[[instruments]]
+name = "CZ Lead"
+
+[instruments.voice]
+waveform = "sine"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.01
+decay = 0.5
+sustain = 0.7
+release = 0.3
+env_curve = 0.4
+glide = 0.0
+cutoff = 2600.0
+resonance = 0.3
+filter_type = "lowpass"
+filter_env = 0.45
+filter_attack = 0.01
+filter_decay = 0.4
+key_track = 0.35
+lfo_pitch = 0.06
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 2
+detune = 6.0
+drive = 0.0
+vel_cutoff = 0.0
+vel_pwm = 0.0
+position = 0.0
+phase_dist = 0.75
+osc2_waveform = "sine"
+osc2_interval = 0.0
+osc2_level = 0.0
+osc2_fm = 0.0
+pluck_decay = 2.5
+pluck_damp = 0.35
+pluck_burst = 0.9
+
+[[instruments]]
+name = "CZ Organ"
+
+[instruments.voice]
+waveform = "sine"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.006
+decay = 0.001
+sustain = 1.0
+release = 0.08
+env_curve = 0.0
+glide = 0.0
+cutoff = 5000.0
+resonance = 0.05
+filter_type = "lowpass"
+filter_env = 0.0
+filter_attack = 0.01
+filter_decay = 0.2
+key_track = 0.15
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+drive = 0.0
+vel_cutoff = 0.0
+vel_pwm = 0.0
+position = 0.0
+phase_dist = 0.5
+osc2_waveform = "sine"
+osc2_interval = 12.0
+osc2_level = 0.3
+osc2_fm = 0.0
+pluck_decay = 2.5
+pluck_damp = 0.35
+pluck_burst = 0.9
+
+[[instruments]]
+name = "Hollow Clav"
+
+[instruments.voice]
+waveform = "square"
+noise_level = 0.0
+pulse_width = 0.28
+attack = 0.002
+decay = 0.6
+sustain = 0.15
+release = 0.12
+env_curve = 0.8
+glide = 0.0
+cutoff = 1300.0
+resonance = 0.6
+filter_type = "notch"
+filter_env = 0.35
+filter_attack = 0.001
+filter_decay = 0.25
+key_track = 0.35
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+drive = 0.2
+vel_cutoff = 0.0
+vel_pwm = 0.0
+position = 0.0
+phase_dist = 0.0
+osc2_waveform = "sine"
+osc2_interval = 0.0
+osc2_level = 0.0
+osc2_fm = 0.0
+pluck_decay = 2.5
+pluck_damp = 0.35
+pluck_burst = 0.9
+
+[[instruments]]
+name = "Phase Pad"
+
+[instruments.voice]
+waveform = "organhollow"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.6
+decay = 0.6
+sustain = 0.9
+release = 1.0
+env_curve = 0.2
+glide = 0.0
+cutoff = 1000.0
+resonance = 0.45
+filter_type = "notch"
+filter_env = 0.0
+filter_attack = 0.01
+filter_decay = 0.2
+key_track = 0.15
+lfo_pitch = 0.0
+lfo_cutoff = 0.28
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 2
+detune = 9.0
+drive = 0.0
+vel_cutoff = 0.0
+vel_pwm = 0.0
+position = 0.0
+phase_dist = 0.0
+osc2_waveform = "sine"
+osc2_interval = 0.0
+osc2_level = 0.0
+osc2_fm = 0.0
+pluck_decay = 2.5
+pluck_damp = 0.35
+pluck_burst = 0.9
+
+[[instruments]]
+name = "Talking Lead"
+
+[instruments.voice]
+waveform = "saw"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.02
+decay = 0.4
+sustain = 0.85
+release = 0.25
+env_curve = 0.3
+glide = 0.0
+cutoff = 850.0
+resonance = 0.55
+filter_type = "peak"
+filter_env = 0.0
+filter_attack = 0.01
+filter_decay = 0.2
+key_track = 0.5
+lfo_pitch = 0.0
+lfo_cutoff = 0.22
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 2
+detune = 5.0
+drive = 0.0
+vel_cutoff = 0.0
+vel_pwm = 0.0
+position = 0.0
+phase_dist = 0.0
+osc2_waveform = "sine"
+osc2_interval = 0.0
+osc2_level = 0.0
+osc2_fm = 0.0
+pluck_decay = 2.5
+pluck_damp = 0.35
+pluck_burst = 0.9
+
+[[instruments]]
+name = "Overdriven Organ"
+
+[instruments.voice]
+waveform = "organfull"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.004
+decay = 0.001
+sustain = 1.0
+release = 0.1
+env_curve = 0.0
+glide = 0.0
+cutoff = 3200.0
+resonance = 0.2
+filter_type = "lowpass"
+filter_env = 0.0
+filter_attack = 0.01
+filter_decay = 0.2
+key_track = 0.2
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+drive = 0.6
+vel_cutoff = 0.0
+vel_pwm = 0.0
+position = 0.0
+phase_dist = 0.0
+osc2_waveform = "sine"
+osc2_interval = 0.0
+osc2_level = 0.0
+osc2_fm = 0.0
+pluck_decay = 2.5
+pluck_damp = 0.35
+pluck_burst = 0.9
+
+[[instruments]]
+name = "Dirty Tine"
+
+[instruments.voice]
+waveform = "piano"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.003
+decay = 1.0
+sustain = 0.3
+release = 0.35
+env_curve = 0.7
+glide = 0.0
+cutoff = 2200.0
+resonance = 0.25
+filter_type = "lowpass"
+filter_env = 0.45
+filter_attack = 0.001
+filter_decay = 0.3
+key_track = 0.3
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+drive = 0.45
+vel_cutoff = 0.0
+vel_pwm = 0.0
+position = 0.0
+phase_dist = 0.0
+osc2_waveform = "sine"
+osc2_interval = 0.0
+osc2_level = 0.0
+osc2_fm = 0.0
+pluck_decay = 2.5
+pluck_damp = 0.35
+pluck_burst = 0.9
+
+[[instruments]]
+name = "Accent Clav"
+
+[instruments.voice]
+waveform = "square"
+noise_level = 0.0
+pulse_width = 0.35
+attack = 0.002
+decay = 0.35
+sustain = 0.1
+release = 0.1
+env_curve = 0.85
+glide = 0.0
+cutoff = 1500.0
+resonance = 0.25
+filter_type = "lowpass"
+filter_env = 0.4
+filter_attack = 0.001
+filter_decay = 0.18
+key_track = 0.3
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+drive = 0.3
+vel_cutoff = 0.8
+vel_pwm = 0.5
+position = 0.0
+phase_dist = 0.0
+osc2_waveform = "sine"
+osc2_interval = 0.0
+osc2_level = 0.0
+osc2_fm = 0.0
+pluck_decay = 2.5
+pluck_damp = 0.35
+pluck_burst = 0.9
+
+# ---------------------------------------------------------------------------
+# Added with cross-modulation: the frequency domains of X-Mod, the in-tune
+# ring modulator, and the folded wave an operator's own feedback makes.
+# ---------------------------------------------------------------------------
+
+[[instruments]]
+name = "Growl Bass"
+
+[instruments.voice]
+waveform = "sine"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.004
+decay = 0.6
+sustain = 0.5
+release = 0.15
+env_curve = 0.4
+glide = 0.0
+cutoff = 1200.0
+resonance = 0.15
+filter_type = "lowpass"
+filter_env = 0.15
+filter_attack = 0.002
+filter_decay = 0.3
+key_track = 0.15
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+drive = 0.15
+vel_cutoff = 0.0
+vel_pwm = 0.0
+position = 0.0
+phase_dist = 0.0
+osc2_waveform = "sine"
+osc2_interval = 0.0
+osc2_level = 0.1
+osc2_fm = 0.35
+fm_mode = "linear"
+feedback = 0.0
+osc2_ring = 0.0
+pluck_decay = 2.5
+pluck_damp = 0.35
+pluck_burst = 0.9
+
+[[instruments]]
+name = "Through-Zero Bass"
+
+[instruments.voice]
+waveform = "sine"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.003
+decay = 0.5
+sustain = 0.6
+release = 0.12
+env_curve = 0.4
+glide = 0.0
+cutoff = 900.0
+resonance = 0.1
+filter_type = "lowpass"
+filter_env = 0.2
+filter_attack = 0.002
+filter_decay = 0.25
+key_track = 0.1
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+drive = 0.0
+vel_cutoff = 0.0
+vel_pwm = 0.0
+position = 0.0
+phase_dist = 0.0
+osc2_waveform = "sine"
+osc2_interval = 0.0
+osc2_level = 0.0
+osc2_fm = 0.85
+fm_mode = "linear"
+feedback = 0.0
+osc2_ring = 0.0
+pluck_decay = 2.5
+pluck_damp = 0.35
+pluck_burst = 0.9
+
+[[instruments]]
+name = "X-Mod Clang"
+
+[instruments.voice]
+waveform = "sine"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.002
+decay = 1.5
+sustain = 0.0
+release = 0.8
+env_curve = 0.85
+glide = 0.0
+cutoff = 6000.0
+resonance = 0.05
+filter_type = "lowpass"
+filter_env = 0.0
+filter_attack = 0.01
+filter_decay = 0.2
+key_track = 0.2
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+drive = 0.0
+vel_cutoff = 0.0
+vel_pwm = 0.0
+position = 0.0
+phase_dist = 0.0
+osc2_waveform = "sine"
+osc2_interval = 18.0
+osc2_level = 0.0
+osc2_fm = 0.45
+fm_mode = "expo"
+feedback = 0.0
+osc2_ring = 0.0
+pluck_decay = 2.5
+pluck_damp = 0.35
+pluck_burst = 0.9
+
+[[instruments]]
+name = "X-Mod Organ"
+
+[instruments.voice]
+waveform = "organjazz"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.01
+decay = 0.001
+sustain = 1.0
+release = 0.1
+env_curve = 0.0
+glide = 0.0
+cutoff = 5000.0
+resonance = 0.1
+filter_type = "lowpass"
+filter_env = 0.0
+filter_attack = 0.01
+filter_decay = 0.2
+key_track = 0.15
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+drive = 0.0
+vel_cutoff = 0.0
+vel_pwm = 0.0
+position = 0.0
+phase_dist = 0.0
+osc2_waveform = "sine"
+osc2_interval = 12.0
+osc2_level = 0.0
+osc2_fm = 0.18
+fm_mode = "expo"
+feedback = 0.0
+osc2_ring = 0.0
+pluck_decay = 2.5
+pluck_damp = 0.35
+pluck_burst = 0.9
+
+[[instruments]]
+name = "Ring Bell"
+
+[instruments.voice]
+waveform = "sine"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.001
+decay = 2.0
+sustain = 0.0
+release = 1.5
+env_curve = 0.9
+glide = 0.0
+cutoff = 6000.0
+resonance = 0.0
+filter_type = "lowpass"
+filter_env = 0.0
+filter_attack = 0.01
+filter_decay = 0.2
+key_track = 0.2
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+drive = 0.0
+vel_cutoff = 0.0
+vel_pwm = 0.0
+position = 0.0
+phase_dist = 0.0
+osc2_waveform = "sine"
+osc2_interval = 14.0
+osc2_level = 0.0
+osc2_fm = 0.0
+fm_mode = "phase"
+feedback = 0.0
+osc2_ring = 0.7
+pluck_decay = 2.5
+pluck_damp = 0.35
+pluck_burst = 0.9
+
+[[instruments]]
+name = "Ring Clav"
+
+[instruments.voice]
+waveform = "square"
+noise_level = 0.0
+pulse_width = 0.4
+attack = 0.002
+decay = 0.4
+sustain = 0.1
+release = 0.1
+env_curve = 0.8
+glide = 0.0
+cutoff = 2000.0
+resonance = 0.3
+filter_type = "lowpass"
+filter_env = 0.35
+filter_attack = 0.001
+filter_decay = 0.2
+key_track = 0.35
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+drive = 0.2
+vel_cutoff = 0.0
+vel_pwm = 0.0
+position = 0.0
+phase_dist = 0.0
+osc2_waveform = "square"
+osc2_interval = 12.0
+osc2_level = 0.15
+osc2_fm = 0.0
+fm_mode = "phase"
+feedback = 0.0
+osc2_ring = 0.5
+pluck_decay = 2.5
+pluck_damp = 0.35
+pluck_burst = 0.9
+
+[[instruments]]
+name = "Folded Saw"
+
+[instruments.voice]
+waveform = "sine"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.01
+decay = 0.4
+sustain = 0.6
+release = 0.25
+env_curve = 0.3
+glide = 0.0
+cutoff = 3000.0
+resonance = 0.25
+filter_type = "lowpass"
+filter_env = 0.4
+filter_attack = 0.01
+filter_decay = 0.35
+key_track = 0.3
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 2
+detune = 5.0
+drive = 0.0
+vel_cutoff = 0.0
+vel_pwm = 0.0
+position = 0.0
+phase_dist = 0.0
+osc2_waveform = "sine"
+osc2_interval = 0.0
+osc2_level = 0.0
+osc2_fm = 0.0
+fm_mode = "phase"
+feedback = 0.22
+osc2_ring = 0.0
+pluck_decay = 2.5
+pluck_damp = 0.35
+pluck_burst = 0.9
+
+[[instruments]]
+name = "Chaos Perc"
+
+[instruments.voice]
+waveform = "sine"
+noise_level = 0.0
+pulse_width = 0.5
+attack = 0.001
+decay = 0.12
+sustain = 0.0
+release = 0.06
+env_curve = 0.9
+glide = 0.0
+cutoff = 800.0
+resonance = 0.1
+filter_type = "highpass"
+filter_env = 0.0
+filter_attack = 0.01
+filter_decay = 0.2
+key_track = 0.0
+lfo_pitch = 0.0
+lfo_cutoff = 0.0
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 1.0
+detune = 0.0
+drive = 0.0
+vel_cutoff = 0.0
+vel_pwm = 0.0
+position = 0.0
+phase_dist = 0.0
+osc2_waveform = "sine"
+osc2_interval = 0.0
+osc2_level = 0.0
+osc2_fm = 0.0
+fm_mode = "phase"
+feedback = 0.85
+osc2_ring = 0.0
+pluck_decay = 2.5
+pluck_damp = 0.35
+pluck_burst = 0.9
+
+[[instruments]]
+name = "Breath Pad"
+
+[instruments.voice]
+waveform = "sine"
+noise_level = 0.15
+pulse_width = 0.5
+attack = 0.6
+decay = 0.6
+sustain = 0.85
+release = 1.2
+env_curve = 0.25
+glide = 0.0
+cutoff = 1800.0
+resonance = 0.3
+filter_type = "lowpass"
+filter_env = 0.0
+filter_attack = 0.01
+filter_decay = 0.2
+key_track = 0.15
+lfo_pitch = 0.0
+lfo_cutoff = 0.12
+lfo_amp = 0.0
+lfo_pwm = 0.0
+unison = 2
+detune = 7.0
+drive = 0.0
+vel_cutoff = 0.0
+vel_pwm = 0.0
+position = 0.0
+phase_dist = 0.0
+osc2_waveform = "sine"
+osc2_interval = 0.0
+osc2_level = 0.0
+osc2_fm = 0.0
+fm_mode = "phase"
+feedback = 0.9
+osc2_ring = 0.0
+pluck_decay = 2.5
+pluck_damp = 0.35
+pluck_burst = 0.9

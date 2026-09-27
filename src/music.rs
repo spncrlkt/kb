@@ -77,6 +77,7 @@ impl Scale {
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[allow(clippy::upper_case_acronyms)] // `III` is the scale degree, not an acronym
 pub enum ScaleDegree {
     I,
     II,
@@ -151,6 +152,38 @@ pub enum Transformation {
 }
 
 impl Transformation {
+    /// Every transformation, for the tests that have to sweep them all.
+    ///
+    /// The same shape as `Waveform::ALL` and `FilterType::ALL`: one list that a
+    /// test can walk, so a rule about "every chord this tool can build" is
+    /// checked rather than asserted in prose.
+    #[cfg(test)]
+    pub const ALL: [Transformation; 23] = [
+        Transformation::Dom7,
+        Transformation::Dom7b9,
+        Transformation::Dom9,
+        Transformation::Min7b5,
+        Transformation::Sus2,
+        Transformation::SixNine,
+        Transformation::Dim7,
+        Transformation::Dom7s9,
+        Transformation::Min9,
+        Transformation::Aug,
+        Transformation::Maj7s11,
+        Transformation::Dom7s11,
+        Transformation::MinMaj7,
+        Transformation::Eleven,
+        Transformation::Thirteen,
+        Transformation::Diatonic7,
+        Transformation::Diatonic9,
+        Transformation::Sus4,
+        Transformation::Diatonic6,
+        Transformation::Diatonic7_9,
+        Transformation::Diatonic7_13,
+        Transformation::Sus4_7,
+        Transformation::DiatonicFull,
+    ];
+
     pub fn mode(self) -> Mode {
         use Transformation::*;
         match self {
@@ -195,7 +228,7 @@ impl Transformation {
 // Key
 // -----------------------------------------------------------------------------
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Key {
     /// MIDI note number of the tonic. Clamped to `[TONIC_MIN, TONIC_MAX]`.
     pub tonic: u8,

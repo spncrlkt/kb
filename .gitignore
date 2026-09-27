@@ -24,6 +24,18 @@ rustc-ice-*.txt
 # Runtime artifacts: rewritten on every launch
 debug.log
 
+# The last run's key, tempo and master volume. Session state, not source: there
+# are no shipped defaults to layer under it, so it is one plain file rather than
+# the tracked-plus-user split the libraries use.
+/settings.toml
+
+# User ensembles, instruments, EQ curves and rhythms. The tracked `ensembles.toml`,
+# `instruments.toml`, `eq_presets.toml` and `rhythms.toml` hold the shipped
+# defaults; these hold what the app saved or what the user added, and are created
+# empty when they are missing. Never committed — they are session state, not
+# source.
+*.user.toml
+
 # Exported/imported MIDI progressions: session data, not source
 /progressions/
 # Fallback: if progressions/ cannot be created, exports land in the working

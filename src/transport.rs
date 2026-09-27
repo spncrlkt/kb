@@ -16,6 +16,14 @@ use crate::arrangement::{self, BarEvent};
 use crate::music::{Key, Scale, BAR_TICKS};
 use crate::progression::Progression;
 
+/// Slowest and fastest tempo the UI will set, in bpm.
+///
+/// Here rather than in the panel because they are a property of the *transport*:
+/// the settings file clamps a hand-edited tempo to the same range the arrows
+/// reach, and a panel constant it could not see would let the two disagree.
+pub const BPM_MIN: u16 = 40;
+pub const BPM_MAX: u16 = 240;
+
 // -----------------------------------------------------------------------------
 // Transport
 // -----------------------------------------------------------------------------
@@ -40,6 +48,19 @@ pub struct Transport {
     bar_started_at: Mutex<Option<(Instant, usize)>>,
     /// Whether the metronome clicks. Set while a rhythm take is being recorded.
     pub metronome: AtomicBool,
+    /// How hard the offbeat subdivision is pushed, `0.0` (straight) to `1.0`
+    /// (the triplet feel). The default every pattern without its own follows.
+    pub swing_bits: AtomicU32,
+    /// Which click timbre the metronome uses, as an index into the synth's
+    /// click presets.
+    pub metronome_sound: AtomicUsize,
+    /// Metronome level, `0.0..=1.0`, independent of the progression's own gain.
+    pub metronome_volume_bits: AtomicU32,
+    /// Clicks per beat: 1 for the beats, 2 for the "&", 4 for sixteenths.
+    pub metronome_subdivision: AtomicUsize,
+    /// The slot whose stored chord the computed chord stands in for while the
+    /// loop plays — the in-place audition. `AUDITION_OFF` means none.
+    audition_slot: AtomicUsize,
     /// Stop now, and silence, without moving the bar.
     ///
     /// Pausing only takes effect at the next bar: the scheduler finishes the one
@@ -65,6 +86,11 @@ impl Transport {
             live_chord: Mutex::new(None),
             bar_started_at: Mutex::new(None),
             metronome: AtomicBool::new(false),
+            swing_bits: AtomicU32::new(0.0f32.to_bits()),
+            metronome_sound: AtomicUsize::new(0),
+            metronome_volume_bits: AtomicU32::new(0.8f32.to_bits()),
+            metronome_subdivision: AtomicUsize::new(1),
+            audition_slot: AtomicUsize::new(AUDITION_OFF),
             stop_now: AtomicBool::new(false),
         })
     }
@@ -104,6 +130,54 @@ impl Transport {
         self.bpm.store(v as u32, Ordering::Relaxed);
     }
 
+    /// How hard the offbeat subdivision is pushed, `0.0..=1.0`.
+    pub fn swing(&self) -> f32 {
+        f32::from_bits(self.swing_bits.load(Ordering::Relaxed)).clamp(0.0, 1.0)
+    }
+
+    pub fn set_swing(&self, v: f32) {
+        self.swing_bits
+            .store(v.clamp(0.0, 1.0).to_bits(), Ordering::Relaxed);
+    }
+
+    /// Clicks per beat for the metronome: 1, 2 or 4.
+    pub fn metronome_subdivision(&self) -> usize {
+        self.metronome_subdivision
+            .load(Ordering::Relaxed)
+            .clamp(1, 4)
+    }
+
+    /// The slot being auditioned in place, if any.
+    ///
+    /// `None` when nothing is armed, or when the armed slot is past the end of a
+    /// progression that has since shrunk.
+    pub fn audition_slot(&self) -> Option<usize> {
+        match self.audition_slot.load(Ordering::Relaxed) {
+            AUDITION_OFF => None,
+            slot => Some(slot),
+        }
+    }
+
+    pub fn set_audition_slot(&self, slot: Option<usize>) {
+        self.audition_slot
+            .store(slot.unwrap_or(AUDITION_OFF), Ordering::Relaxed);
+    }
+
+    pub fn set_metronome_subdivision(&self, v: usize) {
+        self.metronome_subdivision
+            .store(v.clamp(1, 4), Ordering::Relaxed);
+    }
+
+    /// Metronome level, `0.0..=1.0`.
+    pub fn metronome_volume(&self) -> f32 {
+        f32::from_bits(self.metronome_volume_bits.load(Ordering::Relaxed)).clamp(0.0, 1.0)
+    }
+
+    pub fn set_metronome_volume(&self, v: f32) {
+        self.metronome_volume_bits
+            .store(v.clamp(0.0, 1.0).to_bits(), Ordering::Relaxed);
+    }
+
     pub fn bar_duration(&self) -> Duration {
         let bpm = self.bpm().max(1) as u64;
         Duration::from_micros(60_000_000 / bpm * 4)
@@ -124,6 +198,10 @@ impl Transport {
     }
 }
 
+/// `audition_slot`'s "nothing armed" value. A slot index is never anywhere near
+/// this, and an `Option` in an atomic needs a lock this path does not want.
+const AUDITION_OFF: usize = usize::MAX;
+
 // -----------------------------------------------------------------------------
 // Scheduler
 // -----------------------------------------------------------------------------
@@ -134,6 +212,8 @@ pub enum SchedulerEvent {
         group: usize,
         notes: Vec<u8>,
         gain: f32,
+        /// How hard the note was hit, 0..1. See `arrangement::Stab::velocity`.
+        velocity: f32,
     },
     /// Release one stab group.
     ReleaseStab {
@@ -144,11 +224,13 @@ pub enum SchedulerEvent {
     /// One metronome tick, while a rhythm take is being recorded.
     Click {
         strong: bool,
+        /// Which click preset to play, and how loud.
+        sound: usize,
+        volume: f32,
     },
 }
 
 pub struct Scheduler {
-    pub transport: Arc<Transport>,
     events: Receiver<SchedulerEvent>,
     stop: Arc<AtomicBool>,
     handle: Option<JoinHandle<()>>,
@@ -165,7 +247,6 @@ impl Scheduler {
         let handle = thread::spawn(move || scheduler_loop(t, p, tx, s));
 
         Scheduler {
-            transport,
             events: rx,
             stop,
             handle: Some(handle),
@@ -184,32 +265,6 @@ impl Drop for Scheduler {
             let _ = h.join();
         }
     }
-}
-
-/// Ticks a whole-bar chord holds for.
-fn hold_ticks(note_length: f32) -> u64 {
-    let ticks = (BAR_TICKS as f64 * note_length.clamp(0.0, 1.0) as f64).round() as u64;
-    ticks.clamp(1, BAR_TICKS)
-}
-
-/// The live chord as a whole-bar stab.
-///
-/// Used for the "+1 bar" a player jams over, and for auditioning while the
-/// transport is stopped — both of which are the behaviour this tool had before
-/// rhythm patterns.
-fn live_events(notes: Vec<u8>, note_length: f32) -> Vec<BarEvent> {
-    vec![
-        BarEvent::On {
-            at: 0,
-            group: 0,
-            notes,
-            gain: 1.0,
-        },
-        BarEvent::Off {
-            at: hold_ticks(note_length),
-            group: 0,
-        },
-    ]
 }
 
 /// How long `ticks` lasts at the current tempo.
@@ -247,38 +302,63 @@ fn scheduler_loop(
 
         let playing = transport.playing.load(Ordering::Relaxed);
         let live = transport.live_chord.lock().unwrap().clone();
-        let live_present = live.is_some();
         let prog_len = transport.progression_len.load(Ordering::Relaxed);
         let bar = transport.current_bar.load(Ordering::Relaxed);
         let bar_dur = transport.bar_duration();
         let note_len = transport.note_length();
         let metronome = transport.metronome.load(Ordering::Relaxed);
-        let total = prog_len + usize::from(live_present);
+        let swing = transport.swing();
+        let subdivision = transport.metronome_subdivision();
+        let total = prog_len;
 
         let bar_start = Instant::now();
         transport.publish_bar(bar_start, bar);
 
+        // Everything from here to the end of the metronome block is planning,
+        // not playing: it is off the audio thread and its cost is the one that
+        // matters most, because the plan is rebuilt on every bar.
+        let planning = crate::timing::Scope::new("scheduler.bar");
+
         // Decide what this bar holds. `None` means silence.
+        //
+        // There is no live bar any more. The computed chord used to be appended
+        // after the loop and sounded whole-bar when the transport was stopped;
+        // both are gone, replaced by the audition in `tui`. What is left here is
+        // the progression, played as written — except that the computed chord
+        // can stand in for one slot, which is how a chord modification is
+        // auditioned in context.
+        let audition_slot = transport.audition_slot();
+        let audition = match (&live, audition_slot) {
+            (Some(notes), Some(slot)) if !notes.is_empty() => Some(arrangement::Audition {
+                slot,
+                notes: notes.as_slice(),
+            }),
+            _ => None,
+        };
         let mut content: Option<Vec<BarEvent>> = if playing && total > 0 {
             let index = bar % total;
-            Some(if index < prog_len {
-                // Rebuilt every bar, so a pattern assignment or an offset edit
-                // takes effect within one bar.
-                // The entry owns its rhythm, so the progression lock is all
-                // the scheduler needs — there is no second lock to take, and no
-                // order to keep between them.
-                let plan = {
-                    let prog = progression.lock().unwrap();
-                    arrangement::arrangement(&prog.slots, &transport.key(), note_len)
-                };
-                arrangement::bar_events(&plan, index, BAR_TICKS, arrangement::RHYTHM_LAYERS)
-            } else {
-                // The live bar appended after the progression.
-                live_events(live.clone().unwrap_or_default(), note_len)
-            })
-        } else if let Some(notes) = live {
-            // Stopped, with a chord under the hands: sound it for its length.
-            Some(live_events(notes, note_len))
+            // Rebuilt every bar, so a pattern assignment, an offset edit, a swing
+            // change or an auditioned chord takes effect within one bar.
+            //
+            // The entry owns its rhythm, so the progression lock is all the
+            // scheduler needs — there is no second lock to take, and no order to
+            // keep between them.
+            let plan = {
+                let prog = progression.lock().unwrap();
+                arrangement::arrangement_auditioning(
+                    &prog.slots,
+                    &transport.key(),
+                    note_len,
+                    swing,
+                    audition,
+                )
+            };
+            Some(arrangement::bar_events(
+                &plan,
+                index,
+                BAR_TICKS,
+                arrangement::RHYTHM_LAYERS,
+            ))
         } else {
             None
         };
@@ -287,7 +367,7 @@ fn scheduler_loop(
         // is the *whole* bar when nothing else does — a click to practise
         // against, with the transport stopped and no progression.
         if metronome {
-            let clicks = arrangement::metronome_events(BAR_TICKS);
+            let clicks = arrangement::metronome_events(BAR_TICKS, subdivision, swing);
             content = Some(match content {
                 Some(mut events) => {
                     events.extend(clicks);
@@ -297,6 +377,11 @@ fn scheduler_loop(
                 None => clicks,
             });
         }
+
+        // Dropped here rather than at the end of the iteration: what follows
+        // waits out the rest of the bar, and a scope that included the wait
+        // would report the tempo.
+        drop(planning);
 
         let mut interrupted = false;
         match content {
@@ -356,6 +441,7 @@ fn play_bar(
                 group,
                 notes,
                 gain,
+                velocity,
                 ..
             } => {
                 events_out
@@ -363,6 +449,7 @@ fn play_bar(
                         group: *group,
                         notes: notes.clone(),
                         gain: *gain,
+                        velocity: *velocity,
                     })
                     .ok();
             }
@@ -372,8 +459,13 @@ fn play_bar(
                     .ok();
             }
             BarEvent::Click { strong, .. } => {
+                let sound = transport.metronome_sound.load(Ordering::Relaxed);
                 events_out
-                    .send(SchedulerEvent::Click { strong: *strong })
+                    .send(SchedulerEvent::Click {
+                        strong: *strong,
+                        sound,
+                        volume: transport.metronome_volume(),
+                    })
                     .ok();
             }
         }
@@ -550,20 +642,6 @@ mod tests {
     // ---- the bar's timings ----
 
     #[test]
-    fn hold_ticks_scale_with_the_note_length() {
-        assert_eq!(hold_ticks(1.0), BAR_TICKS);
-        assert_eq!(hold_ticks(0.5), BAR_TICKS / 2);
-        assert_eq!(hold_ticks(0.25), BAR_TICKS / 4);
-    }
-
-    #[test]
-    fn hold_ticks_are_clamped_into_the_bar() {
-        assert_eq!(hold_ticks(4.0), BAR_TICKS);
-        assert_eq!(hold_ticks(-1.0), 1);
-        assert!(hold_ticks(0.0001) >= 1, "a note can never be zero-length");
-    }
-
-    #[test]
     fn ticks_map_onto_the_bar_duration() {
         let bar = Duration::from_secs(2);
         assert_eq!(ticks_to_duration(0, bar), Duration::ZERO);
@@ -596,35 +674,6 @@ mod tests {
                 got,
                 expected
             );
-        }
-    }
-
-    // ---- the live bar ----
-
-    #[test]
-    fn the_live_chord_is_one_whole_bar_stab() {
-        let events = live_events(vec![60, 64, 67], 0.5);
-        assert_eq!(events.len(), 2);
-        match &events[0] {
-            BarEvent::On {
-                at,
-                group,
-                notes,
-                gain,
-            } => {
-                assert_eq!(*at, 0);
-                assert_eq!(*group, 0);
-                assert_eq!(notes, &vec![60, 64, 67]);
-                assert_eq!(*gain, 1.0);
-            }
-            other => panic!("expected an onset, got {:?}", other),
-        }
-        match &events[1] {
-            BarEvent::Off { at, group } => {
-                assert_eq!(*at, BAR_TICKS / 2);
-                assert_eq!(*group, 0);
-            }
-            other => panic!("expected a release, got {:?}", other),
         }
     }
 }

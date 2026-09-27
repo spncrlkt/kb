@@ -1,0 +1,133 @@
+# The shipped EQ curves.
+#
+# This file is the source, compiled in with `include_str!`. Each entry is one
+# named curve: thirteen gains in decibels over the bands
+#
+#     20  31.5  50  80  125  250  500  1k  2k  4k  8k  12.5k  16k   Hz
+#
+# where the first band is a low shelf, the last is a high shelf and the eleven
+# between them are bells. The ladder is two thirds of an octave apart at the
+# bottom, an octave through the middle and closer at the very top: the audible
+# octaves below 125 Hz are few and perceptually heavy, which is where a graphic
+# needs its resolution.
+#
+# Gains are limited to +/-12 dB and are all on half decibels, which is what makes
+# "back to zero" an exact bypass. A curve must have exactly thirteen gains: a
+# shorter or longer array is read as flat rather than stretched, because the
+# ladder grows at the bottom and padding would shift every band.
+#
+# Applying a preset copies its thirteen gains into the placement, so a curve
+# edited here never moves an ensemble that was already saved. `Flat` is the
+# reset: it is the only curve that is completely bypassed.
+#
+# These are starting points, and most of them are deliberately broad — the point
+# of a graphic equaliser in this tool is to seat a part in the mix, not to fix a
+# recording. The names say what they are for.
+
+[[presets]]
+name = "Flat"
+gains = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+
+# ---- the tone controls: one end of the range or the other ----
+
+[[presets]]
+name = "Bass Boost"
+gains = [6.0, 6.0, 6.5, 5.0, 3.0, 1.5, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+
+[[presets]]
+name = "Sub Bass"
+gains = [6.5, 6.5, 5.0, 2.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+
+[[presets]]
+name = "Kick"
+gains = [3.0, 9.0, 6.0, 3.0, 0.0, -1.5, -3.0, -3.0, 0.0, 1.5, 1.5, 0.0, 0.0]
+
+[[presets]]
+name = "Thin"
+gains = [-12.0, -12.0, -9.0, -6.0, -3.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+
+[[presets]]
+name = "Warm"
+gains = [3.0, 3.0, 3.0, 1.5, 0.0, 0.0, 0.0, 0.0, 0.0, -1.5, -3.0, -3.0, -3.0]
+
+[[presets]]
+name = "Bright"
+gains = [-1.5, -1.5, -1.5, 0.0, 0.0, 0.0, 0.0, 1.5, 3.0, 4.5, 4.5, 3.0, 3.0]
+
+[[presets]]
+name = "Air"
+gains = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.5, 4.5, 6.0, 6.0]
+
+[[presets]]
+name = "Sizzle"
+gains = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -1.5, 0.0, 3.0, 6.0, 6.0, 4.5]
+
+# ---- the shapers: what to cut so a part sits in its own space ----
+
+[[presets]]
+name = "De-Mud"
+gains = [-1.5, -1.5, -3.0, -4.5, -4.5, -3.0, -1.5, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+
+[[presets]]
+name = "De-Box"
+gains = [0.0, 0.0, -1.5, -3.0, -4.5, -4.5, -3.0, -1.5, 0.0, 0.0, 0.0, 0.0, 0.0]
+
+[[presets]]
+name = "Presence"
+gains = [0.0, 0.0, 0.0, 0.0, 0.0, -1.5, 0.0, 1.5, 3.0, 4.5, 1.5, 0.0, 0.0]
+
+[[presets]]
+name = "Scoop"
+gains = [3.0, 3.0, 3.0, 1.5, -3.0, -6.0, -6.0, -4.5, -1.5, 0.0, 0.0, 1.5, 1.5]
+
+[[presets]]
+name = "Smiley"
+gains = [6.0, 6.0, 4.5, 1.5, -1.5, -3.0, -4.5, -3.0, -1.5, 1.5, 4.5, 6.0, 6.0]
+
+[[presets]]
+name = "Club"
+gains = [6.0, 6.0, 6.0, 1.5, -1.5, -3.0, -1.5, 0.0, 1.5, 3.0, 4.5, 4.5, 3.0]
+
+# ---- the filters: take an end away rather than move it ----
+
+[[presets]]
+name = "Hi-Pass 40"
+gains = [-12.0, -9.0, -4.5, -1.5, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+
+[[presets]]
+name = "Hi-Pass 80"
+gains = [-12.0, -12.0, -12.0, -6.0, -1.5, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+
+[[presets]]
+name = "Hi-Pass 120"
+gains = [-12.0, -12.0, -12.0, -12.0, -4.5, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+
+[[presets]]
+name = "Lo-Fi"
+gains = [-12.0, -9.0, -6.0, -3.0, 0.0, 1.5, 3.0, 1.5, 0.0, -3.0, -9.0, -12.0, -12.0]
+
+[[presets]]
+name = "Vinyl"
+gains = [-9.0, -6.0, -3.0, -1.5, 1.5, 3.0, 1.5, 0.0, 0.0, -1.5, -6.0, -9.0, -12.0]
+
+# ---- the band-limits: a part heard through something small ----
+
+[[presets]]
+name = "Telephone"
+gains = [-12.0, -12.0, -12.0, -12.0, -6.0, 0.0, 4.5, 6.0, 4.5, 1.5, -6.0, -12.0, -12.0]
+
+[[presets]]
+name = "AM Radio"
+gains = [-12.0, -12.0, -12.0, -12.0, -9.0, -1.5, 4.5, 6.0, 3.0, 0.0, -9.0, -12.0, -12.0]
+
+[[presets]]
+name = "Speech"
+gains = [-12.0, -12.0, -12.0, -9.0, -3.0, 1.5, 4.5, 4.5, 1.5, -1.5, -4.5, -9.0, -12.0]
+
+[[presets]]
+name = "Vocal"
+gains = [-6.0, -6.0, -6.0, -3.0, 0.0, 1.5, 3.0, 3.0, 1.5, 1.5, 1.5, 0.0, 0.0]
+
+[[presets]]
+name = "Snare"
+gains = [-3.0, -1.5, 0.0, 0.0, 1.5, 3.0, 1.5, 0.0, 1.5, 3.0, 4.5, 3.0, 1.5]

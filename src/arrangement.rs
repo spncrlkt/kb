@@ -30,6 +30,11 @@ pub struct Stab {
     pub notes: Vec<u8>,
     /// 0..1. One per take, so a decayed layer is a quieter stab.
     pub gain: f32,
+    /// 0..1. The rhythm cell's accent, kept apart from `gain` because the two
+    /// are different decisions: `gain` is a mix level and the accent is how hard
+    /// the note was hit. They are multiplied into the same loudness, and only
+    /// the accent is allowed to change the *tone*.
+    pub velocity: f32,
 }
 
 impl Stab {
@@ -52,7 +57,52 @@ impl Stab {
 ///
 /// `note_length` is the fraction of a bar a patternless chord sustains; a slot
 /// with a pattern uses the pattern's own hold instead.
+///
+/// Straight, as a pattern that names no swing of its own and a caller with no
+/// transport to ask would be. [`arrangement_with_swing`] is the one playback and
+/// export actually call, so this is the suite's short spelling of it.
+#[cfg(test)]
 pub fn arrangement(slots: &[Slot], key: &Key, note_length: f32) -> Vec<Stab> {
+    arrangement_with_swing(slots, key, note_length, 0.0)
+}
+
+/// Lay a progression out, with the transport's swing as the default groove.
+///
+/// A pattern's own `swing` overrides it; a pattern that names none follows this.
+/// Swing only moves the *offbeat* cell of each pair, so a straight pattern can be
+/// swung without touching its downbeats.
+pub fn arrangement_with_swing(
+    slots: &[Slot],
+    key: &Key,
+    note_length: f32,
+    transport_swing: f32,
+) -> Vec<Stab> {
+    arrangement_auditioning(slots, key, note_length, transport_swing, None)
+}
+
+/// A chord to play in one slot's place.
+///
+/// The in-place audition: the computed chord stands in for the slot it was
+/// recalled from, so a change can be heard against the rest of the progression
+/// instead of on its own. Only the *notes* are substituted — the slot keeps its
+/// rhythm, its offset and its place in the loop, because those belong to the
+/// entry and are exactly what the context is made of.
+#[derive(Copy, Clone, Debug)]
+pub struct Audition<'a> {
+    pub slot: usize,
+    pub notes: &'a [u8],
+}
+
+/// The full planner: a progression, a groove, and optionally one slot's chord
+/// replaced. [`arrangement`] and [`arrangement_with_swing`] are the two short
+/// spellings the suite and the exporter use.
+pub fn arrangement_auditioning(
+    slots: &[Slot],
+    key: &Key,
+    note_length: f32,
+    transport_swing: f32,
+    audition: Option<Audition>,
+) -> Vec<Stab> {
     let length = slots.len() as u64 * BAR_TICKS;
     if length == 0 {
         return Vec::new();
@@ -68,7 +118,10 @@ pub fn arrangement(slots: &[Slot], key: &Key, note_length: f32) -> Vec<Stab> {
         let Slot::Chord(entry) = slot else {
             continue;
         };
-        let notes = entry.notes(key);
+        let notes = match audition {
+            Some(a) if a.slot == index => a.notes.to_vec(),
+            _ => entry.notes(key),
+        };
         if notes.is_empty() {
             continue;
         }
@@ -85,35 +138,47 @@ pub fn arrangement(slots: &[Slot], key: &Key, note_length: f32) -> Vec<Stab> {
         match entry.pattern.as_ref() {
             Some(pattern) => {
                 let step_ticks = pattern.step_ticks() as i64;
-                let hold = pattern.hold_ticks();
-                // A muted tail is a *bar position*, so it lands wherever the
-                // chord's offset puts it rather than where the slot's downbeat
-                // is. `None` at zero mute, so a hold still crosses the bar line
-                // when nothing is muted.
-                let mute_at = pattern.mute_boundary();
+                let swing = pattern.swing_or(transport_swing);
+                let triplet = crate::rhythm::is_triplet_grid(pattern.steps_per_bar());
+                // The muted tail is a position in the *pattern's* bar, so it
+                // moves with the chord's offset: an anticipated chord's tail is
+                // anticipated too. Anchoring it to the absolute bar grid instead
+                // reads a negative offset's downbeat as landing inside the
+                // previous bar's tail and drops the whole chord — a downbeat sits
+                // at position 0 of its own bar, which no mute can reach. `None`
+                // at zero mute, so a hold still crosses the bar line when nothing
+                // is muted.
+                let boundary = pattern.mute_boundary().map(|at| base + at as i64);
 
                 for (step, gain) in pattern.hits() {
-                    let start = base + step as i64 * step_ticks;
-                    let mut duration = hold;
+                    // Per-cell length and accent, so one bar can be a Charleston
+                    // *and* a metre at once rather than one uniform hit repeated.
+                    let offset = if triplet {
+                        step as i64 * step_ticks
+                    } else {
+                        swung_onset(step, step_ticks, swing)
+                    };
+                    let start = base + offset;
+                    let mut duration = (pattern.cell_hold(step) as u64).clamp(1, BAR_TICKS);
+                    // The accent is both: it scales the stab's loudness, which
+                    // is what an accent is, and travels beside it so a patch can
+                    // make it a change of tone as well.
+                    let velocity = pattern.cell_velocity(step);
+                    let gain = gain * velocity;
 
-                    if let Some(mute_at) = mute_at {
-                        let bar_pos = start.rem_euclid(BAR_TICKS as i64) as u64;
-                        if bar_pos >= mute_at {
+                    if let Some(boundary) = boundary {
+                        if start >= boundary {
                             // Begins inside the silent tail: it never sounds.
                             continue;
                         }
-                        // Cut at this bar's mute boundary.
-                        let boundary = start - bar_pos as i64 + mute_at as i64;
-                        duration = duration.min((boundary - start).max(0) as u64);
-                        if duration == 0 {
-                            continue;
-                        }
+                        // Cut at the pattern's mute boundary, offset and all.
+                        duration = duration.min((boundary - start) as u64);
                     }
 
-                    push_wrapped(&mut plan, start, duration, &notes, gain, length);
+                    push_wrapped(&mut plan, start, duration, &notes, gain, velocity, length);
                 }
             }
-            None => push_wrapped(&mut plan, base, fallback, &notes, 1.0, length),
+            None => push_wrapped(&mut plan, base, fallback, &notes, 1.0, 1.0, length),
         }
     }
 
@@ -135,6 +200,7 @@ fn push_wrapped(
     duration: u64,
     notes: &[u8],
     gain: f32,
+    velocity: f32,
     length: u64,
 ) {
     let duration = duration.max(1).min(length);
@@ -145,6 +211,7 @@ fn push_wrapped(
         duration: head,
         notes: notes.to_vec(),
         gain,
+        velocity,
     });
     let tail = duration - head;
     if tail > 0 {
@@ -153,6 +220,7 @@ fn push_wrapped(
             duration: tail,
             notes: notes.to_vec(),
             gain,
+            velocity,
         });
     }
 }
@@ -177,6 +245,7 @@ pub enum BarEvent {
         group: usize,
         notes: Vec<u8>,
         gain: f32,
+        velocity: f32,
     },
     /// Release a voice group.
     Off { at: u64, group: usize },
@@ -229,6 +298,7 @@ pub fn bar_events(plan: &[Stab], bar: usize, bar_ticks: u64, groups: usize) -> V
                 group,
                 notes: stab.notes.clone(),
                 gain: stab.gain,
+                velocity: stab.velocity,
             });
         }
         if stab.end() > start && stab.end() <= end {
@@ -242,14 +312,44 @@ pub fn bar_events(plan: &[Stab], bar: usize, bar_ticks: u64, groups: usize) -> V
     events
 }
 
-/// The metronome for one bar: a click on every beat, the downbeat stronger.
-pub fn metronome_events(bar_ticks: u64) -> Vec<BarEvent> {
+/// Where a cell lands once swing is applied, in ticks from the bar line.
+///
+/// Swing pushes every *second* cell later — the "up" subdivision of each pair.
+/// At `swing = 1.0` the offbeat lands exactly where the triplet would, a third
+/// of a cell late, which is why the scale runs 0 (straight) to 1 (triplet feel)
+/// and why a swing of 1 is the same groove the triplet grid writes out in full.
+/// Downbeats never move, so a swung bar keeps its metre.
+pub fn swung_onset(step: usize, step_ticks: i64, swing: f32) -> i64 {
+    let straight = step as i64 * step_ticks;
+    if step.is_multiple_of(2) || swing <= 0.0 {
+        return straight;
+    }
+    straight + swing_delay(step_ticks, swing)
+}
+
+/// How far an offbeat cell moves at `swing`.
+fn swing_delay(step_ticks: i64, swing: f32) -> i64 {
+    (swing.clamp(0.0, 1.0) as f64 * step_ticks as f64 / 3.0).round() as i64
+}
+
+/// The metronome for one bar.
+///
+/// `subdivision` is how many clicks per beat: 1 is the beats themselves, 2 adds
+/// the "&", 4 the sixteenths. The downbeat is the strong click; every offbeat
+/// subdivision swings with the transport, which is how the click says the groove
+/// the patterns are about to play in.
+pub fn metronome_events(bar_ticks: u64, subdivision: usize, swing: f32) -> Vec<BarEvent> {
     let beats = BEATS_PER_BAR.max(1);
-    let step = bar_ticks / beats;
-    (0..beats)
-        .map(|beat| BarEvent::Click {
-            at: beat * step,
-            strong: beat == 0,
+    let per_beat = subdivision.clamp(1, 4) as u64;
+    let cell = (bar_ticks / beats / per_beat).max(1);
+    let total = beats * per_beat;
+    (0..total)
+        .map(|i| {
+            let step = i as usize;
+            BarEvent::Click {
+                at: swung_onset(step, cell as i64, swing).max(0) as u64,
+                strong: i == 0,
+            }
         })
         .collect()
 }
@@ -655,7 +755,9 @@ mod tests {
             duration: 10,
             notes: vec![60],
             gain: 1.0,
-        }];
+
+            velocity: 1.0,
+}];
         assert!(ons(&bar_events(&plan, 0, BAR_TICKS, RHYTHM_LAYERS)).is_empty());
         assert_eq!(ons(&bar_events(&plan, 1, BAR_TICKS, RHYTHM_LAYERS)), vec![0]);
     }
@@ -667,7 +769,9 @@ mod tests {
             duration: BAR_TICKS,
             notes: vec![60],
             gain: 1.0,
-        }];
+
+            velocity: 1.0,
+}];
         assert_eq!(offs(&bar_events(&plan, 0, BAR_TICKS, RHYTHM_LAYERS)), vec![BAR_TICKS]);
         assert!(offs(&bar_events(&plan, 1, BAR_TICKS, RHYTHM_LAYERS)).is_empty());
     }
@@ -729,7 +833,9 @@ mod tests {
                 group: 0,
                 notes: vec![60],
                 gain: 1.0,
-            },
+
+                velocity: 1.0,
+},
             BarEvent::Off { at: 100, group: 0 },
         ];
         sort_events(&mut events);
@@ -749,7 +855,9 @@ mod tests {
                 group: 0,
                 notes: vec![60],
                 gain: 1.0,
-            },
+
+                velocity: 1.0,
+},
         ];
         sort_events(&mut events);
         assert!(matches!(events[0], BarEvent::On { .. }), "{:?}", events);
@@ -780,7 +888,7 @@ mod tests {
 
     #[test]
     fn the_metronome_clicks_on_every_beat_with_a_strong_downbeat() {
-        let clicks = metronome_events(BAR_TICKS);
+        let clicks = metronome_events(BAR_TICKS, 1, 0.0);
         assert_eq!(clicks.len(), 4);
         let times: Vec<u64> = clicks.iter().map(|e| e.at()).collect();
         assert_eq!(times, vec![0, 960, 1920, 2880]);
@@ -792,6 +900,21 @@ mod tests {
             })
             .collect();
         assert_eq!(strong, vec![true, false, false, false]);
+    }
+
+    #[test]
+    fn the_metronome_subdivision_adds_the_offbeats_between_the_beats() {
+        // The eighth subdivision: beats plus the "&", so swing has something to
+        // move — and the swing moves only those, never the beats themselves.
+        let clicks = metronome_events(BAR_TICKS, 2, 0.0);
+        let times: Vec<u64> = clicks.iter().map(|e| e.at()).collect();
+        assert_eq!(times, vec![0, 480, 960, 1440, 1920, 2400, 2880, 3360]);
+
+        let swung = metronome_events(BAR_TICKS, 2, 1.0);
+        let swung_times: Vec<u64> = swung.iter().map(|e| e.at()).collect();
+        // A full swing moves each "&" a third of a cell later (480 -> 640),
+        // which is exactly the triplet; the beats stay put.
+        assert_eq!(swung_times, vec![0, 640, 960, 1600, 1920, 2560, 2880, 3520]);
     }
 
     // ---- the muted tail ----
@@ -837,12 +960,15 @@ mod tests {
     }
 
     #[test]
-    fn the_mute_is_a_bar_position_not_a_slot_position() {
-        // A whole-bar hold pushed half a bar late is cut at the boundary of the
-        // bar it sounds in, not 960 ticks after its own start.
+    fn the_mute_tail_moves_with_the_chord() {
+        // A whole-bar hold pushed half a bar late keeps its tail in the same
+        // place *relative to the pattern*: it is cut a quarter bar before its own
+        // shifted bar line, not at the absolute grid line it happens to reach.
+        // A third slot keeps the shifted tail inside the loop instead of wrapping.
         let slots = vec![
             chord(ScaleDegree::I, None, 0),
             chord(ScaleDegree::V, Some(muted(4.0, "x---", 960)), 1920),
+            Slot::Rest,
         ];
         let plan = arrangement(&slots, &c_major(), 1.0);
 
@@ -851,13 +977,41 @@ mod tests {
             .find(|stab| stab.notes == vec![67, 71, 74])
             .expect("the offset chord");
         assert_eq!(late.start, BAR_TICKS + 1920, "half a bar into bar 2");
-        assert_eq!(late.end(), BAR_TICKS + 2880, "bar 2's own mute boundary");
+        assert_eq!(
+            late.end(),
+            2 * BAR_TICKS + 960,
+            "its own tail, carried by the offset"
+        );
+    }
+
+    #[test]
+    fn an_anticipated_downbeat_is_never_swallowed_by_the_mute() {
+        // The reported bug: a whole-bar hold with a 3/16 tail, offset -1/16. The
+        // onset lands in the *previous* absolute bar, so anchoring the mute to
+        // the bar grid found the downbeat "inside the muted tail" and dropped it
+        // — the pattern's only hit, so the whole bar went silent.
+        let slots = vec![
+            chord(ScaleDegree::I, None, 0),
+            chord(ScaleDegree::V, Some(muted(4.0, "x---", 720)), -240),
+        ];
+        let plan = arrangement(&slots, &c_major(), 1.0);
+
+        let anticipated = plan
+            .iter()
+            .find(|stab| stab.notes == vec![67, 71, 74])
+            .expect("the anticipated chord still sounds");
+        assert_eq!(anticipated.start, 3600, "1/16 before its own bar");
+        assert_eq!(
+            anticipated.end(),
+            3600 + (BAR_TICKS - 720),
+            "and is trimmed at its own tail rather than dropped"
+        );
     }
 
     #[test]
     fn an_offset_can_push_a_hit_into_a_muted_tail() {
-        // The muted window is per bar, so an offset that moves a hit past
-        // 2880 into its bar silences it, wherever the slot's downbeat is.
+        // The tail belongs to the pattern, so a late hit that reaches into it is
+        // silenced even though the slot's own downbeat is well before it.
         let slots = vec![
             chord(ScaleDegree::I, None, 0),
             chord(ScaleDegree::V, Some(muted(1.0, "xxxx", 960)), 480),
@@ -899,6 +1053,168 @@ mod tests {
         assert_eq!(plan[0].duration, BAR_TICKS, "still a whole-bar chord");
     }
 
+    // ---- triplet grids and numbered phrases ----
+
+    /// A shipped pattern by name, as the palette hands it over.
+    fn palette(name: &str) -> RhythmPattern {
+        crate::rhythm::builtin_patterns()
+            .into_iter()
+            .find(|p| p.name == name)
+            .unwrap_or_else(|| panic!("no built-in named {:?}", name))
+    }
+
+    #[test]
+    fn a_triplet_grid_lands_on_triplet_ticks() {
+        // `Swung Eighths` is written on 12 steps per bar, so a cell is 320 ticks.
+        // If that resolution were not accepted the built-in would not exist, and
+        // if the division rounded, the shuffle would drift off the beat.
+        let swung = palette("Swung Eighths");
+        assert_eq!(swung.step_ticks(), 320);
+
+        let plan = arrangement(&[chord(ScaleDegree::I, Some(swung), 0)], &c_major(), 1.0);
+        assert_eq!(
+            starts(&plan),
+            vec![0, 640, 960, 1600, 1920, 2560, 2880, 3520],
+            "long-short on every beat"
+        );
+        assert!(plan.iter().all(|stab| stab.duration == 320));
+    }
+
+    #[test]
+    fn a_four_bar_phrase_lays_out_one_pattern_per_bar() {
+        // The whole point of the numbering: four `Jazz Chorus` bars assigned to
+        // four chords are one figure across the loop, not four copies of a bar.
+        let slots: Vec<Slot> = (1..=4)
+            .map(|bar| {
+                chord(
+                    ScaleDegree::I,
+                    Some(palette(&format!("Jazz Chorus {}/4", bar))),
+                    0,
+                )
+            })
+            .collect();
+        let plan = arrangement(&slots, &c_major(), 1.0);
+
+        let bar = |n: u64| n * BAR_TICKS;
+        assert_eq!(
+            starts(&plan),
+            vec![
+                // bar 1: the pulse, on 1 and 3.
+                bar(0),
+                bar(0) + 1920,
+                // bar 2: the Charleston, on 1 and the "&" of 2.
+                bar(1),
+                bar(1) + 1440,
+                // bar 3: the same plus the "&" of 3.
+                bar(2),
+                bar(2) + 1440,
+                bar(2) + 2400,
+                // bar 4: the turnaround tightens onto the "&" and "a" of 4.
+                bar(3),
+                bar(3) + 1440,
+                bar(3) + 2400,
+                bar(3) + 2880,
+                bar(3) + 3360,
+            ]
+        );
+    }
+
+    #[test]
+    fn a_two_bar_clave_lays_out_both_of_its_sides() {
+        let slots = vec![
+            chord(ScaleDegree::I, Some(palette("Son Clave 1/2")), 0),
+            chord(ScaleDegree::V, Some(palette("Son Clave 2/2")), 0),
+        ];
+        let plan = arrangement(&slots, &c_major(), 1.0);
+        // The three-side on 1, the "&" of 2 and beat 4; the two-side on 2 and 3.
+        assert_eq!(
+            starts(&plan),
+            vec![0, 1440, 2880, BAR_TICKS + 960, BAR_TICKS + 1920]
+        );
+    }
+
+    // ---- per-cell shape and swing ----
+
+    #[test]
+    fn a_cell_override_sets_that_hits_length_alone() {
+        // The Charleston shape: a dotted quarter on the downbeat, an eighth on
+        // the "&" of 2, from one pattern with one default hold.
+        let mut pattern = palette("Charleston");
+        assert_eq!(pattern.cell_hold(0), 1440);
+        pattern.set_cell_hold(0, 960);
+        let slots = vec![chord(ScaleDegree::I, Some(pattern), 0)];
+        let plan = arrangement(&slots, &c_major(), 1.0);
+
+        let by_start = |at: u64| {
+            plan.iter()
+                .find(|s| s.start == at)
+                .unwrap_or_else(|| panic!("no stab at {}", at))
+        };
+        assert_eq!(by_start(0).duration, 960, "the overridden hit");
+        assert_eq!(by_start(1440).duration, 480, "the default still applies");
+    }
+
+    #[test]
+    fn a_cell_accent_scales_that_hits_gain_alone() {
+        let mut pattern = palette("Eighths");
+        pattern.set_cell_velocity(2, 0.5);
+        let slots = vec![chord(ScaleDegree::I, Some(pattern), 0)];
+        let plan = arrangement(&slots, &c_major(), 1.0);
+
+        let by_start = |at: u64| {
+            plan.iter()
+                .find(|s| s.start == at)
+                .unwrap_or_else(|| panic!("no stab at {}", at))
+        };
+        assert_eq!(by_start(480).gain, 1.0, "untouched");
+        assert_eq!(by_start(960).gain, 0.5, "the accented cell");
+    }
+
+    #[test]
+    fn swing_moves_only_the_offbeats_and_a_full_swing_is_the_triplet() {
+        // A straight eighth pattern, played with the transport's swing and then
+        // with a full one: the downbeats never move, and at 1.0 the offbeats land
+        // exactly where the triplet grid would put them.
+        let slots = vec![chord(ScaleDegree::I, Some(palette("Eighths")), 0)];
+        let straight = arrangement_with_swing(&slots, &c_major(), 1.0, 0.0);
+        assert_eq!(
+            starts(&straight),
+            vec![0, 480, 960, 1440, 1920, 2400, 2880, 3360]
+        );
+
+        let swung = arrangement_with_swing(&slots, &c_major(), 1.0, 1.0);
+        assert_eq!(
+            starts(&swung),
+            vec![0, 640, 960, 1600, 1920, 2560, 2880, 3520],
+            "every downbeat holds, every offbeat lands on the triplet"
+        );
+    }
+
+    #[test]
+    fn a_patterns_own_swing_beats_the_transports() {
+        let mut pattern = palette("Eighths");
+        pattern.swing = Some(0.0);
+        let slots = vec![chord(ScaleDegree::I, Some(pattern), 0)];
+        // The transport is fully swung; the pattern says straight, and a pattern
+        // that has an opinion wins.
+        let plan = arrangement_with_swing(&slots, &c_major(), 1.0, 1.0);
+        assert_eq!(
+            starts(&plan)[1],
+            480,
+            "straight, because the pattern said so"
+        );
+    }
+
+    #[test]
+    fn a_triplet_grid_ignores_swing() {
+        // Swinging a grid whose cell is already a triplet would push the second
+        // triplet of every beat into a 24th-note feel nobody asked for.
+        let slots = vec![chord(ScaleDegree::I, Some(palette("Swung Eighths")), 0)];
+        let straight = arrangement_with_swing(&slots, &c_major(), 1.0, 0.0);
+        let swung = arrangement_with_swing(&slots, &c_major(), 1.0, 1.0);
+        assert_eq!(starts(&straight), starts(&swung));
+    }
+
     // ---- groups ----
 
     #[test]
@@ -909,13 +1225,17 @@ mod tests {
                 duration: 100,
                 notes: vec![60],
                 gain: 1.0,
-            },
+
+                velocity: 1.0,
+},
             Stab {
                 start: 200,
                 duration: 100,
                 notes: vec![60],
                 gain: 1.0,
-            },
+
+                velocity: 1.0,
+},
         ];
         assert_eq!(assign_groups(&plan, 4), vec![0, 0]);
     }
@@ -928,13 +1248,17 @@ mod tests {
                 duration: 500,
                 notes: vec![60],
                 gain: 1.0,
-            },
+
+                velocity: 1.0,
+},
             Stab {
                 start: 100,
                 duration: 500,
                 notes: vec![64],
                 gain: 1.0,
-            },
+
+                velocity: 1.0,
+},
         ];
         assert_eq!(assign_groups(&plan, 4), vec![0, 1]);
     }
@@ -947,19 +1271,25 @@ mod tests {
                 duration: 100,
                 notes: vec![60],
                 gain: 1.0,
-            },
+
+                velocity: 1.0,
+},
             Stab {
                 start: 100,
                 duration: 100,
                 notes: vec![64],
                 gain: 1.0,
-            },
+
+                velocity: 1.0,
+},
             Stab {
                 start: 200,
                 duration: 100,
                 notes: vec![67],
                 gain: 1.0,
-            },
+
+                velocity: 1.0,
+},
         ];
         assert_eq!(assign_groups(&plan, 2), vec![0, 0, 0]);
     }
@@ -972,19 +1302,25 @@ mod tests {
                 duration: 100,
                 notes: vec![60],
                 gain: 1.0,
-            },
+
+                velocity: 1.0,
+},
             Stab {
                 start: 10,
                 duration: 500,
                 notes: vec![62],
                 gain: 1.0,
-            },
+
+                velocity: 1.0,
+},
             Stab {
                 start: 20,
                 duration: 50,
                 notes: vec![64],
                 gain: 1.0,
-            },
+
+                velocity: 1.0,
+},
         ];
         // Group 0 frees at 100, group 1 at 510; the third stab takes group 0,
         // cutting the shorter tail.
@@ -998,7 +1334,9 @@ mod tests {
             duration: 10,
             notes: vec![60],
             gain: 1.0,
-        }];
+
+            velocity: 1.0,
+}];
         assert_eq!(assign_groups(&plan, 0), vec![0]);
     }
 }

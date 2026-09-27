@@ -129,8 +129,25 @@ pub fn split_layers(notes: &[u8]) -> [Vec<u8>; 3] {
 /// One slot is one bar, exactly as the scheduler plays it; the live "+1 bar" the
 /// scheduler appends while playing is intentionally *not* included, because an
 /// export has to be a deterministic function of the progression alone.
+/// Straight, for a caller with no transport to ask and for the suite's short
+/// spelling of the real thing.
+#[cfg(test)]
 pub fn render_progression(slots: &[Slot], key: &Key, bpm: u16, note_length: f32) -> Score {
-    let plan = arrangement::arrangement(slots, key, note_length);
+    render_progression_with_swing(slots, key, bpm, note_length, 0.0)
+}
+
+/// The same, at the transport's swing.
+///
+/// Export and playback share `arrangement`, so a groove heard in the app is the
+/// groove in the file — a swung bar cannot be written straight by accident.
+pub fn render_progression_with_swing(
+    slots: &[Slot],
+    key: &Key,
+    bpm: u16,
+    note_length: f32,
+    swing: f32,
+) -> Score {
+    let plan = arrangement::arrangement_with_swing(slots, key, note_length, swing);
     let mut notes = Vec::new();
 
     for stab in &plan {
@@ -462,6 +479,23 @@ mod tests {
         let score = render_progression(&slots, &c_major(), 120, 1.0);
         assert_eq!(starts_of(&score), vec![0, 2880]);
         assert!(score.notes.iter().all(|n| n.end() <= score.length_ticks));
+    }
+
+    #[test]
+    fn a_swung_progression_exports_the_swung_onsets() {
+        // Playback and export share the arrangement, so the groove that is heard
+        // is the groove that is written — an offbeat cannot land on the beat in
+        // the file while landing late in the room.
+        let slots = vec![patterned(ScaleDegree::I, Some(builtin("Eighths")), 0)];
+        let score = render_progression_with_swing(&slots, &c_major(), 120, 1.0, 1.0);
+        let starts: Vec<u64> = {
+            let mut starts: Vec<u64> = score.notes.iter().map(|n| n.start).collect();
+            starts.sort_unstable();
+            starts.dedup();
+            starts
+        };
+        // The downbeats stay; the offbeats are a triplet late.
+        assert_eq!(starts, vec![0, 640, 960, 1600, 1920, 2560, 2880, 3520]);
     }
 
     #[test]

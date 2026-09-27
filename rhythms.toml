@@ -1,4 +1,36 @@
 [[rhythms]]
+name = "Held Whole"
+hold = 3840
+
+[[rhythms.layers]]
+gain = 1.0
+steps = "x---"
+
+[[rhythms]]
+name = "Held 3/4"
+hold = 2880
+
+[[rhythms.layers]]
+gain = 1.0
+steps = "x---"
+
+[[rhythms]]
+name = "Held Half"
+hold = 1920
+
+[[rhythms.layers]]
+gain = 1.0
+steps = "x---"
+
+[[rhythms]]
+name = "Two Feel"
+hold = 1920
+
+[[rhythms.layers]]
+gain = 1.0
+steps = "x-x-"
+
+[[rhythms]]
 name = "Quarters"
 hold = 768
 
@@ -23,6 +55,74 @@ gain = 1.0
 steps = "-x-x-x-x"
 
 [[rhythms]]
+name = "Offbeat 16ths"
+hold = 96
+
+[[rhythms.layers]]
+gain = 1.0
+steps = "-x-x-x-x-x-x-x-x"
+
+[[rhythms]]
+name = "Dembow"
+hold = 480
+
+[[rhythms.layers]]
+gain = 1.0
+steps = "x--x--x-x--x--x-"
+
+[[rhythms]]
+name = "Charleston"
+hold = 480
+holds = [
+    1440,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+]
+
+[[rhythms.layers]]
+gain = 1.0
+steps = "x-----x---------"
+
+[[rhythms]]
+name = "Tresillo"
+hold = 960
+holds = [
+    1440,
+    0,
+    0,
+    0,
+    0,
+    0,
+    1440,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+]
+
+[[rhythms.layers]]
+gain = 1.0
+steps = "x-----x-----x---"
+
+[[rhythms]]
 name = "Syncopated 16ths"
 hold = 120
 
@@ -39,17 +139,92 @@ gain = 1.0
 steps = "xxxxxxxxxxxxxxxx"
 
 [[rhythms]]
-name = "Held Half"
-hold = 1920
+name = "Swung Eighths"
+hold = 320
 
 [[rhythms.layers]]
 gain = 1.0
-steps = "x---"
+steps = "x-xx-xx-xx-x"
 
 [[rhythms]]
-name = "Held 3/4"
-hold = 2880
+name = "Damped Quarters"
+hold = 384
+mute = 960
 
 [[rhythms.layers]]
 gain = 1.0
-steps = "x---"
+steps = "xxxx"
+
+[[rhythms]]
+name = "Accented Eighths"
+hold = 480
+velocities = [
+    1.0,
+    1.0,
+    0.550000011920929,
+    1.0,
+    0.550000011920929,
+    1.0,
+    0.550000011920929,
+    1.0,
+]
+
+[[rhythms.layers]]
+gain = 1.0
+steps = "x-x-x-x-"
+
+[[rhythms]]
+name = "32nd Roll"
+hold = 120
+
+[[rhythms.layers]]
+gain = 1.0
+steps = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+
+[[rhythms]]
+name = "Jazz Chorus 1/4"
+hold = 480
+
+[[rhythms.layers]]
+gain = 1.0
+steps = "x-------x-------"
+
+[[rhythms]]
+name = "Jazz Chorus 2/4"
+hold = 480
+
+[[rhythms.layers]]
+gain = 1.0
+steps = "x-----x---------"
+
+[[rhythms]]
+name = "Jazz Chorus 3/4"
+hold = 480
+
+[[rhythms.layers]]
+gain = 1.0
+steps = "x-----x---x-----"
+
+[[rhythms]]
+name = "Jazz Chorus 4/4"
+hold = 480
+
+[[rhythms.layers]]
+gain = 1.0
+steps = "x-----x---x-x-x-"
+
+[[rhythms]]
+name = "Son Clave 1/2"
+hold = 480
+
+[[rhythms.layers]]
+gain = 1.0
+steps = "x--x--x-"
+
+[[rhythms]]
+name = "Son Clave 2/2"
+hold = 480
+
+[[rhythms.layers]]
+gain = 1.0
+steps = "--x-x---"

@@ -1,7 +1,10 @@
 [package]
 name = "chord-tool"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2021"
+# `is_multiple_of` on integers is the newest thing used. Declared so an older
+# toolchain says so up front instead of failing somewhere deep in a build.
+rust-version = "1.87"
 
 [dependencies]
 crossterm = "0.28"
@@ -11,3 +14,16 @@ toml = "0.8"
 # Local wall-clock time for export filenames. Timezone/DST handling is not
 # worth hand-rolling; this is the only dependency the MIDI export adds.
 chrono = "0.4"
+
+[dev-dependencies]
+# The local regression-hunt tool, and deliberately not a gate: a wall-clock
+# threshold on a laptop either never fires or fires on the weather. It answers
+# "did this change make it slower", which `cargo test` cannot. Default features
+# off, because the plotting half pulls in a rendering stack for charts nobody
+# reads when a table and `--save-baseline` will do.
+criterion = { version = "0.8", default-features = false, features = ["cargo_bench_support"] }
+
+# One bench target, `harness = false` because criterion is the harness.
+[[bench]]
+name = "audio"
+harness = false

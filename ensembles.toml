@@ -1,0 +1,1393 @@
+# The shipped ensembles: three placements and a mixer.
+#
+# This file is the source, compiled in with `include_str!`. Each placement
+# names an instrument from `instruments.toml` and says where it sits — its
+# level, its transpose, its pan and how much reverb it sends. `low` and
+# `high` each play one note of the chord and `mid` plays the rest, which is
+# why a bass belongs low and a chord-voicing instrument belongs in the middle.
+
+[[ensembles]]
+name = "Default"
+
+[ensembles.low]
+instrument = "Default low"
+volume = 4.0
+transpose = 0.0
+reverb_send = 0.0
+pan = 0.0
+
+[ensembles.mid]
+instrument = "Default low"
+volume = 4.0
+transpose = 0.0
+reverb_send = 0.0
+pan = 0.0
+
+[ensembles.high]
+instrument = "Default low"
+volume = 4.0
+transpose = 0.0
+reverb_send = 0.0
+pan = 0.0
+
+[ensembles.mixer]
+reverb_mix = 0.0
+reverb_size = 0.5
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.0
+lfo_wave = "sine"
+note_length = 1.0
+
+[[ensembles]]
+name = "Warm Pad"
+
+[ensembles.low]
+instrument = "Warm Pad low"
+volume = 3.5
+transpose = 0.0
+reverb_send = 0.10000000149011612
+pan = -0.20000000298023224
+
+[ensembles.mid]
+instrument = "Warm Pad"
+volume = 3.0
+transpose = 0.0
+reverb_send = 0.4000000059604645
+pan = 0.0
+
+[ensembles.high]
+instrument = "Warm Pad high"
+volume = 3.0
+transpose = 0.0
+reverb_send = 0.5
+pan = 0.20000000298023224
+
+[ensembles.mixer]
+reverb_mix = 0.5
+reverb_size = 0.800000011920929
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.0
+lfo_wave = "sine"
+note_length = 1.0
+
+[[ensembles]]
+name = "Plucky"
+
+[ensembles.low]
+instrument = "Plucky low"
+volume = 4.0
+transpose = 0.0
+reverb_send = 0.0
+pan = 0.0
+
+[ensembles.mid]
+instrument = "Pluck"
+volume = 3.4000000953674316
+transpose = 0.0
+reverb_send = 0.11999999731779099
+pan = 0.0
+
+[ensembles.high]
+instrument = "Plucky high"
+volume = 2.5999999046325684
+transpose = 12.0
+reverb_send = 0.20000000298023224
+pan = 0.0
+
+[ensembles.mixer]
+reverb_mix = 0.2199999988079071
+reverb_size = 0.44999998807907104
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.0
+lfo_wave = "sine"
+note_length = 0.25
+
+[[ensembles]]
+name = "Bassy"
+
+[ensembles.low]
+instrument = "Deep Sine"
+volume = 6.0
+transpose = 0.0
+reverb_send = 0.0
+pan = 0.0
+
+[ensembles.mid]
+instrument = "Bassy mid"
+volume = 2.4000000953674316
+transpose = 0.0
+reverb_send = 0.0
+pan = 0.0
+
+[ensembles.high]
+instrument = "Bassy high"
+volume = 1.399999976158142
+transpose = 0.0
+reverb_send = 0.0
+pan = 0.0
+
+[ensembles.mixer]
+reverb_mix = 0.0
+reverb_size = 0.30000001192092896
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.0
+lfo_wave = "sine"
+note_length = 0.5
+
+[[ensembles]]
+name = "Glass"
+
+[ensembles.low]
+instrument = "Glass low"
+volume = 3.0
+transpose = 0.0
+reverb_send = 0.30000001192092896
+pan = -0.4000000059604645
+
+[ensembles.mid]
+instrument = "Glass Bell"
+volume = 3.0
+transpose = 0.0
+reverb_send = 0.5
+pan = 0.0
+
+[ensembles.high]
+instrument = "Glass high"
+volume = 3.0
+transpose = 0.0
+reverb_send = 0.699999988079071
+pan = 0.4000000059604645
+
+[ensembles.mixer]
+reverb_mix = 0.6000000238418579
+reverb_size = 0.8500000238418579
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.0
+lfo_wave = "sine"
+note_length = 1.0
+
+[[ensembles]]
+name = "Drawbar Organ"
+
+[ensembles.low]
+instrument = "Drawbar Organ low"
+volume = 4.400000095367432
+transpose = 0.0
+reverb_send = 0.0
+pan = 0.0
+
+[ensembles.mid]
+instrument = "Drawbar Organ"
+volume = 3.4000000953674316
+transpose = 0.0
+reverb_send = 0.0
+pan = 0.0
+
+[ensembles.high]
+instrument = "Drawbar Organ high"
+volume = 2.799999952316284
+transpose = 0.0
+reverb_send = 0.0
+pan = 0.0
+
+[ensembles.mixer]
+reverb_mix = 0.0
+reverb_size = 0.30000001192092896
+master_volume = 5.0
+master_mute = false
+lfo_rate = 6.199999809265137
+lfo_wave = "sine"
+note_length = 1.0
+
+[[ensembles]]
+name = "Rock Organ"
+
+[ensembles.low]
+instrument = "Rock Organ low"
+volume = 4.199999809265137
+transpose = 0.0
+reverb_send = 0.05000000074505806
+pan = -0.20000000298023224
+
+[ensembles.mid]
+instrument = "Rock Organ"
+volume = 3.200000047683716
+transpose = 0.0
+reverb_send = 0.15000000596046448
+pan = 0.20000000298023224
+
+[ensembles.high]
+instrument = "Rock Organ high"
+volume = 2.4000000953674316
+transpose = 0.0
+reverb_send = 0.20000000298023224
+pan = 0.0
+
+[ensembles.mixer]
+reverb_mix = 0.20000000298023224
+reverb_size = 0.44999998807907104
+master_volume = 5.0
+master_mute = false
+lfo_rate = 7.0
+lfo_wave = "triangle"
+note_length = 1.0
+
+[[ensembles]]
+name = "Pipe Organ"
+
+[ensembles.low]
+instrument = "Pipe Organ low"
+volume = 4.199999809265137
+transpose = 0.0
+reverb_send = 0.4000000059604645
+pan = -0.25
+
+[ensembles.mid]
+instrument = "Pipe Organ"
+volume = 3.4000000953674316
+transpose = 0.0
+reverb_send = 0.550000011920929
+pan = 0.0
+
+[ensembles.high]
+instrument = "Pipe Organ high"
+volume = 2.799999952316284
+transpose = 12.0
+reverb_send = 0.699999988079071
+pan = 0.25
+
+[ensembles.mixer]
+reverb_mix = 0.6200000047683716
+reverb_size = 0.9200000166893005
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.0
+lfo_wave = "sine"
+note_length = 1.0
+
+[[ensembles]]
+name = "Gospel Organ"
+
+[ensembles.low]
+instrument = "Gospel Organ low"
+volume = 4.400000095367432
+transpose = 0.0
+reverb_send = 0.0
+pan = 0.0
+
+[ensembles.mid]
+instrument = "Gospel Organ"
+volume = 3.4000000953674316
+transpose = 0.0
+reverb_send = 0.0
+pan = 0.0
+
+[ensembles.high]
+instrument = "Gospel Organ high"
+volume = 3.200000047683716
+transpose = 0.0
+reverb_send = 0.10000000149011612
+pan = 0.0
+
+[ensembles.mixer]
+reverb_mix = 0.11999999731779099
+reverb_size = 0.4000000059604645
+master_volume = 5.0
+master_mute = false
+lfo_rate = 7.400000095367432
+lfo_wave = "sine"
+note_length = 0.5
+
+[[ensembles]]
+name = "Gedeckt"
+
+[ensembles.low]
+instrument = "Gedeckt low"
+volume = 3.5999999046325684
+transpose = 0.0
+reverb_send = 0.30000001192092896
+pan = -0.20000000298023224
+
+[ensembles.mid]
+instrument = "Gedeckt"
+volume = 3.200000047683716
+transpose = 0.0
+reverb_send = 0.4000000059604645
+pan = 0.0
+
+[ensembles.high]
+instrument = "Gedeckt high"
+volume = 2.5999999046325684
+transpose = 0.0
+reverb_send = 0.5
+pan = 0.20000000298023224
+
+[ensembles.mixer]
+reverb_mix = 0.3499999940395355
+reverb_size = 0.699999988079071
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.0
+lfo_wave = "sine"
+note_length = 1.0
+
+[[ensembles]]
+name = "Electric Piano"
+
+[ensembles.low]
+instrument = "Electric Piano low"
+volume = 4.199999809265137
+transpose = 0.0
+reverb_send = 0.05000000074505806
+pan = -0.15000000596046448
+
+[ensembles.mid]
+instrument = "Rhodes"
+volume = 3.4000000953674316
+transpose = 0.0
+reverb_send = 0.15000000596046448
+pan = 0.0
+
+[ensembles.high]
+instrument = "Electric Piano high"
+volume = 2.200000047683716
+transpose = 12.0
+reverb_send = 0.20000000298023224
+pan = 0.0
+
+[ensembles.mixer]
+reverb_mix = 0.18000000715255737
+reverb_size = 0.44999998807907104
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.0
+lfo_wave = "sine"
+note_length = 0.5
+
+[[ensembles]]
+name = "Rhodes Bright"
+
+[ensembles.low]
+instrument = "Rhodes Bright low"
+volume = 4.199999809265137
+transpose = 0.0
+reverb_send = 0.05000000074505806
+pan = -0.15000000596046448
+
+[ensembles.mid]
+instrument = "Rhodes Bright"
+volume = 3.5999999046325684
+transpose = 0.0
+reverb_send = 0.11999999731779099
+pan = 0.0
+
+[ensembles.high]
+instrument = "Rhodes Bright high"
+volume = 2.799999952316284
+transpose = 12.0
+reverb_send = 0.18000000715255737
+pan = 0.0
+
+[ensembles.mixer]
+reverb_mix = 0.1599999964237213
+reverb_size = 0.41999998688697815
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.0
+lfo_wave = "sine"
+note_length = 0.5
+
+[[ensembles]]
+name = "Rhodes Dark"
+
+[ensembles.low]
+instrument = "Rhodes Dark low"
+volume = 4.400000095367432
+transpose = 0.0
+reverb_send = 0.10000000149011612
+pan = -0.20000000298023224
+
+[ensembles.mid]
+instrument = "Rhodes Dark"
+volume = 3.200000047683716
+transpose = 0.0
+reverb_send = 0.20000000298023224
+pan = 0.0
+
+[ensembles.high]
+instrument = "Rhodes Dark high"
+volume = 2.0
+transpose = 0.0
+reverb_send = 0.2800000011920929
+pan = 0.0
+
+[ensembles.mixer]
+reverb_mix = 0.30000001192092896
+reverb_size = 0.6000000238418579
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.0
+lfo_wave = "sine"
+note_length = 0.5
+
+[[ensembles]]
+name = "Wurli"
+
+[ensembles.low]
+instrument = "Wurli low"
+volume = 4.400000095367432
+transpose = 0.0
+reverb_send = 0.05000000074505806
+pan = -0.10000000149011612
+
+[ensembles.mid]
+instrument = "Wurli"
+volume = 3.200000047683716
+transpose = 0.0
+reverb_send = 0.11999999731779099
+pan = 0.0
+
+[ensembles.high]
+instrument = "Wurli high"
+volume = 2.0
+transpose = 12.0
+reverb_send = 0.15000000596046448
+pan = 0.0
+
+[ensembles.mixer]
+reverb_mix = 0.11999999731779099
+reverb_size = 0.4000000059604645
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.0
+lfo_wave = "sine"
+note_length = 0.5
+
+[[ensembles]]
+name = "Wurli Bark"
+
+[ensembles.low]
+instrument = "Wurli Bark low"
+volume = 4.599999904632568
+transpose = 0.0
+reverb_send = 0.0
+pan = 0.0
+
+[ensembles.mid]
+instrument = "Wurli Bark"
+volume = 3.5999999046325684
+transpose = 0.0
+reverb_send = 0.10000000149011612
+pan = 0.0
+
+[ensembles.high]
+instrument = "Wurli Bark high"
+volume = 2.4000000953674316
+transpose = 12.0
+reverb_send = 0.11999999731779099
+pan = 0.0
+
+[ensembles.mixer]
+reverb_mix = 0.14000000059604645
+reverb_size = 0.3799999952316284
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.0
+lfo_wave = "sine"
+note_length = 0.5
+
+[[ensembles]]
+name = "Clav"
+
+[ensembles.low]
+instrument = "Clav low"
+volume = 4.599999904632568
+transpose = 0.0
+reverb_send = 0.0
+pan = 0.0
+
+[ensembles.mid]
+instrument = "Clav"
+volume = 3.4000000953674316
+transpose = 0.0
+reverb_send = 0.05000000074505806
+pan = 0.10000000149011612
+
+[ensembles.high]
+instrument = "Clav high"
+volume = 2.4000000953674316
+transpose = 12.0
+reverb_send = 0.10000000149011612
+pan = 0.0
+
+[ensembles.mixer]
+reverb_mix = 0.05000000074505806
+reverb_size = 0.30000001192092896
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.0
+lfo_wave = "sine"
+note_length = 0.25
+
+[[ensembles]]
+name = "Grand Piano"
+
+[ensembles.low]
+instrument = "Grand Piano low"
+volume = 4.400000095367432
+transpose = 0.0
+reverb_send = 0.18000000715255737
+pan = -0.30000001192092896
+
+[ensembles.mid]
+instrument = "Grand Piano"
+volume = 3.5999999046325684
+transpose = 0.0
+reverb_send = 0.25999999046325684
+pan = 0.0
+
+[ensembles.high]
+instrument = "Honky Tonk Tine"
+volume = 2.5999999046325684
+transpose = 12.0
+reverb_send = 0.3400000035762787
+pan = 0.30000001192092896
+
+[ensembles.mixer]
+reverb_mix = 0.2800000011920929
+reverb_size = 0.550000011920929
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.0
+lfo_wave = "sine"
+note_length = 0.5
+
+[[ensembles]]
+name = "Bell"
+
+[ensembles.low]
+instrument = "Bell low"
+volume = 3.200000047683716
+transpose = 0.0
+reverb_send = 0.3499999940395355
+pan = -0.25
+
+[ensembles.mid]
+instrument = "Bell"
+volume = 2.799999952316284
+transpose = 12.0
+reverb_send = 0.44999998807907104
+pan = 0.25
+
+[ensembles.high]
+instrument = "Bell high"
+volume = 2.200000047683716
+transpose = 19.0
+reverb_send = 0.550000011920929
+pan = 0.0
+
+[ensembles.mixer]
+reverb_mix = 0.550000011920929
+reverb_size = 0.800000011920929
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.0
+lfo_wave = "sine"
+note_length = 0.25
+
+[[ensembles]]
+name = "Marimba"
+
+[ensembles.low]
+instrument = "Marimba low"
+volume = 4.400000095367432
+transpose = 0.0
+reverb_send = 0.05000000074505806
+pan = -0.10000000149011612
+
+[ensembles.mid]
+instrument = "Marimba"
+volume = 3.4000000953674316
+transpose = 0.0
+reverb_send = 0.11999999731779099
+pan = 0.10000000149011612
+
+[ensembles.high]
+instrument = "Celesta"
+volume = 2.0
+transpose = 12.0
+reverb_send = 0.20000000298023224
+pan = 0.0
+
+[ensembles.mixer]
+reverb_mix = 0.15000000596046448
+reverb_size = 0.3499999940395355
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.0
+lfo_wave = "sine"
+note_length = 0.25
+
+[[ensembles]]
+name = "Vibraphone"
+
+[ensembles.low]
+instrument = "Vibraphone low"
+volume = 4.0
+transpose = 0.0
+reverb_send = 0.25
+pan = -0.3499999940395355
+
+[ensembles.mid]
+instrument = "Vibraphone"
+volume = 3.4000000953674316
+transpose = 0.0
+reverb_send = 0.3499999940395355
+pan = 0.0
+
+[ensembles.high]
+instrument = "Vibraphone high"
+volume = 2.799999952316284
+transpose = 12.0
+reverb_send = 0.44999998807907104
+pan = 0.3499999940395355
+
+[ensembles.mixer]
+reverb_mix = 0.4000000059604645
+reverb_size = 0.699999988079071
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.5
+lfo_wave = "sine"
+note_length = 0.5
+
+[[ensembles]]
+name = "Kalimba"
+
+[ensembles.low]
+instrument = "Kalimba low"
+volume = 4.599999904632568
+transpose = 0.0
+reverb_send = 0.2199999988079071
+pan = -0.20000000298023224
+
+[ensembles.mid]
+instrument = "Kalimba"
+volume = 3.5999999046325684
+transpose = 0.0
+reverb_send = 0.2800000011920929
+pan = 0.0
+
+[ensembles.high]
+instrument = "Kalimba high"
+volume = 2.4000000953674316
+transpose = 12.0
+reverb_send = 0.3400000035762787
+pan = 0.0
+
+[ensembles.mixer]
+reverb_mix = 0.23999999463558197
+reverb_size = 0.5
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.0
+lfo_wave = "sine"
+note_length = 0.25
+
+[[ensembles]]
+name = "Harp"
+
+[ensembles.low]
+instrument = "Harp low"
+volume = 3.799999952316284
+transpose = 0.0
+reverb_send = 0.20000000298023224
+pan = -0.30000001192092896
+
+[ensembles.mid]
+instrument = "Harp"
+volume = 3.200000047683716
+transpose = 0.0
+reverb_send = 0.30000001192092896
+pan = 0.30000001192092896
+
+[ensembles.high]
+instrument = "Harp high"
+volume = 2.200000047683716
+transpose = 12.0
+reverb_send = 0.4000000059604645
+pan = 0.0
+
+[ensembles.mixer]
+reverb_mix = 0.3499999940395355
+reverb_size = 0.6000000238418579
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.0
+lfo_wave = "sine"
+note_length = 0.5
+
+[[ensembles]]
+name = "Nylon Guitar"
+
+[ensembles.low]
+instrument = "Nylon Guitar low"
+volume = 4.199999809265137
+transpose = 0.0
+reverb_send = 0.15000000596046448
+pan = -0.30000001192092896
+
+[ensembles.mid]
+instrument = "Nylon Guitar"
+volume = 3.4000000953674316
+transpose = 0.0
+reverb_send = 0.20000000298023224
+pan = 0.30000001192092896
+
+[ensembles.high]
+instrument = "Nylon Guitar high"
+volume = 2.4000000953674316
+transpose = 12.0
+reverb_send = 0.25999999046325684
+pan = 0.0
+
+[ensembles.mixer]
+reverb_mix = 0.2199999988079071
+reverb_size = 0.5
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.0
+lfo_wave = "sine"
+note_length = 0.5
+
+[[ensembles]]
+name = "Pizzicato"
+
+[ensembles.low]
+instrument = "Pizzicato low"
+volume = 4.400000095367432
+transpose = 0.0
+reverb_send = 0.20000000298023224
+pan = -0.25
+
+[ensembles.mid]
+instrument = "Pizzicato"
+volume = 3.5999999046325684
+transpose = 0.0
+reverb_send = 0.2800000011920929
+pan = 0.0
+
+[ensembles.high]
+instrument = "Pizzicato high"
+volume = 2.5999999046325684
+transpose = 12.0
+reverb_send = 0.3400000035762787
+pan = 0.0
+
+[ensembles.mixer]
+reverb_mix = 0.25999999046325684
+reverb_size = 0.5
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.0
+lfo_wave = "sine"
+note_length = 0.25
+
+[[ensembles]]
+name = "String Pad"
+
+[ensembles.low]
+instrument = "String Pad low"
+volume = 3.4000000953674316
+transpose = 0.0
+reverb_send = 0.4000000059604645
+pan = -0.3499999940395355
+
+[ensembles.mid]
+instrument = "String Ensemble"
+volume = 3.0
+transpose = 0.0
+reverb_send = 0.5
+pan = 0.0
+
+[ensembles.high]
+instrument = "String Pad high"
+volume = 2.5999999046325684
+transpose = 12.0
+reverb_send = 0.6000000238418579
+pan = 0.3499999940395355
+
+[ensembles.mixer]
+reverb_mix = 0.44999998807907104
+reverb_size = 0.800000011920929
+master_volume = 5.0
+master_mute = false
+lfo_rate = 4.599999904632568
+lfo_wave = "sine"
+note_length = 1.0
+
+[[ensembles]]
+name = "PWM Pad"
+
+[ensembles.low]
+instrument = "PWM Pad low"
+volume = 3.4000000953674316
+transpose = 0.0
+reverb_send = 0.3499999940395355
+pan = -0.4000000059604645
+
+[ensembles.mid]
+instrument = "PWM Pad"
+volume = 3.0
+transpose = 0.0
+reverb_send = 0.44999998807907104
+pan = 0.0
+
+[ensembles.high]
+instrument = "PWM Pad high"
+volume = 2.5999999046325684
+transpose = 12.0
+reverb_send = 0.550000011920929
+pan = 0.4000000059604645
+
+[ensembles.mixer]
+reverb_mix = 0.44999998807907104
+reverb_size = 0.800000011920929
+master_volume = 5.0
+master_mute = false
+lfo_rate = 0.550000011920929
+lfo_wave = "triangle"
+note_length = 1.0
+
+[[ensembles]]
+name = "Vox Pad"
+
+[ensembles.low]
+instrument = "Vox Pad low"
+volume = 3.200000047683716
+transpose = 0.0
+reverb_send = 0.44999998807907104
+pan = -0.3499999940395355
+
+[ensembles.mid]
+instrument = "Vox Pad"
+volume = 3.0
+transpose = 0.0
+reverb_send = 0.550000011920929
+pan = 0.0
+
+[ensembles.high]
+instrument = "Vox Pad high"
+volume = 2.5999999046325684
+transpose = 0.0
+reverb_send = 0.6499999761581421
+pan = 0.3499999940395355
+
+[ensembles.mixer]
+reverb_mix = 0.5
+reverb_size = 0.8500000238418579
+master_volume = 5.0
+master_mute = false
+lfo_rate = 4.199999809265137
+lfo_wave = "sine"
+note_length = 1.0
+
+[[ensembles]]
+name = "Choir Aah"
+
+[ensembles.low]
+instrument = "Choir Aah low"
+volume = 3.200000047683716
+transpose = 0.0
+reverb_send = 0.44999998807907104
+pan = -0.4000000059604645
+
+[ensembles.mid]
+instrument = "Choir Aah"
+volume = 3.0
+transpose = 0.0
+reverb_send = 0.550000011920929
+pan = 0.0
+
+[ensembles.high]
+instrument = "Choir Aah high"
+volume = 2.5999999046325684
+transpose = 0.0
+reverb_send = 0.6499999761581421
+pan = 0.4000000059604645
+
+[ensembles.mixer]
+reverb_mix = 0.550000011920929
+reverb_size = 0.8500000238418579
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.0
+lfo_wave = "sine"
+note_length = 1.0
+
+[[ensembles]]
+name = "Choir Ooh"
+
+[ensembles.low]
+instrument = "Choir Ooh low"
+volume = 3.4000000953674316
+transpose = 0.0
+reverb_send = 0.44999998807907104
+pan = -0.4000000059604645
+
+[ensembles.mid]
+instrument = "Choir Ooh"
+volume = 3.200000047683716
+transpose = 0.0
+reverb_send = 0.550000011920929
+pan = 0.0
+
+[ensembles.high]
+instrument = "Choir Ooh high"
+volume = 2.799999952316284
+transpose = 0.0
+reverb_send = 0.6499999761581421
+pan = 0.4000000059604645
+
+[ensembles.mixer]
+reverb_mix = 0.5
+reverb_size = 0.8500000238418579
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.0
+lfo_wave = "sine"
+note_length = 1.0
+
+[[ensembles]]
+name = "Buzz Lead"
+
+[ensembles.low]
+instrument = "Buzz Lead low"
+volume = 4.400000095367432
+transpose = 0.0
+reverb_send = 0.0
+pan = 0.0
+
+[ensembles.mid]
+instrument = "Buzz Lead"
+volume = 3.4000000953674316
+transpose = 0.0
+reverb_send = 0.10000000149011612
+pan = 0.0
+
+[ensembles.high]
+instrument = "Buzz Lead high"
+volume = 2.200000047683716
+transpose = 12.0
+reverb_send = 0.18000000715255737
+pan = 0.0
+
+[ensembles.mixer]
+reverb_mix = 0.15000000596046448
+reverb_size = 0.4000000059604645
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.0
+lfo_wave = "sine"
+note_length = 0.25
+
+[[ensembles]]
+name = "Soft Horn"
+
+[ensembles.low]
+instrument = "Soft Horn low"
+volume = 4.199999809265137
+transpose = 0.0
+reverb_send = 0.05000000074505806
+pan = -0.10000000149011612
+
+[ensembles.mid]
+instrument = "Soft Horn"
+volume = 3.4000000953674316
+transpose = 0.0
+reverb_send = 0.10000000149011612
+pan = 0.10000000149011612
+
+[ensembles.high]
+instrument = "Soft Horn high"
+volume = 2.4000000953674316
+transpose = 12.0
+reverb_send = 0.11999999731779099
+pan = 0.0
+
+[ensembles.mixer]
+reverb_mix = 0.10000000149011612
+reverb_size = 0.4000000059604645
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.199999809265137
+lfo_wave = "sine"
+note_length = 0.5
+
+[[ensembles]]
+name = "Trumpet"
+
+[ensembles.low]
+instrument = "Trumpet low"
+volume = 4.400000095367432
+transpose = 0.0
+reverb_send = 0.10000000149011612
+pan = -0.15000000596046448
+
+[ensembles.mid]
+instrument = "Trumpet"
+volume = 3.5999999046325684
+transpose = 0.0
+reverb_send = 0.14000000059604645
+pan = 0.0
+
+[ensembles.high]
+instrument = "Trumpet high"
+volume = 2.5999999046325684
+transpose = 12.0
+reverb_send = 0.18000000715255737
+pan = 0.0
+
+[ensembles.mixer]
+reverb_mix = 0.15000000596046448
+reverb_size = 0.41999998688697815
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.400000095367432
+lfo_wave = "sine"
+note_length = 0.5
+
+[[ensembles]]
+name = "Clarinet"
+
+[ensembles.low]
+instrument = "Clarinet low"
+volume = 4.0
+transpose = 0.0
+reverb_send = 0.15000000596046448
+pan = -0.15000000596046448
+
+[ensembles.mid]
+instrument = "Clarinet"
+volume = 3.200000047683716
+transpose = 0.0
+reverb_send = 0.20000000298023224
+pan = 0.0
+
+[ensembles.high]
+instrument = "Clarinet high"
+volume = 2.4000000953674316
+transpose = 12.0
+reverb_send = 0.25999999046325684
+pan = 0.15000000596046448
+
+[ensembles.mixer]
+reverb_mix = 0.20000000298023224
+reverb_size = 0.44999998807907104
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.0
+lfo_wave = "sine"
+note_length = 0.5
+
+[[ensembles]]
+name = "Oboe"
+
+[ensembles.low]
+instrument = "Oboe low"
+volume = 4.0
+transpose = 0.0
+reverb_send = 0.15000000596046448
+pan = -0.10000000149011612
+
+[ensembles.mid]
+instrument = "Oboe"
+volume = 3.200000047683716
+transpose = 0.0
+reverb_send = 0.20000000298023224
+pan = 0.0
+
+[ensembles.high]
+instrument = "Oboe high"
+volume = 2.200000047683716
+transpose = 12.0
+reverb_send = 0.25999999046325684
+pan = 0.10000000149011612
+
+[ensembles.mixer]
+reverb_mix = 0.18000000715255737
+reverb_size = 0.41999998688697815
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.0
+lfo_wave = "sine"
+note_length = 0.5
+
+[[ensembles]]
+name = "Flute"
+
+[ensembles.low]
+instrument = "Flute low"
+volume = 3.799999952316284
+transpose = 0.0
+reverb_send = 0.25
+pan = -0.15000000596046448
+
+[ensembles.mid]
+instrument = "Flute"
+volume = 3.200000047683716
+transpose = 0.0
+reverb_send = 0.3199999928474426
+pan = 0.0
+
+[ensembles.high]
+instrument = "Flute high"
+volume = 2.5999999046325684
+transpose = 12.0
+reverb_send = 0.4000000059604645
+pan = 0.15000000596046448
+
+[ensembles.mixer]
+reverb_mix = 0.30000001192092896
+reverb_size = 0.6000000238418579
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.0
+lfo_wave = "sine"
+note_length = 0.5
+
+[[ensembles]]
+name = "Sub Bass"
+
+[ensembles.low]
+instrument = "Electric Bass"
+volume = 6.5
+transpose = 0.0
+reverb_send = 0.0
+pan = 0.0
+
+[ensembles.mid]
+instrument = "Sub Bass mid"
+volume = 2.200000047683716
+transpose = 0.0
+reverb_send = 0.0
+pan = 0.0
+
+[ensembles.high]
+instrument = "Sub Bass high"
+volume = 1.2000000476837158
+transpose = 0.0
+reverb_send = 0.0
+pan = 0.0
+
+[ensembles.mixer]
+reverb_mix = 0.0
+reverb_size = 0.30000001192092896
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.0
+lfo_wave = "sine"
+note_length = 0.5
+
+[[ensembles]]
+name = "Acid Bass"
+
+[ensembles.low]
+instrument = "Acid Bass"
+volume = 5.0
+transpose = 0.0
+reverb_send = 0.0
+pan = 0.0
+
+[ensembles.mid]
+instrument = "Acid Bass mid"
+volume = 3.0
+transpose = 0.0
+reverb_send = 0.0
+pan = 0.0
+
+[ensembles.high]
+instrument = "Acid Bass high"
+volume = 1.600000023841858
+transpose = 0.0
+reverb_send = 0.0
+pan = 0.0
+
+[ensembles.mixer]
+reverb_mix = 0.0
+reverb_size = 0.30000001192092896
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.0
+lfo_wave = "sine"
+note_length = 0.25
+
+[[ensembles]]
+name = "Upright Bass"
+
+[ensembles.low]
+instrument = "Upright Bass"
+volume = 6.199999809265137
+transpose = 0.0
+reverb_send = 0.0
+pan = 0.0
+
+[ensembles.mid]
+instrument = "Upright Bass mid"
+volume = 3.0
+transpose = 0.0
+reverb_send = 0.0
+pan = 0.0
+
+[ensembles.high]
+instrument = "Upright Bass high"
+volume = 1.600000023841858
+transpose = 0.0
+reverb_send = 0.0
+pan = 0.0
+
+[ensembles.mixer]
+reverb_mix = 0.10000000149011612
+reverb_size = 0.4000000059604645
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.0
+lfo_wave = "sine"
+note_length = 0.5
+
+[[ensembles]]
+name = "Kick"
+
+[ensembles.low]
+instrument = "Kick low"
+volume = 6.5
+transpose = -12.0
+reverb_send = 0.0
+pan = 0.0
+
+[ensembles.mid]
+instrument = "Kick"
+volume = 4.400000095367432
+transpose = -24.0
+reverb_send = 0.0
+pan = 0.0
+
+[ensembles.high]
+instrument = "Kick high"
+volume = 2.5999999046325684
+transpose = -5.0
+reverb_send = 0.0
+pan = 0.0
+
+[ensembles.mixer]
+reverb_mix = 0.05000000074505806
+reverb_size = 0.25
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.0
+lfo_wave = "sine"
+note_length = 0.25
+
+[[ensembles]]
+name = "Hi-Hat"
+
+[ensembles.low]
+instrument = "Hi-Hat low"
+volume = 2.0
+transpose = 0.0
+reverb_send = 0.0
+pan = 0.0
+
+[ensembles.mid]
+instrument = "Hi-Hat"
+volume = 3.0
+transpose = 0.0
+reverb_send = 0.0
+pan = 0.0
+
+[ensembles.high]
+instrument = "Hi-Hat high"
+volume = 3.5
+transpose = 0.0
+reverb_send = 0.0
+pan = 0.0
+
+[ensembles.mixer]
+reverb_mix = 0.05000000074505806
+reverb_size = 0.25
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.0
+lfo_wave = "sine"
+note_length = 0.25
+
+[[ensembles]]
+name = "Snare"
+
+[ensembles.low]
+instrument = "Snare low"
+volume = 3.0
+transpose = -12.0
+reverb_send = 0.0
+pan = 0.0
+
+[ensembles.mid]
+instrument = "Snare"
+volume = 3.5999999046325684
+transpose = 0.0
+reverb_send = 0.11999999731779099
+pan = 0.0
+
+[ensembles.high]
+instrument = "Snare high"
+volume = 2.4000000953674316
+transpose = 0.0
+reverb_send = 0.15000000596046448
+pan = 0.0
+
+[ensembles.mixer]
+reverb_mix = 0.11999999731779099
+reverb_size = 0.4000000059604645
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.0
+lfo_wave = "sine"
+note_length = 0.25
+
+[[ensembles]]
+name = "Wind"
+
+[ensembles.low]
+instrument = "Wind low"
+volume = 2.4000000953674316
+transpose = 0.0
+reverb_send = 0.44999998807907104
+pan = -0.44999998807907104
+
+[ensembles.mid]
+instrument = "Wind"
+volume = 2.200000047683716
+transpose = 0.0
+reverb_send = 0.550000011920929
+pan = 0.0
+
+[ensembles.high]
+instrument = "Wind high"
+volume = 2.0
+transpose = 0.0
+reverb_send = 0.6499999761581421
+pan = 0.44999998807907104
+
+[ensembles.mixer]
+reverb_mix = 0.6000000238418579
+reverb_size = 0.8999999761581421
+master_volume = 5.0
+master_mute = false
+lfo_rate = 0.2800000011920929
+lfo_wave = "triangle"
+note_length = 1.0

@@ -54,6 +54,16 @@ pub enum KeyPosition {
     RightMiddleBelow,
     RightRingBelow,
     RightPinkyBelow,
+    // Above the home row, right hand, inner -> outer.
+    //
+    // The row the chord grammar never reaches and nothing else wanted: five
+    // keys that are free, on the hand that is not holding a chord. On
+    // Programmer Dvorak these are `f`, `g`, `c`, `r` and `l`.
+    RightInnerAbove,
+    RightIndexAbove,
+    RightMiddleAbove,
+    RightRingAbove,
+    RightPinkyAbove,
     /// The very top-left key, left of `1`.
     ///
     /// Not part of either hand and never inserted into a `PositionSet`: it is
@@ -115,17 +125,27 @@ pub enum Hotkey {
     Undo,
     /// Redo the last undone progression edit.
     Redo,
-    /// Set the selected progression slot to the chord in the registers.
-    ///
-    /// Keeps that entry's rhythm pattern and offset, so a chord can be corrected
-    /// without losing its syncopation — which delete-and-insert would.
-    ReplaceChord,
     /// Recall the chord under the progression cursor into the registers.
     ///
     /// Bound to `LeftInner`, the one home-row position the chord grammar
     /// ignores. Deliberately explicit: selecting a row must not clobber a
     /// latched register mid-performance.
     LoadSelectedChord,
+    /// Put the selected history chord back into the registers.
+    ///
+    /// The same gesture as recalling a progression row, on a chord that is not
+    /// in the progression — which is how a chord you played by accident becomes
+    /// one you can commit.
+    HistoryRecall,
+    /// Step back through the history, sounding each chord on the way.
+    HistoryBack,
+    /// Step forward through the history, the same way.
+    HistoryForward,
+    /// Sound the selected chord for as long as the key is held, and let it fade
+    /// when it is released.
+    HistoryPlay,
+    /// Cycle the log: away, the exact history, the top list, away.
+    HistoryView,
     /// Tap one beat of the rhythm being recorded in the Sinko panel.
     ///
     /// Bound to `TopLeft` (`$` on Programmer Dvorak). Global rather than scoped
@@ -143,6 +163,26 @@ pub enum Hotkey {
     /// Bound to `TopRow3` (`{` on Programmer Dvorak). It used to be the space
     /// bar, which is now the both-hands chord latch.
     TransportTap,
+}
+
+impl Hotkey {
+    /// The action `Shift` selects on this key, or the action itself.
+    ///
+    /// One place, because two things depend on it: the input layer, and the test
+    /// that resolves `REFERENCE.md`'s key table through the real keyboard map.
+    /// `Shift` never introduces a new physical key — it only picks the second
+    /// action on one — so this is the whole of the modifier's meaning.
+    pub fn shifted(self, shift: bool) -> Hotkey {
+        if !shift {
+            return self;
+        }
+        match self {
+            Hotkey::Undo => Hotkey::Redo,
+            Hotkey::CopyChord => Hotkey::CopySinko,
+            Hotkey::PasteChord => Hotkey::PasteSinko,
+            other => other,
+        }
+    }
 }
 
 impl KeyPosition {
@@ -171,8 +211,9 @@ impl KeyPosition {
 
     /// If this position is bound to a hotkey, which one.
     ///
-    /// Covers the whole below-home-row row plus `LeftInner`, the single
-    /// home-row position the chord grammar never uses.
+    /// Covers the whole below-home-row row, the right hand's row above the home
+    /// row, and `LeftInner` — the single home-row position the chord grammar
+    /// never uses.
     ///
     /// The left pinky below home row locks the *right* register, and vice
     /// versa: the gesture mirrors the register being targeted.
@@ -190,7 +231,11 @@ impl KeyPosition {
             KeyPosition::LeftMiddleBelow => Some(PasteChord),
             KeyPosition::LeftIndexBelow => Some(DeleteChord),
             KeyPosition::LeftInnerBelow => Some(Undo),
-            KeyPosition::RightInnerBelow => Some(ReplaceChord),
+            KeyPosition::RightInnerAbove => Some(HistoryRecall),
+            KeyPosition::RightIndexAbove => Some(HistoryBack),
+            KeyPosition::RightMiddleAbove => Some(HistoryForward),
+            KeyPosition::RightRingAbove => Some(HistoryPlay),
+            KeyPosition::RightPinkyAbove => Some(HistoryView),
             KeyPosition::TopLeft => Some(SinkoTap),
             KeyPosition::TopRow1 => Some(MetronomeToggle),
             KeyPosition::TopRow3 | KeyPosition::TopRow4 => Some(TransportTap),
@@ -222,6 +267,11 @@ impl KeyPosition {
             RightMiddleBelow => ',',
             RightRingBelow => '.',
             RightPinkyBelow => '/',
+            RightInnerAbove => 'y',
+            RightIndexAbove => 'u',
+            RightMiddleAbove => 'i',
+            RightRingAbove => 'o',
+            RightPinkyAbove => 'p',
             // The QWERTY label is the keycap, not the character P.D. types.
             TopLeft => '`',
             TopRow1 => '1',
@@ -233,6 +283,11 @@ impl KeyPosition {
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum Layout {
+    /// The layout most terminals arrive in. Fully mapped, and selected by
+    /// editing [`ACTIVE_LAYOUT`] rather than at runtime, so a build that has not
+    /// switched to it never constructs the variant — hence the allow, not a
+    /// deletion: it is one line away from being the active layout.
+    #[allow(dead_code)]
     Qwerty,
     ProgrammerDvorak,
 }
@@ -275,6 +330,12 @@ impl Layout {
             (Layout::Qwerty, '/') => RightPinkyBelow,
             // Top-left, above the home row. Both shifted and unshifted reach
             // the same physical key, as everywhere else.
+            // Above home row
+            (Layout::Qwerty, 'y') => RightInnerAbove,
+            (Layout::Qwerty, 'u') => RightIndexAbove,
+            (Layout::Qwerty, 'i') => RightMiddleAbove,
+            (Layout::Qwerty, 'o') => RightRingAbove,
+            (Layout::Qwerty, 'p') => RightPinkyAbove,
             (Layout::Qwerty, '`') => TopLeft,
             (Layout::Qwerty, '~') => TopLeft,
             (Layout::Qwerty, '1') => TopRow1,
@@ -307,6 +368,14 @@ impl Layout {
             (Layout::ProgrammerDvorak, 'w') => RightMiddleBelow,
             (Layout::ProgrammerDvorak, 'v') => RightRingBelow,
             (Layout::ProgrammerDvorak, 'z') => RightPinkyBelow,
+            // Above home row. P.D. moves the whole row right by two: the
+            // QWERTY `y u i o p` positions carry `f g c r l`, which is where
+            // the history keys come from.
+            (Layout::ProgrammerDvorak, 'f') => RightInnerAbove,
+            (Layout::ProgrammerDvorak, 'g') => RightIndexAbove,
+            (Layout::ProgrammerDvorak, 'c') => RightMiddleAbove,
+            (Layout::ProgrammerDvorak, 'r') => RightRingAbove,
+            (Layout::ProgrammerDvorak, 'l') => RightPinkyAbove,
             // P.D. puts `$` on the top-left key, with `~` shifted.
             (Layout::ProgrammerDvorak, '$') => TopLeft,
             (Layout::ProgrammerDvorak, '~') => TopLeft,
@@ -518,11 +587,12 @@ mod tests {
     }
 
     #[test]
-    fn unassigned_below_home_row_positions_are_inert() {
-        // These three right-hand slots are deliberately unbound, reserved for
-        // later progression operations. `RightInnerBelow` was the fourth until it
-        // became "replace the selected chord from the registers".
+    fn the_group_actions_have_no_key_of_their_own() {
+        // Replace, reverse, rotate and clear-sinko live in the Progression
+        // panel's menu, so the below-home-row slots they briefly held are free
+        // again and every one of them is inert rather than a chord key.
         for p in [
+            KeyPosition::RightInnerBelow,
             KeyPosition::RightIndexBelow,
             KeyPosition::RightMiddleBelow,
             KeyPosition::RightRingBelow,
@@ -531,17 +601,210 @@ mod tests {
         }
     }
 
-    #[test]
-    fn the_replace_hotkey_is_bound_and_is_not_a_chord_key() {
-        assert_eq!(
-            KeyPosition::RightInnerBelow.hotkey(),
-            Some(Hotkey::ReplaceChord)
-        );
-        assert!(!KeyPosition::RightInnerBelow.is_home_row());
+    /// The rows of a fenced hotkey table: keycap, the character that reaches the
+    /// app, the `Hotkey` variant the row claims (empty where the document does not
+    /// name one), and what the row says the key does.
+    ///
+    /// Columns are found **by header name**, not by position, because the two
+    /// documents that carry this table have different numbers of them:
+    /// `REFERENCE.md` names the variant and the panel scope, and `CHEATSHEET.md`
+    /// drops both, because a card a player reads does not need to know what the
+    /// code calls the command.
+    ///
+    /// Parsing the documents is the point: they are what a player reads, and the
+    /// only way to keep them true is to make the build fail when they are not.
+    fn fenced_hotkeys(doc: &str, begin: &str, end: &str) -> Vec<(String, char, String, String)> {
+        let table = doc
+            .split(begin)
+            .nth(1)
+            .and_then(|rest| rest.split(end).next())
+            .unwrap_or_else(|| panic!("{begin} … {end} must fence a table of hotkeys"));
 
-        // The documented key under Programmer Dvorak.
-        let pos = Layout::ProgrammerDvorak.position('b').unwrap();
-        assert_eq!(pos.hotkey(), Some(Hotkey::ReplaceChord));
+        // Trimmed but otherwise left as written: a keycap cell is markdown
+        // (`` `c` + Shift ``), and it only ever reaches a failure message, where
+        // the markup reads better than a half-stripped backtick.
+        let cells = |line: &str| -> Vec<String> {
+            line.split('|')
+                .map(|cell| cell.trim().to_string())
+                .collect()
+        };
+        let mut lines = table.lines().filter(|line| line.starts_with('|'));
+        let header = cells(lines.next().expect("the table must have a header row"));
+        let column = |name: &str| {
+            header
+                .iter()
+                .position(|cell| cell == name)
+                .unwrap_or_else(|| panic!("no `{name}` column in the table under {begin}"))
+        };
+        let (keycap_at, typed_at, does_at) =
+            (column("Keycap"), column("You type"), column("What it does"));
+        let variant_at = header.iter().position(|cell| cell == "Command");
+
+        let rows: Vec<(String, char, String, String)> = lines
+            .filter(|line| !line.contains("---"))
+            .map(|line| {
+                // The cell before the leading `|` is empty, so every index here is
+                // one past what the header's own numbering says.
+                let cells = cells(line);
+                // Only the two cells that are *compared* have to be unwrapped —
+                // the character, which is mapped through the layout, and the
+                // variant name, which is matched against the real `Hotkey`. The
+                // keycap and the description are read, not parsed.
+                let typed: Vec<char> = cells[typed_at].trim_matches('`').trim().chars().collect();
+                assert_eq!(
+                    typed.len(),
+                    1,
+                    "the \"you type\" cell must be one character: {line:?}"
+                );
+                let variant = variant_at
+                    .map(|at| cells[at].trim_matches('`').trim().to_string())
+                    .unwrap_or_default();
+                (
+                    cells[keycap_at].clone(),
+                    typed[0],
+                    variant,
+                    cells[does_at].clone(),
+                )
+            })
+            .collect();
+        assert!(rows.len() >= 10, "the table looks empty: {rows:?}");
+        rows
+    }
+
+    /// The rows of `REFERENCE.md`'s hotkey table.
+    fn documented_hotkeys() -> Vec<(String, char, String)> {
+        fenced_hotkeys(
+            include_str!("../REFERENCE.md"),
+            "<!-- hotkeys:begin -->",
+            "<!-- hotkeys:end -->",
+        )
+        .into_iter()
+        .map(|(keycap, typed, variant, _)| (keycap, typed, variant))
+        .collect()
+    }
+
+    #[test]
+    fn the_reference_documents_keys_that_do_what_they_claim() {
+        // Direction one: every documented row resolves, through the real map,
+        // to the command it names. A renamed variant or a rebound key fails here.
+        for (keycap, typed, command) in documented_hotkeys() {
+            let position = Layout::ProgrammerDvorak
+                .position(typed)
+                .unwrap_or_else(|| panic!("{} is unmapped on this layout", keycap));
+            let hotkey = position
+                .hotkey()
+                .unwrap_or_else(|| panic!("{} carries no hotkey", keycap));
+            // An uppercase "you type" is how the table spells `Shift`.
+            let actual = hotkey.shifted(typed.is_ascii_uppercase());
+            assert_eq!(
+                format!("{:?}", actual),
+                command,
+                "{} ({:?}) does not run {}",
+                keycap,
+                typed,
+                command
+            );
+        }
+    }
+
+    #[test]
+    fn the_reference_documents_every_key_the_keyboard_offers() {
+        // Direction two: no binding is missing from the table. A new hotkey on a
+        // position with no row here fails, so the document cannot go quietly out
+        // of date as the keyboard grows.
+        //
+        // Compared by *position*, not by character: one physical key answers to
+        // several characters (`1` and `&`, `$` and `~`), and the table names the
+        // key once.
+        let documented: Vec<KeyPosition> = documented_hotkeys()
+            .into_iter()
+            .filter(|(_, typed, _)| !typed.is_ascii_uppercase())
+            .map(|(keycap, typed, _)| {
+                Layout::ProgrammerDvorak
+                    .position(typed)
+                    .unwrap_or_else(|| panic!("{} is unmapped", keycap))
+            })
+            .collect();
+
+        let offered: Vec<KeyPosition> = (0x20u8..0x7f)
+            .map(|b| b as char)
+            .filter_map(|c| Layout::ProgrammerDvorak.position(c))
+            .filter(|p| p.hotkey().is_some())
+            .fold(Vec::new(), |mut seen, p| {
+                if !seen.contains(&p) {
+                    seen.push(p);
+                }
+                seen
+            });
+
+        for p in &offered {
+            assert!(
+                documented.contains(p),
+                "{:?} carries a hotkey but has no row in REFERENCE.md",
+                p
+            );
+        }
+        for p in &documented {
+            assert!(
+                offered.contains(p),
+                "{:?} is in REFERENCE.md's table but carries no hotkey",
+                p
+            );
+        }
+    }
+
+    #[test]
+    fn the_cheatsheet_says_what_the_reference_says() {
+        // The cheat sheet is the card a player keeps beside the app and trusts
+        // without checking, so it has to agree with the reference it summarises:
+        // the same keys, and the same words for what each one does. A rebound key,
+        // a missing row or a reworded action fails here rather than in somebody's
+        // hands.
+        //
+        // Compared as rows of (keycap, character, wording), sorted by character so
+        // the cheat sheet is free to group them for reading rather than follow the
+        // reference's order. The `Hotkey` variant is dropped from both: it is the
+        // reference's business, not a card's, and the wording is what ties the two
+        // together.
+        let rows = |doc, begin, end| {
+            let mut rows: Vec<(String, char, String)> = fenced_hotkeys(doc, begin, end)
+                .into_iter()
+                .map(|(keycap, typed, _, does)| (keycap, typed, does))
+                .collect();
+            rows.sort_by_key(|(_, typed, _)| *typed);
+            rows
+        };
+
+        assert_eq!(
+            rows(
+                include_str!("../CHEATSHEET.md"),
+                "<!-- cheatsheet-hotkeys:begin -->",
+                "<!-- cheatsheet-hotkeys:end -->",
+            ),
+            rows(
+                include_str!("../REFERENCE.md"),
+                "<!-- hotkeys:begin -->",
+                "<!-- hotkeys:end -->",
+            ),
+            "CHEATSHEET.md and REFERENCE.md disagree about the hotkeys"
+        );
+    }
+
+    #[test]
+    fn shift_only_ever_picks_a_second_action_on_a_real_key() {
+        // The invariant the table relies on: `Shift` never invents a key.
+        use Hotkey::*;
+        for (plain, shifted) in [
+            (Undo, Redo),
+            (CopyChord, CopySinko),
+            (PasteChord, PasteSinko),
+        ] {
+            assert_eq!(plain.shifted(false), plain, "{:?}", plain);
+            assert_eq!(plain.shifted(true), shifted, "{:?}", plain);
+        }
+        // And an action with no second meaning is itself under `Shift`.
+        assert_eq!(SinkoTap.shifted(true), SinkoTap);
+        assert_eq!(TransportTap.shifted(true), TransportTap);
     }
 
     #[test]

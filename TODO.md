@@ -262,9 +262,9 @@ and voices it, scoped to the Progression panel.
 - [ ] `git rm --cached debug.log`. It is already in `.gitignore` but was
       committed before that, so it is still tracked and gets truncated and
       rewritten on every launch (~113k lines / 2.7 MB per session).
-- [ ] Confirm `patches.toml` should stay tracked. It is user state that the app
-      rewrites on "Save As", so expect noisy diffs; consider shipping the
-      built-ins in code and keeping the file local.
+- [x] Ship the palette rather than rewriting it. Done: `ensembles.toml` and
+      `instruments.toml` are tracked and compiled in with `include_str!`, and only
+      the user's own files are ever written, so there are no noisy diffs.
 - [ ] Add a `LICENSE` — the repo currently has none.
 - [ ] Clean up `bugs.txt`: three of the four lines are empty `bug0 ::::` stubs.
 
@@ -336,12 +336,12 @@ and voices it, scoped to the Progression panel.
       gain. Three of the standing warnings went with it.
 - [ ] `Scheduler.transport` is a public field that is never read. Remove or use
       it.
-- [ ] `Registers::is_empty` and `PatchStore::names` are unused public API.
+- [ ] `Registers::is_empty` is unused public API.
 
 ## 6. Next features (once the above is clear)
 
-- [ ] Save and load progressions, not just patches — nothing persists the
-      progression across restarts (`rhythms.toml` and `patches.toml` do survive).
+- [ ] Save and load progressions, not just sounds — nothing persists the
+      progression across restarts (the ensembles and rhythms do survive).
 - [x] Export a progression as MIDI. Done: `[Export MIDI]` on the Transport
       panel writes a timestamped format 0 file, one track on channel 1, with
       tempo / 4/4 / key signature and the progression's chord tones. See
@@ -358,7 +358,7 @@ and voices it, scoped to the Progression panel.
   - [ ] Route low / mid / high to separate MIDI channels. The score already
         tags every note with a layer and `smf::TrackLayout::PerLayer` already
         writes the format 1 file; what is missing is a `ChannelMap` on
-        `MixerPatch` and a UI to edit it.
+        `MixerSettings` and a UI to edit it.
   - [ ] Live MIDI output. Add a `MidiSink` trait and a `midir`-backed sink on
         the scheduler events at `tui.rs` (`SchedulerEvent::PlayChord` /
         `StopChord`). The `midi::Score` model is the shared seam; no timing
@@ -381,5 +381,188 @@ and voices it, scoped to the Progression panel.
   - [ ] Audition a pattern from the Progression panel without assigning it.
   - [ ] Route rhythm hits to live MIDI output. `arrangement.rs` already emits
         the note boundaries a sink would consume.
+- [ ] EQ follow-ups, in the order they are worth doing:
+  - [ ] **Put curves on the shipped ensembles.** Every shipped ensemble ships
+        flat, on purpose: the equaliser was added without changing a sound that
+        was already there, and a test asserts it. The next pass is taste —
+        a high-pass on the basses, a de-mud on the Rhodes mid, air on the
+        vibraphone — and it is a deliberate change to the palette, so it wants
+        a listening pass and a re-recorded fingerprint rather than a sed.
+  - [ ] A per-band Q or width, so a band can be a notch instead of a bell. The
+        recipes already take a Q; the curve type does not carry one.
+  - [ ] A spectrum or per-band level readout under the curve display, using the
+        peak tap that already exists for `debug.log`.
+  - [ ] Show the EQ of a register in the Ensembles panel, so a curve is visible
+        without focusing the EQ panel.
+  - [ ] Copy a curve from one target to another, and a `[Reset Curve]` row.
+- [ ] Spectrum follow-ups, in the order they are worth doing:
+  - [ ] A numeric readout of the band the cursor is on — the bars give a shape,
+        and sometimes you want "−14 dB at 250 Hz" in figures.
+  - [ ] A stereo or phase view: the two master channels are summed before the
+        meter, so a mix that is out of phase reads as quieter than it is.
+  - [ ] A `[Freeze]` that stops the picture, for reading a transient that has
+        already gone.
+  - [ ] A wider ladder for the display alone (a third of an octave interpolated
+        between the EQ's bands), if thirteen columns turns out to be too coarse
+        to see a resonance.
 - [ ] Extend the grammar to seventh-scale-degrees so minor-key diatonic
       functions beyond natural minor are reachable.
+
+- [x] Effects, as a rack rather than a chain of presets. Done as: an effect is a
+      *kind* (15 families), a *variant* (54 between them) and up to six parameter
+      slots; each register has six insert slots; each register also has a reverb
+      send and a delay send into one master unit each, with the return level a row
+      in the master block. Measured cost of a fully loaded rig — eighteen inserts
+      and both aux units — is about 2 % of one core, because the rack is bus-level
+      work rather than per-voice.
+- [ ] Effect follow-ups, in the order they are worth doing:
+  - [ ] **Put racks on the shipped ensembles.** Every shipped ensemble ships with
+        empty racks, on purpose: the feature was added without changing a sound
+        that was already there, and a test asserts it. The next pass is taste — a
+        tape delay on the electric pianos, a plate on the choir, a compressor on
+        the basses — and it wants a listening pass, like the EQ curves do.
+  - [ ] A **per-register wet/dry for the rack** as a whole, so six slots can be
+        dialled in at once instead of one at a time.
+  - [ ] **A bypass row per slot**, so a rack can be A/B'd without losing the
+        settings. Today `empty` is the only way to take a slot out, and it forgets.
+  - [ ] **Oversampling for the distortions**, behind a per-slot switch. It is the
+        one place where the aliasing is a bug rather than a character.
+  - [ ] **A true-stereo aux path.** The sends are mono per register and the tank's
+        output is summed before it returns, so a chorus widens a register but not
+        the image.
+  - [ ] **A preset browser** on the FX panel: today `preset` walks the ones that
+        match the variant on screen, which is fast for one variant and useless for
+        finding "the reverb I saved last week".
+  - [ ] **The chain, on the FX panel.** The table's `fx` page shows all eighteen
+        slots at once and the panel shows one of them in full, so while editing
+        slot 4 you cannot see what slots 1–3 and 5–6 hold. A compact strip under
+        the buttons would close that, and the panel has the room: it is 25 rows
+        against the Synth table's 34.
+  - [ ] **Effect presets on the shipped instruments**, so loading an instrument can
+        bring a rack with it. Today a rack belongs to the placement, which is the
+        right default and the wrong only option.
+- [x] **The voice grew a second oscillator, a wavetable position, phase
+      distortion, a plucked string and the "free tier"** — notch and peak filter
+      outputs, filter drive, and velocity routed to cutoff and pulse width. Every
+      one of them is skipped at its neutral value, so the shipped palette still
+      renders to the sample (the legacy oracle and the palette fingerprint both
+      hold). The Synth table gained an `osc` page for the new rows; the six pages
+      are `tone`, `osc`, `env`, `filter`, `mod` and `fx`, and the panel is still
+      34 rows.
+- [ ] Voice follow-ups, in the order they are worth doing:
+  - [ ] **A second string.** One voice has one delay line, so `osc2 waveform`
+        cannot offer `pluck`. A second buffer per voice is about ten kilobytes a
+        voice and would make two plucked strings, or a plucked string against a
+        bow, reachable.
+  - [ ] **Oscillator sync.** Hard sync is a phase reset and would cost almost
+        nothing — a compare and a branch — and it is the one classic two-oscillator
+        trick that does not need more state.
+  - [ ] **A filter *type* per voice rather than per channel.** The five outputs
+        are all computed; a per-note choice would make a split timbre possible
+        without a second layer.
+  - [ ] **A velocity source other than the rhythm accent.** `velocity` is the
+        per-cell accent today and full for anything hand-played. Key velocity from
+        a MIDI import would feed the same two rows.
+  - [ ] **A second filter envelope, or an LFO rate per channel.** The two
+        remaining "one global setting for three registers" cases.
+- [x] **Twenty-two new instruments, from the controls the voice had just gained.**
+      A noise burst into a tuned delay is a real plucked string, so the palette
+      gained a steel guitar, a nylon pluck, a harpsichord, a bass guitar, a muted
+      guitar and a sitar; phase modulation gained an FM tine piano, bell, marimba,
+      bass and brass; the second oscillator gained a two-registration organ; the
+      wavetable position gained a choir morph and a glass pad; phase distortion
+      gained a CZ lead and a CZ organ; the notch and peak outputs gained a hollow
+      clav, a phase pad and a talking lead; drive gained an overdriven organ and a
+      dirty tine; and velocity gained an accent clav. The amp decay and release
+      ranges went from two seconds to eight, which a bell and a long ring both
+      needed. Two tests guard the result: every shipped instrument has to render
+      finite and audible, and every control the voice has has to be used by at
+      least one patch.
+- [ ] Voice follow-ups the patch-writing turned up, in the order they are worth
+      doing:
+  - [ ] **An envelope on the FM depth.** `osc2 fm` is a constant, so a tine has to
+        be shaped by the *filter* contour instead — a closed cutoff with a fast
+        positive envelope reveals the sidebands for a moment and then lets them
+        go. That works, and it is why every FM patch here is built that way, but a
+        real DX patch has a modulator envelope of its own. A second contour is
+        about twenty lines and one more row.
+  - [ ] **Fine detune between the two oscillators.** `osc2 interval` is whole
+        semitones, so the classic two-oscillator detune is unreachable; `unison`
+        and `detune` cover a detuned stack of *one* waveform. An `osc2 detune` in
+        cents, or letting the interval take a fraction of a semitone, is the
+        cheapest remaining win in the whole voice.
+  - [ ] **A second string.** One delay line per voice, so `osc2 waveform` cannot
+        offer `pluck`.
+  - [ ] **A pick-position comb.** The excitation is a noise burst whose length is
+        a fraction of the period; the refinement a real model uses is a comb
+        filter on the burst, which is where the "pick near the bridge" hollowness
+        comes from. It is one short delay line per voice, and the string's is
+        already allocated.
+  - [ ] **Velocity from a MIDI import.** The two velocity rows are fed by the
+        rhythm accent today; an imported file has key velocities that could feed
+        the same two rows for nothing.
+- [x] **Cross-modulation, in the two frequency domains, plus feedback and ring.**
+      `fm mode` chooses whether the second oscillator bends the first one's phase
+      (the DX sound, index constant), its frequency in hertz (the index grows as
+      the note falls, and through-zero for free), or its frequency by a ratio (the
+      analog X-Mod, index fixed across the keyboard). The exponential domain
+      needed its mean divided back out — `E[2^(D sin)]` is `I₀(D ln 2)` and the
+      mode played up to 140 cents sharp without it, which in a chord is a wrong
+      note. Plus `feedback` — the operator folding its own wave, a saw from a sine
+      and then a noise source — and `osc2 ring`, a per-voice ring modulator that,
+      unlike the rack's `ringmod`, tracks the played note. Nine instruments show
+      them: two growl basses, two clangs, two ring patches, a folded saw, a chaos
+      percussion and a breath pad. A test pins the two domains through the patches
+      that use them: the linear pair must be at least twice as bright at C2 as at
+      C6, and the exponential pair the same at both.
+- [ ] Cross-modulation follow-ups, in the order they are worth doing:
+  - [ ] **An envelope on the cross-modulation depth.** The same gap the FM row has,
+        and now twice as visible: `linear` at full depth is an extreme sound, and
+        the only way to have it *arrive* is still the filter contour. One more
+        contour, twenty lines and a row.
+  - [ ] **Feedback around the pair rather than around one oscillator.** Feeding
+        osc1's output into osc2's phase, or the whole two-oscillator sum back into
+        both, is where the chaotic end of a real X-Mod lives.
+  - [ ] **A ring modulator that keeps the carrier.** Today the product is *added*,
+        so at full ring the carrier is still there at its own level. A balance
+        control, or a `ring only` mode, would give the pure sum-and-difference
+        bell that a ring modulator is known for.
+  - [ ] **Through-zero metering.** There is no way to see that the phase is running
+        backwards; a readout on the Spectrum panel or the debug log would make the
+        region reachable on purpose rather than by ear.
+
+## 7. Performance
+
+The infrastructure and two passes of optimisation are done — see
+[PERFORMANCE.md](PERFORMANCE.md) for what is measured, how, and every number
+quoted here. Where things stand: the worst case is **18.8 % of its buffer
+deadline** (26.5 % before either pass), and the floor a machine clears before it
+plays a note is **75 µs a buffer where it was 319** — a seventy-six per cent
+reduction from moving one early-out out of a five-hundred-line function.
+
+What is left:
+
+- [ ] **The channel snapshot.** Forty-four `ChannelParam` reads a voice a sample
+      turned into plain fields once a buffer. Thirty-two of those are atomic
+      loads through an `Arc`, which is the last obvious per-voice cost; the
+      estimate is four to seven nanoseconds of the twenty-eight a voice-frame
+      costs, and an estimate is not a reason to rewrite the hottest function in
+      the program. **Profile first**: `cargo bench --bench audio -- --profile-time
+      10` and `samply`, against `Voice::tick` — which is now an inlined wrapper
+      around `tick_sounding` and therefore easy to find in a flamegraph.
+- [ ] **Block processing** — filter state and gain applied per block rather than
+      per sample. What a real engine does, and a much larger change.
+- [ ] **Data-oriented voice layout and SIMD**, last, and only if the profile says
+      the arithmetic still dominates afterwards.
+- [ ] **Re-apply the second oscillator's hoist** if 4.6 % on the thirteen
+      cross-modulated and ring-modulated instruments is worth twenty lines. It was
+      built, proven bit-identical and measured at 4.6 % against a pre-registered
+      10 % bar, so it was reverted; the measurement and the shape of the change are
+      in `PERFORMANCE.md` §8a.
+
+Things the measurements say *not* to do: eighteen maximised insert slots are
+1.6 % of a core and thirteen bands of EQ are 0.3 %, so the rack and the curve are
+not worth a line of code; `powf` → `exp2` is retired at 0.014 % once the frequency
+is computed per buffer; and the analyser, which was the first suspect for the
+silent floor, turned out to be 15 % of it rather than the two-thirds the
+hypothesis needed.

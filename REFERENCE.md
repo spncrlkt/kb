@@ -133,7 +133,7 @@ on a key, never a new key.
 <!-- hotkeys:begin -->
 | Keycap | You type | Command | What it does | Scope |
 | --- | --- | --- | --- | --- |
-| `` ` `` | `$` | `SinkoTap` | tap one beat of the rhythm being recorded | any panel |
+| `` ` `` | `$` | `SinkoTap` | tap or hold a note into the four-bar loop being recorded | any panel |
 | `1` | `&` | `MetronomeToggle` | metronome click on / off | any panel |
 | `3` | `{` | `TransportTap` | tap the transport: play/pause, restart, seek to the middle | any panel |
 | `4` | `}` | `TransportTap` | the same — the key next door, so a miss still taps | any panel |
@@ -143,6 +143,7 @@ on a key, never a new key.
 | `x` | `q` | `CopyChord` | copy the selection | Progression |
 | `c` | `j` | `PasteChord` | paste the clipboard after the block, or into the gap before position 1 | Progression |
 | `v` | `k` | `DeleteChord` | delete the selection | Progression |
+| `n` | `b` | `ReplaceChord` | set the selected slot to the chord being held, keeping its rhythm and offset | Progression |
 | `b` | `x` | `Undo` | undo the last progression edit | Progression |
 | `b` + Shift | `X` | `Redo` | redo the last undone progression edit | Progression |
 | `x` + Shift | `Q` | `CopySinko` | copy one rhythm per selected chord to the sinko clipboard | Progression, Sinko |
@@ -185,13 +186,15 @@ closes it rather than stopping the transport.
 
 ## 2. Panels
 
-`Tab` cycles: **Progression → Transport → Sinko → Synth → Ensembles → EQ →
-Spectrum**. `↑`/`↓` move the cursor, `←`/`→` adjust, `Enter` acts.
+`Tab` cycles: **Progression → Transport → Sinko → Loops → Synth → Ensembles →
+EQ → Spectrum → FX**. `↑`/`↓` move the cursor, `←`/`→` adjust, `Enter` acts.
 
-Four of those seven stops share a slot on screen. The first two are side by side
-(Progression on the left, Transport on the right, with the metronome panel able
-to take Transport's place); the last four — Synth, Ensembles, EQ and Spectrum —
-are the same block, showing whichever one has focus. So `Tab` walks down the
+Nine stops, three blocks. The first two are side by side — Progression on the
+left, Transport on the right, with the **metronome** panel able to take
+Transport's place. The second block is full width and is borrowed rather than
+added to: it draws **Sinko**, or the **chord log** when the log is up. The third
+is the shared **Synth slot**, which shows whichever of **Synth**, **Ensembles**,
+**Loops**, **EQ**, **Spectrum** and **FX** has focus. So `Tab` walks down the
 screen and each stop is one panel closer to the bottom, but you never see the
 synth table and the equaliser at once: they are views of one panel, which is what
 keeps every other view shorter than the tallest of them.
@@ -228,6 +231,12 @@ there.
 | `reverse` | turns the run around in place |
 | `rotate` | rolls the run one place, last chord to first; repeating it walks the phrase round |
 | `clear` | takes the rhythms **and** offsets off, leaving the chords |
+
+`replace` **also has a key of its own** — `n`, which types `b` on Programmer
+Dvorak. It is the one item here that a single slot can use: one slot is a range of
+one, and the menu only opens once a run is selected, so without the key there
+would be no way to overwrite the chord you are sitting on. `reverse`, `rotate` and
+`clear` stay menu-only, because none of them means anything applied to one slot.
 
 Every group action is **one** undoable edit, however many chords it touched.
 
@@ -291,21 +300,19 @@ immediately — nothing to save, nothing on disk.
 | Row | `←`/`→` | Notes |
 | --- | --- | --- |
 | `chord` | step the Progression selection | clamped, and a rest is a stop like any other |
-| `pattern` | cycle `(none)` then the palette | shows `[8/23]`; `Shift` jumps five; `(edited)` when the chord's copy has drifted from the library |
+| `pattern` | cycle `(none)` then the palette | shows `[8/19]`; `Shift` jumps five; `(edited)` when the chord's bar has drifted from the library. Assigning a **four-bar** pattern spreads its bars across this chord and the three after it |
 | `offset` | walk the note ladder | −whole to +whole note, independent of the pattern |
-| `quant` | 2, 4, 8, **12**, 16, **24**, 32, 64 steps per bar | 12 and 24 are the triplet grids; holds are in ticks, so they survive a grid change |
+| `quant` | 2, 4, 8, **12**, 16, **24**, 32, 64 steps per bar | 12 and 24 are the triplet grids; holds are in ticks, so they survive a grid change, and the hits are re-quantized onto the new grid rather than dropped |
 | `swing` | `follow transport`, then 0–100% | this pattern's own groove |
-| `hits` | walk the cell cursor; `Enter` toggles the cell | off clears the cell in *every* take, on puts it in the newest |
+| `hits` | walk the cell cursor; `Enter` toggles the cell | the grid is drawn under this row rather than as a row of its own |
 | `length` | the hit under the cursor: `default` then the note ladder | per-hit override |
-| `accent` | the hit under the cursor: 20–100% | per-hit level, multiplied by the take's |
+| `accent` | the hit under the cursor: 20–100% | per-hit level |
 | `hold` | the default length for hits without an override | 1 tick to a whole bar |
-| `mute` | none, then up to a quarter note | silences the end of the *pattern's* bar; anything ringing in is cut at the boundary |
-| `smooth` | 1–8 takes averaged | how many recent takes the top layer averages over |
-| `record` | `Enter` arms/disarms | armed, the click runs and each tap sounds the chord |
-| one line per layer | — | four of them, always drawn: newest at full level, each older one ×0.7 |
+| `mute` | none, then up to a quarter note | silences the end of the *bar*; anything ringing in is cut at the boundary |
+| `loop` | `Enter` opens the Looper on this chord | the four-bar tap recorder |
 | `[New Pattern]` | `Enter` | give the selected chord a blank rhythm of its own, named and audible at once |
-| `[Save Pattern As...]` | `Enter` | copy the chord's rhythm into the palette under a new name (`Name 2` if taken) |
-| `[Copy Sinko]` | `Enter` | one rhythm per selected chord to the sinko clipboard |
+| `[Save Pattern As...]` | `Enter` | copy the chord's bar into the palette under a new name (`Name 2` if taken) |
+| `[Copy Sinko]` | `Enter` | one bar per selected chord to the sinko clipboard |
 | `[Paste Sinko]` | `Enter` | names what is waiting, e.g. `[Paste Sinko: 2 rhythms, 1 plain]` |
 
 ### History and Top
@@ -447,9 +454,51 @@ you are.
 `Enter` keeps it, `Esc` puts the old value back. Editing with a chord held needs
 `Shift`+arrows, because `Enter` still commits the chord first.
 
+### Loops
+
+The four-bar tap recorder. It loads a bed of four bars, loops it with the click,
+and records `$` into it — then saves all four bars as one pattern, which Sinko can
+assign like any other. It borrows the Synth slot, so it costs the layout no rows
+of its own. Reach it with `Tab`, or with `Enter` on Sinko's `loop` row, which
+opens it on the chord that panel is describing.
+
+**All four bars are on screen at once**, one grid per line, under the `hits` row:
+the loop is the thing being made, and a bar at a time hides its shape. The bar the
+cursor is on carries the edit cursor and the row band; the bar the clock is on
+carries the playhead. `x` is a hit, `·` a rest and **`=` a cell a hit is still
+sounding through** — the hold, drawn — so a note held across a beat reads as a
+line rather than a dot.
+
+| Row | `←`/`→` | Notes |
+| --- | --- | --- |
+| `source` | `one chord, four times` / `the first four chords` | what `[Record]` loads |
+| `chord` | pick the progression row `one chord` means | the label is the chord |
+| `bar` | 1–4, wrapping | which bar the cursor, `length`, `accent` and `[Clear Bar]` act on |
+| `quant` | the same ladder as Sinko | steps per bar for a bed that has not been loaded yet |
+| `hits` | walk the cell cursor; `Enter` toggles the cell | the four grids are drawn under this row |
+| `length`, `accent`, `hold` | the same as Sinko | per-hit and per-bar, on the bar the cursor is on |
+| `[Clear Bar]` | `Enter` | empties the bar the cursor is on, and only that bar |
+| `[Record]` | `Enter` | three states, cyclically: nothing loaded → load and loop; recording → stop recording but keep the loop; loaded and stopped → unload and hand the progression back |
+| `[Save Loop As...]` | `Enter` | all four bars into the palette as one pattern |
+
+**`$` records a note, not a dot.** What it captures is the key's own down and up:
+the press is the note's start — landing in **the bar the clock is on**, and
+sounding *that* bar's chord as it is placed — and the key-up is its end. The
+distance between the two becomes the hit's **length**, rounded to the bar's grid;
+a tap that begins and ends inside one cell is an ordinary hit and keeps the bar's
+default hold. A note held over a bar line keeps sounding into the next bar, up to
+a bar long, and the cells it was held through are cleared, so a hold replaces the
+taps under it rather than layering with them. Because the tap is a key and not a
+click, holding it is one note: the terminal's auto-repeat is absorbed rather than
+read as a burst of new notes.
+
+On each pass the recorded hits play back with their own bar's chord. `Esc` stops
+the transport and the recording but keeps the four bars — losing work is not
+something a panic key should do — and it hands the tap's voice back on the way.
+
 ### Ensembles
 
-One row per **ensemble** you can load — the forty-two shipped ones and yours,
+One row per **ensemble** you can load — the seventy-four shipped ones and yours,
 with yours winning wherever the names collide — then `[Save As...]`. `Enter` loads
 an ensemble: its three placements are resolved against the instrument library, its
 mixer travels with it including note length, and the instrument row is then named
@@ -684,22 +733,33 @@ registers plus whatever is under your hands, live winning per side — is the
 
 ### Rhythm patterns
 
-A chord can play a one-bar pattern instead of one whole-bar stab. Patterns are
-per-chord **copies**: two chords can both start from `Quarters` and drift apart.
-A pattern is a grid (2–64 cells, including the triplet grids 12 and 24), a default
-hold in ticks, per-cell length and accent overrides, a muted tail, an optional
-swing override, and up to four layers.
+A chord can play a pattern instead of one whole-bar stab. Patterns are per-chord
+**copies**: two chords can both start from `Quarters` and drift apart. A pattern
+is **one to four bars**; each bar is a grid (2–64 cells, including the triplet
+grids 12 and 24), a default hold in ticks, per-cell length and accent overrides, a
+muted tail and an optional swing override.
 
-Tapping builds the grid: `$` taps, each bar commits a take as a layer with the
-newest loudest, and takes closer together than 30 ms count as key repeat. Taps
-are resolved 300 ms after the last press.
+Tapping builds the grid a note at a time: `$` records into the Loops panel's
+four-bar bed, and what it records is the key's down and up — the start and the end
+of a note, so the length the key was held for becomes the hit's hold. A tap inside
+one cell is a plain hit. Hand-editing is the Sinko `hits` row, and a key held down
+is one note: auto-repeat is absorbed, and taps are resolved 300 ms after the last
+press.
 
 ### Multi-bar phrases
 
-A pattern is one bar, so a longer figure is a *set* of one-bar patterns whose
-names carry their place: `Jazz Chorus 1/4`…`4/4`, `Son Clave 1/2`, `2/2`. Assign
-them to consecutive chords and the phrasing is the progression. Keeping them in
-order is on you — a set used out of order is just unrelated bars.
+A four-bar pattern is a **phrase**: assigning one spreads its bars across that
+chord and the three after it, in one undoable edit. `Jazz Chorus` is one such
+entry and `Son Clave` is a two-bar one — they used to ship as one-bar fragments
+whose *names* carried the position (`Jazz Chorus 1/4` and so on), which is the
+same musical idea with the contract in a string. `AssignedRhythm` records which
+bar of the phrase a chord holds, so any single bar can still be edited, offset or
+muted on the chord it lands on.
+
+Four bars is the ceiling because the Loops panel's bed is four bars — it is what
+`$` can record in one pass of the transport. A phrase is **data, not a mode**: it
+is a `RhythmPattern` in the library, it is written into the session document bar
+by bar, and `[Save Loop As...]` is the same thing arriving from the recorder.
 
 ### MIDI export and import
 
@@ -721,12 +781,33 @@ else here:
 | **Placement** | a named instrument plus where it sits: level, transpose, reverb send, pan, and a thirteen-band EQ curve | inside an ensemble |
 | **Ensemble** | three placements — `low`, `mid`, `high` — and the mixer, which has a curve of its own | `ensembles.toml` |
 
-The split is not bookkeeping. `low` and `high` each play one note of the chord
-and `mid` plays the rest, so the three registers are doing different jobs, and an
-instrument that carried a register's level and transposition could not be moved
-between them without dragging those along. Keeping a voice register-neutral is
-what lets `Celesta` — Marimba's top register, an octave up — be dropped into the
-bass and still be a celesta.
+The split is not bookkeeping. The three registers are **three parts**, and the
+chord is voiced across them: `low` takes the root an octave below, `mid` takes the
+chord, and `high` takes the top note an octave above. That is what the block sizes
+are for — one note for the low, four for the mid, one for the high. An instrument
+that carried a register's level and transposition could not be moved between them
+without dragging those along, and keeping a voice register-neutral is what lets
+`Celesta` — Marimba's top register, an octave up — be dropped into the bass and
+still be a celesta.
+
+**A bass, a chord and a descant.** The voicing is worth stating because it was
+wrong in a way nothing caught for a long time. The registers used to be handed the
+chord's *tones* at their written pitch — the low took the bottom note, the high the
+top, the mid whatever was left, and only a single note was spread by an octave. A
+triad on middle C therefore came out as C4, E4 and G4: three registers inside a
+major third, which the ear fuses into one instrument however different the three
+patches are. The names were a lie for every chord, and
+`a_triad_is_voiced_as_a_bass_a_chord_and_a_descant` is the assertion that says so
+now.
+
+Past four notes the top is left to the descant and the rest of the chord goes in
+as before, rather than the middle block being filled until it overflows. The mid
+block holds four notes, and the low and high are already doubling the ends, so a
+fifth or sixth tone that did not fit would be silent everywhere — splitting it
+this way keeps every pitch class sounding. A ninth comes out as the root an octave
+down, the third, fifth and seventh in the middle, and the ninth an octave up.
+Percussion does not fit this model at all, because a drum has no register; the
+three kit ensembles are the one place the names stay approximate.
 
 It also means **auditioning an instrument does not disturb your mix**: swapping a
 sound changes the two dozen parameters that say what it is, and leaves the
@@ -745,7 +826,7 @@ curve is a copy.
 
 | File | Tracked | What it is |
 | --- | --- | --- |
-| `ensembles.toml` | yes | The forty-two shipped ensembles, compiled in with `include_str!`. Editing the file **is** how the palette changes — there is no Rust to keep in step. |
+| `ensembles.toml` | yes | The seventy-four shipped ensembles, compiled in with `include_str!`. Editing the file **is** how the palette changes — there is no Rust to keep in step. |
 | `ensembles.user.toml` | no | Created empty on first run. What `[Save As...]` writes, layered over the shipped ensembles by name. |
 | `instruments.toml` | yes | The one hundred and fifty-five shipped instruments, compiled in the same way. Register-neutral voices, each with a name. |
 | `instruments.user.toml` | no | Created empty. What the picker's `s` writes. |
@@ -753,7 +834,7 @@ curve is a copy.
 | `eq_presets.user.toml` | no | Created empty. What `[Save Curve As...]` writes. |
 | `fx_presets.toml` | yes | The seventy-two shipped effect presets, compiled in the same way. |
 | `fx_presets.user.toml` | no | Created empty. What the FX panel's `[Save Effect As...]` writes. |
-| `rhythms.toml` | yes | The twenty-three shipped patterns. The odd one out: Rust is the source and this file is regenerated from it, so the file and the built-ins are checked equal by a test. |
+| `rhythms.toml` | yes | The nineteen shipped patterns. The odd one out: Rust is the source and this file is regenerated from it, so the file and the built-ins are checked equal by a test. A pattern is written as one `[[rhythms.bars]]` table per bar — one for nearly all of them, four for a phrase. |
 | `rhythms.user.toml` | no | Created empty. What `[Save Pattern As...]` writes. |
 | `progressions/` | no | Where MIDI exports are written and imported from, created on first launch. Falls back to the working directory if it cannot be made. |
 | `settings.toml` | no | Written a moment after the key, tempo or master volume stops moving, and read back at start-up. Not created until one of them changes. A missing or unreadable file silently means "the defaults"; only a file that exists and will not parse is reported. |
@@ -787,9 +868,8 @@ fresh checkout never has to be told where the library is.
 | Hold | 1 tick … one whole bar (3840); default 240 |
 | Muted tail | 0 … a quarter note (960) |
 | Offset | ± one whole bar (3840) |
-| Pattern layers | 4 |
-| Recording takes | 8 kept, averaged over up to 8 |
-| Take decay | ×0.7 per bar, floor 0.05 |
+| Pattern length | 1 … 4 bars; a four-bar pattern is a phrase and spreads across four chords when assigned |
+| Looper bed | 4 bars, from one chord or the first four of the progression |
 | Undo history | 128 edits |
 | Audition release | 500 ms |
 | Tap resolution | 300 ms after the last press; taps closer than 30 ms are key repeat |
@@ -801,14 +881,16 @@ fresh checkout never has to be told where the library is.
 | EQ curves | 25 shipped, plus yours |
 | Spectrum | 13 bands — the EQ's ladder — 4 taps (`low`, `mid`, `high`, `master`); spans 48 / 60 / 72 dB; envelope release 48 / 24 / 8 dB per second; peak hold per band |
 | Terminal | 80 × 16 minimum; wider windows give spare columns to the bar grid up to 120 |
-| Panel heights | Transport 15, Synth 34, Sinko 35, EQ 34, Spectrum 33, FX 25 rows — asserted by a test, because every row added anywhere costs the whole layout. The ensemble list is the exception: it is as long as the library, and scrolls rather than being clipped |
+| Panel heights | Transport 15, Synth 34, **Sinko 31**, EQ 34, Spectrum 33, FX 25, Ensembles 34, **Loops 29** rows — asserted by a test, because every row added anywhere costs the whole layout. The ensemble list draws a **window of twenty rows** and scrolls, because the library it shows is longer than any terminal |
 
 ---
 
 ## 6. Pattern palette
 
-Twenty-three patterns ship with the build, in this order — the order the
-`pattern` row cycles, grouped so that neighbours sound related.
+Nineteen patterns ship with the build, in this order — the order the `pattern`
+row cycles, grouped so that neighbours sound related. A pattern is **one bar or
+four**: a one-bar pattern is a chord's rhythm, and a four-bar pattern is a
+*phrase* whose bars spread across consecutive chords when it is assigned.
 
 | Group | Patterns |
 | --- | --- |
@@ -818,10 +900,14 @@ Twenty-three patterns ship with the build, in this order — the order the
 | Sixteenth grid | `Offbeat 16ths`, `Dembow`, `Charleston`, `Tresillo`, `Syncopated 16ths`, `Sixteenth Pulse` |
 | Triplet grid | `Swung Eighths` |
 | Texture | `Damped Quarters` (ships muted), `Accented Eighths` (ships accented), `32nd Roll` |
-| Phrases | `Jazz Chorus 1/4`–`4/4`, `Son Clave 1/2`, `2/2` |
+| Phrases (four bars) | `Jazz Chorus` |
+| Phrases (two bars) | `Son Clave` |
 
 `Charleston` and `Tresillo` carry per-cell lengths — a dotted quarter answered by
-an eighth, and 3+3+2 — rather than one uniform hit.
+an eighth, and 3+3+2 — rather than one uniform hit. The phrases used to ship as
+one-bar fragments whose *names* carried the position (`Jazz Chorus 1/4` and so
+on); a pattern holds its own bars now, which is the same guarantee without the
+numbering, and it is what the looper records.
 
 ---
 
@@ -829,10 +915,12 @@ an eighth, and 3+3+2 — rather than one uniform hit.
 
 ### The instrument palette
 
-A hundred and fifty-five voices ship, and seventy-eight of them are distinct
-designs — the other seventy-seven are the `low` / `high` variants an ensemble
-needs for a register that sounds an octave away from the same instrument. No
-control the voice has is unused: a test walks the library and fails if any of
+A hundred and fifty-five voices ship, and **eighty-one** of them are distinct
+designs — the other seventy-four are the `low` / `mid` / `high` variants an
+ensemble needs for a register that sounds an octave away from the same
+instrument. A voicing counts as a design of its own: `Rhodes Bright` and `Rhodes
+Dark` share a name but are two, which is why neither can be the other's middle.
+No control the voice has is unused: a test walks the library and fails if any of
 them is.
 
 | Family | Voices |
@@ -858,11 +946,80 @@ hollow and `Talking Lead` talk.
 
 ### The ensemble palette
 
-Forty-two ensembles ship with the build, in this order — the order the list
-scrolls, grouped so that neighbours are the same instrument. Several are
-deliberate variants of one instrument, because that is how the instruments
-themselves work: a Rhodes has a tine control, a tonewheel organ has hundreds of
-registrations, and a pipe organ is *nothing but* registrations of the same pipes.
+Seventy-four ensembles ship with the build, in this order — the order the list
+scrolls. **The order is a curation, not a taxonomy**: what is near the top is what
+you are most likely to want, and moving an ensemble up or down changes no sound at
+all. It is line order in `ensembles.toml` and nothing else, and the palette
+fingerprint deliberately ignores it so that re-ordering never looks like a change
+to the sounds.
+
+The list is in four parts:
+
+| Part | What it is |
+| --- | --- |
+| **The first screen** (21) | `Default` and then one ensemble per role, most-used first — a piano, an electric piano, a Wurli, an organ, a pad, a string, a pluck, a guitar, mallets, a bell, a clav, two basses, brass, a wind, a choir. Two showcase ensembles sit in here because they fill a role better than anything else does: `Wide Strings` and `FM Tines`. `Default` is first because it is the reference point the whole palette is described against, not because it is the best sound in it. |
+| **Showcase, the usable half** (13) | Three different designs stacked, where the middle is one no other ensemble uses, and the sound is something you would reach for. |
+| **Showcase, the edges** (17) | The same construction with the point being the *method* — cross-modulation, ring modulation, phase distortion, wavefolding, the drum kit. |
+| **The original palette** (23) | Grouped so neighbours are the same family. |
+
+**All 74 are three different designs** — a bass under, the named instrument in
+the middle, a descant on top — because the first pass at this palette reused one
+design in all three registers on everything outside the showcase, which is exactly
+the thing an ensemble exists not to do. The middle is the ensemble's identity, so
+no two ensembles share one. The drum kits are the only exception: a drum has no
+register, so `Kick`, `Hi-Hat` and `Snare` are percussion in all three.
+
+Within that, the two constructions are different on purpose. The original
+palette answers "I want a Rhodes"; the showcase answers "what can this synth do",
+and the answer is a different synthesis method in the middle of each one.
+Judgements about which sound *good* are the player's, and the order is the one
+place to record them.
+
+#### The showcase
+
+The middle column is what the ensemble *is* — a rule the palette's own guard
+enforces across the whole file, because two ensembles sharing a middle instrument
+are two names for one sound. Twenty-one ensembles carry an **insert chain** —
+twenty-three slots between them, since `Folded Lead` and `Funk Clav` use two in
+order — which is the palette's only use of the rack: before the showcase, no
+shipped ensemble had one.
+
+| Ensemble | Layers, low → mid → high | What it demonstrates |
+| --- | --- | --- |
+| `X-Mod Bell` | `Deep Sine` → `X-Mod Clang` → `Ring Bell` | Exponential cross-modulation at audio rate, ring-modulated on top |
+| `Glass Cathedral` | `Through-Zero Bass` → `Glass low` → `FM Bell` | The glass table under a through-zero bass, with an FM bell above |
+| `Growl Stack` | `Electric Bass` → `Growl Bass` → `Folded Saw` | A linear-FM growl through a tube stage, folded saw on top |
+| `Through Zero` | `Sub Bass mid` → `Through-Zero Bass` → `X-Mod Clang` | Through-zero FM as the identity rather than a colour |
+| `Ring Bells` | `Sub Bass mid` → `Ring Bell` → `Glass Bell` | The ring modulator at two frequencies, with a tremolo on the top |
+| `Ring Clav` | `Electric Bass` → `Ring Clav` → `Hollow Clav` | The ring modulator on a clav, with the notch output above it |
+| `CZ Lead` | `Folded Saw` → `CZ Lead` → `Talking Lead` | Phase distortion through a jet flanger |
+| `CZ Organ` | `Gedeckt` → `CZ Organ` → `Twin Registration Organ` | Phase distortion in an organ, under a slow rotary |
+| `Steel And Sitar` | `Upright Bass` → `Sitar` → `Steel Guitar` | A Karplus-Strong string through an auto-wah |
+| `Electric Bass` | `Sub Bass mid` → `Electric Bass` → `Accent Clav` | The electric bass, compressed |
+| `Harpsichord` | `Deep Sine` → `Harpsichord` → `Muted Guitar` | The plucked-string model at its brightest, bare |
+| `Jazz Guitar` | `Upright Bass` → `Muted Guitar` → `Hollow Clav` | The muted-guitar model, bare |
+| `Folded Lead` | `Electric Bass` → `Folded Saw` → `Buzz Lead` | A wavefolder into a resonant peak — two slots, in order |
+| `Chaos Kit` | `Kick` → `Chaos Perc` → `Hi-Hat` | Feedback percussion through a bitcrusher |
+| `Breath Choir` | `Choir Ooh` → `Breath Pad` → `Morph Choir` | Noise and a breathing filter under a morphing choir |
+| `Morph Choir` | `Choir Aah` → `Morph Choir` → `Breath Pad` | The wavetable position swept, with a vibe on the middle |
+| `Glass Morph` | `Glass low` → `Glass Morph Pad` → `Glass Bell` | The glass morph pad through a bandpass |
+| `Twin Drawbars` | `Gedeckt` → `Twin Registration Organ` → `X-Mod Organ` | The second oscillator's registration, under a rotary |
+| `Supersaw Lead` | `Folded Saw` → `Talking Lead` → `CZ Lead` | Four-voice unison through an ensemble chorus |
+| `Wide Strings` | `Warm Pad` → `String Pad low` → `PWM Pad` | A string ensemble through the string-machine chorus |
+| `Phase Pad` | `Warm Pad` → `Phase Pad` → `Glass Morph Pad` | A deep phaser on the pad's identity |
+| `Celesta Bells` | `Sub Bass mid` → `Celesta` → `Glass Bell` | A struck celesta with a chorus, glass bells above |
+| `Dirty Tine` | `FM Bass` → `Dirty Tine` → `Accent Clav` | The dirty tine with a dimension chorus |
+| `Honky Tonk` | `Upright Bass` → `Honky Tonk Tine` → `Accent Clav` | The detuned tine, bare |
+| `FM Tines` | `FM Bass` → `FM Tine Piano` → `FM Bell` | Phase modulation through a chorus |
+| `FM Brass` | `Deep Sine` → `FM Brass` → `Trumpet` | Phase modulation with a trumpet above it |
+| `FM Marimba` | `Sub Bass mid` → `FM Marimba` → `Celesta` | Phase modulation as a mallet |
+| `Bell Choir` | `Deep Sine` → `FM Bell` → `Ring Bell` | An FM bell with a bell-tone ring modulator above |
+| `FM Bass` | `Sub Bass mid` → `FM Bass` → `FM Bell` | Phase modulation at the bottom of the palette |
+| `Overdriven Organ` | `Gedeckt` → `Overdriven Organ` → `Rock Organ` | The second oscillator driven, with a rock organ above |
+| `Sine Pad` | `Sub Bass mid` → `Deep Sine` → `Glass Bell` | One computed sine, an ensemble chorus and a glass top |
+| `Funk Clav` | `Electric Bass` → `Accent Clav` → `Ring Clav` | An auto-wah into an overdrive — two slots, in order |
+
+#### The original palette
 
 | Family | Ensembles | What makes them different from each other |
 | --- | --- | --- |
@@ -884,36 +1041,82 @@ augmented. The question worth asking of a palette is not "how many ensembles" bu
 | Role | Covered by |
 | --- | --- |
 | Jazz comping | `Electric Piano` and the two Rhodes variants, `Wurli` / `Wurli Bark`, `Clav`, `Vibraphone`, `Drawbar Organ` / `Gospel Organ`, `Grand Piano` |
-| Ballads and pads | `Warm Pad`, `String Pad`, `PWM Pad`, `Vox Pad`, `Choir Aah` / `Choir Ooh`, `Rhodes Dark` |
-| Sustained melody over chords | `Soft Horn`, `Trumpet`, `Clarinet`, `Oboe`, `Flute`, `Buzz Lead` |
-| Bass | `Sub Bass` for synth, `Upright Bass` for jazz, `Acid Bass` for lines |
-| Struck and rhythmic | `Marimba`, `Vibraphone`, `Kalimba`, `Plucky`, `Pizzicato`, `Nylon Guitar`, `Harp` |
-| Ceremonial and church | `Pipe Organ`, `Gedeckt`, `Bell` |
-| Percussion | `Kick`, `Hi-Hat`, `Snare` |
-| Texture | `Wind`, `Glass`, `Warm Pad` |
+| Ballads and pads | `Warm Pad`, `String Pad`, `PWM Pad`, `Vox Pad`, `Choir Aah` / `Choir Ooh`, `Rhodes Dark`, `Glass Cathedral`, `Wide Strings`, `Phase Pad`, `Sine Pad`, `Breath Choir` |
+| Sustained melody over chords | `Soft Horn`, `Trumpet`, `Clarinet`, `Oboe`, `Flute`, `Buzz Lead`, `CZ Lead`, `Supersaw Lead`, `Folded Lead` |
+| Bass | `Sub Bass` for synth, `Upright Bass` for jazz, `Acid Bass` for lines, `Electric Bass`, `Through Zero`, `FM Bass` |
+| Struck and rhythmic | `Marimba`, `Vibraphone`, `Kalimba`, `Plucky`, `Pizzicato`, `Nylon Guitar`, `Harp`, and from the showcase `Celesta Bells`, `Harpsichord`, `Jazz Guitar`, `Honky Tonk`, `Dirty Tine`, `FM Tines` / `FM Marimba` |
+| Ceremonial and church | `Pipe Organ`, `Gedeckt`, `Bell`, `Bell Choir`, `Twin Drawbars`, `Overdriven Organ` |
+| Percussion | `Kick`, `Hi-Hat`, `Snare`, `Chaos Kit` |
+| Texture | `Wind`, `Glass`, `Warm Pad`, `Glass Morph`, `Morph Choir`, `Steel And Sitar` |
 
 **Still missing, and worth knowing.** No **saxophone** — a conical reed with a
 formant that moves, and the one wind instrument whose character is a *changing*
 formant, which a stored cycle cannot do. No **electric guitar or amplifier**, and
 no **steel-string acoustic** (the nylon table rolled off the top is as close as
-the palette gets). No **solo bowed strings** — `String Pad` is an ensemble and
-`Pizzicato` is plucked, so there is nothing for a single sustained violin or
-cello line. No **hand percussion** beyond the kit. No **ethnic instruments** —
-sitar, koto, steel drum, accordion, harmonica. And no **sound effects**, beyond
-`Wind`: no risers, sweeps or drones.
+the palette gets, and `Steel Guitar` is the string model rather than a recording
+of one). No **solo bowed strings** — `String Pad` and `Wide Strings` are ensembles
+and `Pizzicato` is plucked, so there is nothing for a single sustained violin or
+cello line. No **hand percussion** beyond the kit. No **ethnic instruments** beyond
+the string model — no koto, steel drum, accordion or harmonica. And no **sound
+effects**, beyond `Wind`: no risers, sweeps or drones.
 
 Loading an ensemble applies the whole design *and* its note length, so `Clav`,
 `Marimba`, `Bell` and `Hi-Hat` arrive as quarter notes where `Drawbar Organ` and
 `String Pad` arrive whole. Every shipped value is inside the range the Synth panel
 can reach — a test asserts it, because a built-in the arrows would snap is a sound
-that changes the first time it touches it. A second test renders all forty-two and
-checks that each is finite and audible, because nobody is going to spot a silent
-one among forty by eye. A third is a fingerprint of every shipped register's
-composed channel: it changed when the three levels were split out, and the fact
-that the value recorded before the split still matches is what proves no shipped
-sound moved. A fourth asserts that **no shipped curve is anything but flat**,
-which is the same promise at the EQ layer: the equaliser was added without
-changing a single sound that was already there.
+that changes the first time it touches it. A second test renders all
+seventy-four and checks that each is finite and audible, because nobody is going
+to spot a silent one among seventy by eye. A third is a fingerprint of every
+shipped register's composed channel **and its rack and mixer**, which is what makes
+a change to a shipped sound a failing test rather than a listening session. It is
+re-recorded deliberately — the palette's re-voicing moved it — and it sorts by
+name before hashing, so re-ordering the palette does not. A fourth asserts that **no
+shipped curve is anything but flat**, which is the same promise at the EQ layer:
+the equaliser was added without changing a single sound that was already there. A
+fifth asserts that every shipped ensemble layers **three different designs**, and
+a sixth that **no two shipped ensembles share a middle instrument**, which is what
+keeps the palette seventy-four sounds rather than seventy-four names. And a seventh
+asserts the thing that connects all of it to the audio: **loading an ensemble
+writes the whole voice**, every field of it, into every one of the three registers.
+That one is load-bearing rather than decorative — see below.
+
+#### Loading a register is all or nothing
+
+`apply_voice` writes what a sound *is*; `apply_channel` writes that plus where it
+sits — level, transpose, pan, sends, curve, rack. The second is written in terms of
+the first rather than repeating it, and that is the fix for a bug worth recording:
+the two used to be lists that had to be kept in step by hand, and when the second
+oscillator, the drive, the wavetable position and the string model were added to a
+voice they were added to the picker's list and not to the loader's.
+
+The consequence was not subtle. Loading an ensemble left all three registers
+holding the *default* drive, second oscillator, wavetable position and string
+model, and picking an instrument from the library — which writes all thirty-seven
+fields — was the only path that filled them in. So a register was half-loaded until
+you touched it, and touching it made it come alive: the ensemble's identity arrived
+only when you re-selected the instrument it was already set to. Fifty of the
+seventy-four ensembles lost at least one field this way, across a hundred and four
+register-slots, and the fields lost were exactly the ones that make the
+interesting instruments interesting — `X-Mod Organ` and `X-Mod Clang` had no
+cross-modulation, `Through-Zero Bass` no through-zero FM, `Ring Clav` no ring and
+no drive, `Twin Registration Organ` a single registration, every plucked-string
+voice default damping, every morph parked at position zero.
+
+The symptom a player notices is not "a parameter is missing" but "the registers
+bleed into each other", because the register you had just touched was audibly
+different from the two you had not. The two tests that hold it shut are
+`synth::tests::loading_a_channel_writes_the_whole_voice`, which asserts over the
+whole shipped palette that what the engine holds after a load equals what the file
+says, and `synth::tests::changing_one_registers_instrument_leaves_the_others_alone`,
+which asserts that editing one register leaves the other two bit-identical.
+
+Two things are shared between registers **on purpose**, and both can read as bleed
+when you are listening for separation. A note is voiced as itself plus an octave
+below and an octave above, so every chord is played through all three channel
+strips at once and auditioning an instrument sounds it through three strips, not
+one. And the reverb and delay are single aux buses: all three registers are summed
+into one tank, and the metronome click is summed into the mid register after its
+fader, so it feeds the reverb at the mid register's send level.
 
 ### The EQ curve palette
 
@@ -1158,6 +1361,33 @@ Two consequences worth knowing:
   the unit from silence, so a reverb tail is not waiting there from a bar ago.
 - **The aura of a chain is not undone by a mute.** Muting the master mutes
   everything, but a rack stays wired.
+
+### The racks are per register, and that is tested
+
+Three registers means three racks, and they are three disjoint runs of six
+`FxState`s in one flat bank — eighteen slots in all, plus the two aux units. Each
+state owns its own delay line, comb bank, allpasses, LFO, phaser stages,
+one-poles, DC blocker and scalars, and a change of effect type resets *that slot
+and no other*.
+
+So a change to the high rack cannot move the low part, and this is not left to the
+shape of the types. Four tests hold it: the bank's slots must stay disjoint, a
+parameter change in one rack must not move another in the rendered mix, the FX
+panel's column cursor must write the rack it names, and a curve on one register
+must not move another (the equaliser is four separately named banks with four
+separately named states, so it has no index to get wrong — but a copy-pasted state
+in the sample loop would be just as silent).
+
+Two things are shared on purpose, and both can read as bleed:
+
+- **The reverb and delay are single buses.** All three registers are summed into
+  one tank, so a driven high part does add to the reverb tail under the low end.
+  The send is taken after the fader, so a register at zero volume reaches neither
+  bus — muting a part takes it out of the reverb as well, which is a property and
+  not an accident, and one of the tests asserts it.
+- **The metronome click is summed into the mid register** after its fader, so it
+  is panned and sent to the reverb as if it were the mid part. It bypasses the
+  progression's mute and gain, because it is a rehearsal aid rather than music.
 
 ### What it costs, measured
 

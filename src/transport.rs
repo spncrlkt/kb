@@ -12,7 +12,7 @@ use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
-use crate::arrangement::{self, BarEvent};
+use crate::arrangement::{self, BarEvent, TapBed};
 use crate::music::{Key, Scale, BAR_TICKS};
 use crate::progression::Progression;
 
@@ -61,6 +61,23 @@ pub struct Transport {
     /// The slot whose stored chord the computed chord stands in for while the
     /// loop plays — the in-place audition. `AUDITION_OFF` means none.
     audition_slot: AtomicUsize,
+    /// The tap looper's bed, when the looper has one loaded.
+    ///
+    /// While this is `Some` the scheduler plays **it** instead of the
+    /// progression — the looper is a four-bar scratch pad, and hearing the
+    /// progression underneath it would make neither readable. Clearing it is how
+    /// the progression comes back.
+    ///
+    /// A `Mutex<Option<..>>` rather than atomics because the whole bed is
+    /// rewritten by the UI thread on every tap and read once per bar by the
+    /// scheduler: a per-bar read of one lock is what the bar clock already costs.
+    bed: Mutex<Option<TapBed>>,
+    /// Which of the bed's four bars the scheduler is on.
+    ///
+    /// Separate from `current_bar` so the looper's playhead and the progression's
+    /// do not overwrite each other: the Progression panel keeps pointing at the
+    /// chord it was on while the looper runs.
+    pub bed_bar: AtomicUsize,
     /// Stop now, and silence, without moving the bar.
     ///
     /// Pausing only takes effect at the next bar: the scheduler finishes the one
@@ -91,8 +108,35 @@ impl Transport {
             metronome_volume_bits: AtomicU32::new(0.8f32.to_bits()),
             metronome_subdivision: AtomicUsize::new(1),
             audition_slot: AtomicUsize::new(AUDITION_OFF),
+            bed: Mutex::new(None),
+            bed_bar: AtomicUsize::new(0),
             stop_now: AtomicBool::new(false),
         })
+    }
+
+    /// Load a bed into the looper, or clear it with `None`.
+    ///
+    /// Loading resets the bed's bar to the top, so a take always begins on bar 1.
+    pub fn set_bed(&self, bed: Option<TapBed>) {
+        *self.bed.lock().unwrap() = bed;
+        self.bed_bar.store(0, Ordering::Relaxed);
+    }
+
+    /// A copy of the bed, for the scheduler and the panel.
+    pub fn bed(&self) -> Option<TapBed> {
+        self.bed.lock().unwrap().clone()
+    }
+
+    /// Whether the looper has a bed loaded, without cloning it.
+    pub fn bed_loaded(&self) -> bool {
+        self.bed.lock().unwrap().is_some()
+    }
+
+    /// Rewrite the bed in place, from a tap.
+    pub fn update_bed(&self, edit: impl FnOnce(&mut TapBed)) {
+        if let Some(bed) = self.bed.lock().unwrap().as_mut() {
+            edit(bed);
+        }
     }
 
     /// Publish the start of a bar, for tap capture.
@@ -309,10 +353,14 @@ fn scheduler_loop(
         let metronome = transport.metronome.load(Ordering::Relaxed);
         let swing = transport.swing();
         let subdivision = transport.metronome_subdivision();
-        let total = prog_len;
+        // The looper outranks the progression while it is loaded: it is the thing
+        // the player is looking at, and its four bars are its own loop.
+        let bed = transport.bed();
+        let total = if bed.is_some() { 4 } else { prog_len };
+        let bed_bar = transport.bed_bar.load(Ordering::Relaxed) % 4;
 
         let bar_start = Instant::now();
-        transport.publish_bar(bar_start, bar);
+        transport.publish_bar(bar_start, if bed.is_some() { bed_bar } else { bar });
 
         // Everything from here to the end of the metronome block is planning,
         // not playing: it is off the audio thread and its cost is the one that
@@ -335,7 +383,19 @@ fn scheduler_loop(
             }),
             _ => None,
         };
-        let mut content: Option<Vec<BarEvent>> = if playing && total > 0 {
+        let mut content: Option<Vec<BarEvent>> = if let Some(bed) = bed.as_ref().filter(|_| playing)
+        {
+            // The looper's own bar, planned by the same code a progression is:
+            // `bed_plan` produces `Stab`s and `bar_events` slices the bar out, so
+            // group assignment, holds that cross a bar line and the metronome all
+            // behave exactly as they do for the progression.
+            Some(arrangement::bar_events(
+                &arrangement::bed_plan(bed),
+                bed_bar,
+                BAR_TICKS,
+                arrangement::RHYTHM_LAYERS,
+            ))
+        } else if playing && total > 0 {
             let index = bar % total;
             // Rebuilt every bar, so a pattern assignment, an offset edit, a swing
             // change or an auditioned chord takes effect within one bar.
@@ -405,8 +465,17 @@ fn scheduler_loop(
             continue;
         }
 
+        // The looper's bar, when one is loaded. The progression's own counter is
+        // left where it was, so closing the looper resumes the progression from
+        // the chord it was on rather than from wherever the bed had got to.
+        if playing && bed.is_some() {
+            transport
+                .bed_bar
+                .store((bed_bar + 1) % 4, Ordering::Relaxed);
+        }
+
         // Advance the bar counter for progression playback.
-        if playing && total > 0 {
+        if playing && total > 0 && bed.is_none() {
             let next = (bar + 1) % total;
             if next == 0 && !transport.looping.load(Ordering::Relaxed) {
                 transport.playing.store(false, Ordering::Relaxed);
@@ -533,6 +602,36 @@ mod tests {
         t.set_key(Key::new(62, Scale::Minor));
         assert_eq!(t.key().tonic, 62);
         assert_eq!(t.key().scale, Scale::Minor);
+    }
+
+    #[test]
+    fn the_bed_is_loaded_read_and_cleared() {
+        let t = Transport::new(Key::new(60, Scale::Major));
+        assert!(!t.bed_loaded());
+        assert!(t.bed().is_none());
+
+        t.set_bed(Some(crate::arrangement::TapBed::over(&[vec![60]], 4)));
+        assert!(t.bed_loaded());
+        assert_eq!(t.bed().unwrap().bars.len(), 4);
+
+        // A tap rewrites the bed in place, and clearing it is what hands the
+        // progression back.
+        t.update_bed(|bed| bed.bars[1].rhythm.steps[0] = true);
+        assert_eq!(t.bed().unwrap().bars[1].rhythm.hit_count(), 1);
+        t.set_bed(None);
+        assert!(!t.bed_loaded());
+    }
+
+    #[test]
+    fn loading_a_bed_starts_it_at_the_first_bar() {
+        let t = Transport::new(Key::new(60, Scale::Major));
+        t.bed_bar.store(3, Ordering::Relaxed);
+        t.set_bed(Some(crate::arrangement::TapBed::over(&[vec![60]], 4)));
+        assert_eq!(
+            t.bed_bar.load(Ordering::Relaxed),
+            0,
+            "a take always begins on bar 1"
+        );
     }
 
     #[test]

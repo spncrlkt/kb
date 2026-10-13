@@ -421,7 +421,7 @@ fn planner(c: &mut Criterion) {
         (0..bars)
             .map(|bar| {
                 let mut entry = ProgressionEntry::new(degrees[bar % degrees.len()], None);
-                entry.pattern = Some(pattern.clone());
+                entry.pattern = chord_tool::progression::AssignedRhythm::from_pattern(&pattern, 0);
                 Slot::Chord(entry)
             })
             .collect::<Vec<Slot>>()

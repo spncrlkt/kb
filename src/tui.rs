@@ -27,6 +27,7 @@ use crossterm::{
 use crate::debug_log::{Logger, OutputTap};
 use crate::analyzer::{TAPS as ANALYZER_TAPS, SPEEDS as ANALYZER_SPEEDS};
 use crate::ensemble::{self, Ensemble, EnsembleStore};
+use crate::arrangement;
 use crate::eq::{EqPreset, EqPresetStore, EqTarget, EQ_BANDS};
 use crate::export;
 use crate::fx::{Fx, FxKind, FxPreset, FxPresetStore, CHAIN_SLOTS, P0, P1, P2, P4, P5};
@@ -39,9 +40,9 @@ use crate::music::{
     chord_label, diatonic_triad, diatonic_triad_label, note_name, ChordSpec, Key, Scale,
     ScaleDegree, Transformation, BAR_TICKS, BEATS_PER_BAR,
 };
-use crate::progression::{Progression, ProgressionEntry, Registers, Slot};
+use crate::progression::{AssignedRhythm, Progression, ProgressionEntry, Registers, Slot};
 use crate::project;
-use crate::rhythm::{self, bar_phase_ticks, RhythmLayer, RhythmPattern};
+use crate::rhythm::{self, bar_phase_ticks, RhythmBar, RhythmPattern, DEFAULT_STEPS};
 use crate::rhythm_store::{self, RhythmStore};
 use crate::settings::{self, Settings};
 use crate::synth::{FilterType, FmMode, FxSlotParams, LfoWave, Synth, SynthParams, Waveform};
@@ -219,9 +220,12 @@ fn sinko_cell_width(steps: usize, budget: usize) -> usize {
 ///
 /// Cell width is chosen so the widest grid still fits a terminal. The playhead
 /// cell is `X`/`+` rather than a colour, so the position is assertable in a test
-/// after ANSI stripping.
+/// after ANSI stripping. `sustain` is [`crate::rhythm::RhythmBar::sustain`] — the
+/// cells a hit is still ringing through — and draws as `=`, so a held note reads
+/// as a line rather than a dot.
 fn sinko_grid_line(
     steps: &[bool],
+    sustain: &[bool],
     playhead: Option<usize>,
     cursor: Option<usize>,
     budget: usize,
@@ -237,14 +241,19 @@ fn sinko_grid_line(
         if i % beat == 0 {
             out.push('|');
         }
+        let ringing = sustain.get(i).copied().unwrap_or(false);
         let mark = if Some(i) == playhead {
             if *on {
                 'X'
+            } else if ringing {
+                '='
             } else {
                 '+'
             }
         } else if *on {
             'x'
+        } else if ringing {
+            '='
         } else {
             '·'
         };
@@ -328,6 +337,13 @@ enum Focus {
     /// a page of its own — the table's `fx` page is the overview and hands the
     /// cursor over to here.
     Fx,
+    /// The four-bar tap looper: load a chord or four, loop them with the click,
+    /// and tap the hits on `$`.
+    ///
+    /// The sixth view of the Synth slot, and a *view* rather than a row because
+    /// the grid it edits is the same size as the Sinko grid: two panels of that
+    /// shape on screen at once would cost the layout more than it has.
+    Loops,
 }
 
 impl Focus {
@@ -339,7 +355,8 @@ impl Focus {
             // down the screen, from wherever it happens to be.
             Focus::Progression => Focus::Transport,
             Focus::Transport => Focus::Sinko,
-            Focus::Sinko => Focus::Synth,
+            Focus::Sinko => Focus::Loops,
+            Focus::Loops => Focus::Synth,
             Focus::Synth => Focus::SynthEnsembles,
             Focus::SynthEnsembles => Focus::Eq,
             Focus::Eq => Focus::Spectrum,
@@ -352,11 +369,12 @@ impl Focus {
         match self {
             Focus::Transport => Focus::Progression,
             Focus::Sinko => Focus::Transport,
-            Focus::Synth => Focus::Sinko,
+            Focus::Synth => Focus::Loops,
             Focus::SynthEnsembles => Focus::Synth,
             Focus::Eq => Focus::SynthEnsembles,
             Focus::Spectrum => Focus::Eq,
             Focus::Fx => Focus::Spectrum,
+            Focus::Loops => Focus::Sinko,
             Focus::Progression => Focus::Fx,
         }
     }
@@ -1767,6 +1785,15 @@ fn slot_of(ch: &crate::synth::ChannelParams, index: usize) -> &FxSlotParams {
 // Transport edit / modals
 // -----------------------------------------------------------------------------
 
+/// What a name prompt is naming.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum NameTarget {
+    /// The Sinko panel's working bar: saved as a one-bar pattern.
+    Working,
+    /// The looper's four bars: saved as a four-bar pattern.
+    Loop,
+}
+
 #[derive(Clone)]
 enum Edit {
     None,
@@ -1797,7 +1824,10 @@ enum Modal {
     /// Filename to import, pre-filled with the newest export.
     ImportPathInput { buffer: String },
     /// Name for the pattern being built in the Sinko panel.
-    RhythmNameInput { buffer: String },
+    RhythmNameInput {
+        buffer: String,
+        target: NameTarget,
+    },
     /// Naming the focused register so it can be kept as a new instrument.
     InstrumentNameInput {
         col: usize,
@@ -1857,6 +1887,15 @@ const HISTORY_AUDITION: Duration = Duration::from_millis(200);
 
 /// Rows of the log or the top list that fit, under the column header.
 const HISTORY_ROWS: usize = 17;
+
+/// Rows of the ensemble list the panel draws at once, `[Save As...]` included.
+///
+/// The list is as long as the library — forty-two shipped, plus whatever the
+/// user has saved — so it cannot be drawn whole and cannot be a fixed row list
+/// like every other panel. It is a window onto a list instead, and this is how
+/// tall that window is: large enough to browse, small enough that the frame
+/// around it stays inside the height the Synth slot is budgeted for.
+const ENSEMBLE_ROWS: usize = 20;
 
 /// Which of the three states `l` cycles: away, the log, the ranking.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -1920,16 +1959,51 @@ const SINKO_ROW_ACCENT: usize = 7;
 const SINKO_ROW_HOLD: usize = 8;
 /// How much of the bar's tail is silent.
 const SINKO_ROW_MUTE: usize = 9;
-const SINKO_ROW_SMOOTH: usize = 10;
-const SINKO_ROW_RECORD: usize = 11;
-const SINKO_LAYER_ROWS: usize = crate::arrangement::RHYTHM_LAYERS;
-const SINKO_ROW_NEW: usize = SINKO_ROW_RECORD + 1 + SINKO_LAYER_ROWS;
+/// Open the four-bar tap looper on this chord.
+const SINKO_ROW_LOOP: usize = 10;
+const SINKO_ROW_NEW: usize = SINKO_ROW_LOOP + 1;
 const SINKO_ROW_SAVE: usize = SINKO_ROW_NEW + 1;
 /// Copy the selected chord's rhythm to the Sinko clipboard.
 const SINKO_ROW_COPY: usize = SINKO_ROW_SAVE + 1;
 /// Apply the clipboard to the selected chord, as its own copy.
 const SINKO_ROW_PASTE: usize = SINKO_ROW_COPY + 1;
 const SINKO_ROWS: usize = SINKO_ROW_PASTE + 1;
+
+/// Lines the whole panel draws: a header, one line per row, and the grid that
+/// sits under the `hits` row without being a row of its own.
+#[cfg(test)]
+const SINKO_LINES: usize = SINKO_ROWS + 2;
+
+// -----------------------------------------------------------------------------
+// Looper panel
+// -----------------------------------------------------------------------------
+
+/// Where the looper's bed comes from.
+const LOOP_ROW_SOURCE: usize = 0;
+/// Which progression row `one chord` means.
+const LOOP_ROW_CHORD: usize = 1;
+/// Which of the four bars the grid below is showing.
+const LOOP_ROW_BAR: usize = 2;
+/// Steps per bar for a bed that has not been loaded yet.
+const LOOP_ROW_QUANT: usize = 3;
+/// The cell cursor: walk the grid and toggle the hits on it.
+const LOOP_ROW_HITS: usize = 4;
+/// How long the hit under the cursor holds.
+const LOOP_ROW_LENGTH: usize = 5;
+/// How hard the hit under the cursor plays, `0..=100%`.
+const LOOP_ROW_ACCENT: usize = 6;
+/// How long a hit without its own length holds.
+const LOOP_ROW_HOLD: usize = 7;
+const LOOP_ROW_CLEAR: usize = 8;
+const LOOP_ROW_RECORD: usize = 9;
+const LOOP_ROW_SAVE: usize = 10;
+const LOOP_ROWS: usize = LOOP_ROW_SAVE + 1;
+
+/// Lines the panel body draws: one per row, plus the four bars of grid that sit
+/// under the `hits` row without being rows of their own. The header comes from
+/// the shared slot, so it is not counted here.
+#[cfg(test)]
+const LOOP_LINES: usize = LOOP_ROWS + arrangement::BED_BARS;
 
 // -----------------------------------------------------------------------------
 // Progression panel
@@ -2019,8 +2093,14 @@ fn format_metronome_volume(volume: f32) -> String {
     )
 }
 
-/// Taps closer together than this are key repeat, not a second tap.
-const TAP_DEBOUNCE_MS: u128 = 30;
+/// A `$` press this soon after the last one, *while its note is still open*, is
+/// the same key repeating rather than a second note.
+///
+/// Wider than a human double-tap and wider than a terminal's auto-repeat
+/// interval, so a held key can never be mistaken for a performance. It only
+/// applies while a note is open: once a key-up has arrived, the next press is a
+/// new note however fast it comes, which is what keeps a fast figure playable.
+const TAP_REPEAT_MS: u128 = 120;
 
 /// How long a chord change is left ringing after the keys come off.
 ///
@@ -2038,14 +2118,6 @@ const STOP_FLASH: Duration = Duration::from_millis(300);
 /// The window starts at the *first* press, so a lone Esc stops immediately
 /// rather than waiting to see whether a second one is coming.
 const ESC_QUIT_WINDOW: Duration = Duration::from_millis(500);
-
-/// How many recent takes a new pattern averages by default.
-///
-/// One, so each take is its own layer: that is the overlapping-takes sound this
-/// panel is for. Raising it averages the recent takes into the top layer
-/// instead, which is how a figure tapped several times converges on one clean
-/// line — but it merges *different* figures into one, so it is not the default.
-const SINKO_SMOOTH_DEFAULT: usize = 1;
 
 // -----------------------------------------------------------------------------
 // App state
@@ -2312,15 +2384,11 @@ struct AppState {
     sinko_row: usize,
     /// Which grid cell the `hits` row is editing.
     sinko_cell: usize,
-    /// Committed takes, oldest first. Each is one bar of tick positions.
-    takes: Vec<Vec<u32>>,
-    /// The take being tapped right now.
-    current_take: Vec<u32>,
     /// When Esc was last pressed, for the twice-to-quit gesture.
     last_esc: Option<Instant>,
     /// How long the red stop flash stays up.
     stop_flash_until: Option<Instant>,
-    /// Whether the tap key records.
+    /// Whether the tap key records into the looper.
     recording: bool,
     /// The metronome switch, as the user set it.
     ///
@@ -2329,21 +2397,26 @@ struct AppState {
     metronome_on: bool,
     /// Guards the debounce, so a repeating key is not a second tap.
     last_tap_at: Option<Instant>,
-    /// When the current take's bar began; a take closes once the clock moves on.
-    take_started_at: Option<Instant>,
-    /// How many of the most recent takes are averaged into the top layer.
-    sinko_smooth: usize,
-    /// The rhythm being edited: a clone of the selected entry's own pattern, or
-    /// a blank page when it has none.
-    working: RhythmPattern,
+    /// The bar being edited: a clone of the selected entry's own bar, or a blank
+    /// page when it has none.
+    working: RhythmBar,
+    /// The library pattern `working` came from, or empty for a fresh draft. Kept
+    /// so the entry can say what it was assigned *from* and read `(edited)`.
+    working_name: String,
+    /// Which bar of that pattern `working` is.
+    working_bar: usize,
     /// Which progression row `working` was loaded from, so moving the selection
-    /// reloads it (and abandons the takes that belonged to the other row).
+    /// reloads it.
     working_slot: Option<usize>,
+    /// The looper panel's cursor and settings.
+    looper: LooperState,
+    /// Which row of the looper panel the cursor is on.
+    looper_row: usize,
     /// `[Copy Sinko]`'s clipboard: one chord's rhythm, ready to paste onto
     /// another. A pattern rather than a name, because what is pasted is a copy.
     /// The rhythm clipboard: one entry per copied chord, `None` for a chord
     /// that had no rhythm. A list so a phrase's rhythms travel together.
-    sinko_clipboard: Option<Vec<Option<RhythmPattern>>>,
+    sinko_clipboard: Option<Vec<Option<AssignedRhythm>>>,
     /// Feedback for the Sinko panel's own actions.
     rhythm_status: Option<ActionStatus>,
     /// Where the pattern library is written. A field rather than a call to
@@ -2372,6 +2445,8 @@ struct AppState {
     history_view: HistoryView,
     history_row: usize,
     history_scroll: usize,
+    /// The first ensemble row the panel draws. See [`ENSEMBLE_ROWS`].
+    ensemble_scroll: usize,
     /// The chord that is sounding and how long it has been sounding, so a shape
     /// the hands merely passed through is not written down.
     pending_play: Option<PendingPlay>,
@@ -2517,6 +2592,21 @@ impl AppState {
         let last = self.history_scroll + rows - 1;
         if self.history_row > last {
             self.history_scroll = self.history_row + 1 - rows;
+        }
+    }
+
+    /// Keep the cursor inside the window of ensembles the panel can draw.
+    ///
+    /// `[Save As...]` is the last row of the same list, so it scrolls into view
+    /// like any other rather than getting a rule of its own.
+    fn scroll_ensembles_into_view(&mut self) {
+        let rows = ENSEMBLE_ROWS;
+        if self.ensemble_row < self.ensemble_scroll {
+            self.ensemble_scroll = self.ensemble_row;
+        }
+        let last = self.ensemble_scroll + rows - 1;
+        if self.ensemble_row > last {
+            self.ensemble_scroll = self.ensemble_row + 1 - rows;
         }
     }
 
@@ -2682,6 +2772,7 @@ impl AppState {
             Focus::Eq => EQ_ROWS,
             Focus::Spectrum => SPECTRUM_ROWS,
             Focus::Fx => FX_ROWS,
+            Focus::Loops => LOOP_ROWS,
         }
     }
 
@@ -2695,6 +2786,7 @@ impl AppState {
             Focus::Eq => self.eq_row.min(EQ_ROWS - 1),
             Focus::Spectrum => self.spectrum_row.min(SPECTRUM_ROWS - 1),
             Focus::Fx => self.fx_row.min(FX_ROWS - 1),
+            Focus::Loops => self.looper_row.min(LOOP_ROWS - 1),
         }
     }
 
@@ -2721,10 +2813,14 @@ impl AppState {
                     .synth_col
                     .min(synth_col_count(self.synth_page, self.synth_row) - 1);
             }
-            Focus::SynthEnsembles => self.ensemble_row = clamped,
+            Focus::SynthEnsembles => {
+                self.ensemble_row = clamped;
+                self.scroll_ensembles_into_view();
+            }
             Focus::Eq => self.eq_row = clamped,
             Focus::Spectrum => self.spectrum_row = clamped,
             Focus::Fx => self.fx_row = clamped,
+            Focus::Loops => self.looper_row = clamped,
         }
     }
 
@@ -3009,6 +3105,7 @@ pub fn run_interactive() -> io::Result<()> {
         history_view: HistoryView::Off,
         history_row: 0,
         history_scroll: 0,
+        ensemble_scroll: 0,
         pending_play: None,
         history_held: None,
         history_timed: None,
@@ -3045,17 +3142,17 @@ pub fn run_interactive() -> io::Result<()> {
         rhythm_store,
         sinko_row: 0,
         sinko_cell: 0,
-        takes: Vec::new(),
-        current_take: Vec::new(),
         last_esc: None,
         stop_flash_until: None,
         recording: false,
         metronome_on: false,
         last_tap_at: None,
-        take_started_at: None,
-        sinko_smooth: SINKO_SMOOTH_DEFAULT,
-        working: RhythmPattern::draft(),
+        working: RhythmBar::silent(DEFAULT_STEPS, rhythm::DEFAULT_HOLD),
+        working_name: String::new(),
+        working_bar: 0,
         working_slot: None,
+        looper: LooperState::default(),
+        looper_row: 0,
         sinko_clipboard: None,
         rhythm_status: None,
         rhythm_user_path: rhythm_store::user_path(),
@@ -3164,6 +3261,7 @@ fn event_loop<W: io::Write>(
             }
         }
 
+        pump_looper(state, synth, logger);
         pump_audition(state, synth, logger);
         drop(frame);
 
@@ -3364,22 +3462,28 @@ fn event_loop<W: io::Write>(
                         logger.input("MODAL cancel pattern name");
                     }
                     KeyCode::Enter => {
-                        let typed = match state.modal.take() {
-                            Some(Modal::RhythmNameInput { buffer }) => buffer.trim().to_string(),
+                        let taken = state.modal.take();
+                        let (typed, target) = match taken {
+                            Some(Modal::RhythmNameInput { buffer, target }) => {
+                                (buffer.trim().to_string(), target)
+                            }
                             other => {
                                 state.modal = other;
-                                String::new()
+                                (String::new(), NameTarget::Working)
                             }
                         };
-                        save_working_pattern(state, &typed, logger);
+                        match target {
+                            NameTarget::Working => save_working_pattern(state, &typed, logger),
+                            NameTarget::Loop => save_loop_pattern(state, &typed, logger),
+                        }
                     }
                     KeyCode::Backspace => {
-                        if let Some(Modal::RhythmNameInput { buffer }) = &mut state.modal {
+                        if let Some(Modal::RhythmNameInput { buffer, .. }) = &mut state.modal {
                             buffer.pop();
                         }
                     }
                     KeyCode::Char(c) => {
-                        if let Some(Modal::RhythmNameInput { buffer }) = &mut state.modal {
+                        if let Some(Modal::RhythmNameInput { buffer, .. }) = &mut state.modal {
                             if buffer.len() < 32 && !c.is_control() {
                                 buffer.push(c);
                             }
@@ -3584,11 +3688,13 @@ fn event_loop<W: io::Write>(
                         if state.focus == Focus::Sinko {
                             sync_working(state);
                         }
+                        state.scroll_ensembles_into_view();
                         logger.input(&format!("TAB -> {:?}", state.focus));
                         continue;
                     }
                     KeyCode::BackTab => {
                         state.focus = state.focus.prev();
+                        state.scroll_ensembles_into_view();
                         if state.focus == Focus::Sinko {
                             sync_working(state);
                         }
@@ -3613,7 +3719,26 @@ fn event_loop<W: io::Write>(
                             // grammar ignores, and the grammar matches exact
                             // shapes, so inserting it would break whatever
                             // chord it was held with.
-                            handle_hotkey(state, hotkey, shift, logger);
+                            // The tap is dispatched here rather than inside
+                            // `handle_hotkey`, because it *sounds* the bar's
+                            // chord and the synth only exists on this path —
+                            // the same reason the audition is pumped from the
+                            // event loop. Its key-up releases the same voice,
+                            // which is what makes a tap a note with a length.
+                            if hotkey == Hotkey::SinkoTap {
+                                if let Some(notes) = looper_tap_press(state, logger) {
+                                    if !notes.is_empty() {
+                                        synth.play_stab(
+                                            crate::synth::AUDITION_GROUP,
+                                            &notes,
+                                            0.9,
+                                            1.0,
+                                        );
+                                    }
+                                }
+                            } else {
+                                handle_hotkey(state, hotkey, shift, logger);
+                            }
                         } else if !ev
                             .modifiers
                             .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT)
@@ -3641,9 +3766,14 @@ fn event_loop<W: io::Write>(
                             state.held.remove(&pos);
                             state.update_live_chord();
                         } else if pos.hotkey() == Some(Hotkey::HistoryPlay) {
-                            // The one hotkey with a release half: `r` holds a
-                            // chord, so letting it go is what ends it.
+                            // `r` holds a chord, so letting it go is what ends it.
                             history_hold(state, false, logger);
+                        } else if pos.hotkey() == Some(Hotkey::SinkoTap) {
+                            // And `$` holds a note: the key-up is the note's end,
+                            // and the length between the two is what it records.
+                            if looper_tap_release(state, logger) {
+                                synth.stop_stab(crate::synth::AUDITION_GROUP);
+                            }
                         }
                     }
                 }
@@ -4321,16 +4451,6 @@ fn adjust_current_with(
                 commit_working(state, _logger);
                 _logger.input(&format!("SINKO mute -> {} ticks", next));
             }
-            SINKO_ROW_SMOOTH => {
-                let next = state.sinko_smooth as i32 + delta;
-                state.sinko_smooth = next.clamp(1, rhythm::MAX_TAKES as i32) as usize;
-                // Rebuilds the layer stack, so it is a pattern edit like the rest
-                // and has to reach the entry — otherwise the next Tab would
-                // silently put the old stack back.
-                rebuild_working(state);
-                commit_working(state, _logger);
-                _logger.input(&format!("SINKO smooth = {}", state.sinko_smooth));
-            }
             _ => {}
         },
         Focus::Synth => {
@@ -4353,6 +4473,7 @@ fn adjust_current_with(
         Focus::Eq => adjust_eq(state, params, delta, coarse, _logger),
         Focus::Spectrum => adjust_spectrum(state, params, delta, _logger),
         Focus::Fx => adjust_fx(state, params, delta, coarse, _logger),
+        Focus::Loops => adjust_loops(state, delta, _logger),
     }
 }
 
@@ -4478,6 +4599,7 @@ fn primary_action(state: &mut AppState, synth: &Synth, logger: &Logger) {
         Focus::Eq => eq_action(state, synth.params(), logger),
         Focus::Spectrum => spectrum_action(state, logger),
         Focus::Fx => fx_action(state, synth.params(), row, logger),
+        Focus::Loops => loops_action(state, logger),
         Focus::SynthEnsembles => {
             let preset_count = state.ensemble_store.ensembles.len();
             if row < preset_count {
@@ -4761,7 +4883,7 @@ fn row_is_action_button(state: &AppState) -> bool {
             // The hits row toggles a cell, so like the other buttons it takes
             // Enter even while a chord is held.
             SINKO_ROW_HITS
-                | SINKO_ROW_RECORD
+                | SINKO_ROW_LOOP
                 | SINKO_ROW_NEW
                 | SINKO_ROW_SAVE
                 | SINKO_ROW_COPY
@@ -4771,6 +4893,10 @@ fn row_is_action_button(state: &AppState) -> bool {
         Focus::Eq => state.current_row() == EQ_ROW_SAVE,
         Focus::Spectrum => state.current_row() == SPECTRUM_ROW_RESET,
         Focus::Fx => fx_row_is_button(state.current_row()),
+        Focus::Loops => matches!(
+            state.current_row(),
+            LOOP_ROW_HITS | LOOP_ROW_CLEAR | LOOP_ROW_RECORD | LOOP_ROW_SAVE
+        ),
         _ => false,
     }
 }
@@ -4827,7 +4953,9 @@ fn handle_hotkey(state: &mut AppState, hotkey: Hotkey, shift: bool, logger: &Log
         Hotkey::HistoryPlay => history_hold(state, true, logger),
         // Global on purpose: the tap key is reachable without moving either
         // hand, and the point is to tap while watching the progression.
-        Hotkey::SinkoTap => sinko_tap(state, logger),
+        // Dispatched by the event loop, which is the only place with a synth to
+        // sound the chord through. Kept here so the match stays exhaustive.
+        Hotkey::SinkoTap => {}
         // Also a performance control, and global for the same reason.
         Hotkey::MetronomeToggle => toggle_metronome(state, logger),
         // Fed into the same tracker the space bar used, so the single/double/
@@ -4849,12 +4977,18 @@ fn handle_hotkey(state: &mut AppState, hotkey: Hotkey, shift: bool, logger: &Log
                 logger.input(&format!("{:?} outside progression/sinko -> flash", hotkey));
             }
         }
-        Hotkey::CopyChord | Hotkey::PasteChord | Hotkey::DeleteChord | Hotkey::Undo | Hotkey::Redo => {
+        Hotkey::CopyChord
+        | Hotkey::PasteChord
+        | Hotkey::DeleteChord
+        | Hotkey::ReplaceChord
+        | Hotkey::Undo
+        | Hotkey::Redo => {
             if state.focus == Focus::Progression {
                 let edit = match hotkey {
                     Hotkey::CopyChord => ProgressionEdit::Copy,
                     Hotkey::PasteChord => ProgressionEdit::Paste,
                     Hotkey::DeleteChord => ProgressionEdit::Delete,
+                    Hotkey::ReplaceChord => ProgressionEdit::Replace,
                     Hotkey::Undo => ProgressionEdit::Undo,
                     _ => ProgressionEdit::Redo,
                 };
@@ -5216,7 +5350,7 @@ fn sinko_target(state: &AppState) -> Option<usize> {
 ///
 /// A clone, because the panel edits a draft and writes it back; the entry is the
 /// single source the scheduler reads.
-fn sinko_pattern(state: &AppState) -> Option<RhythmPattern> {
+fn sinko_pattern(state: &AppState) -> Option<AssignedRhythm> {
     let prog = state.progression.lock().unwrap();
     match prog.slots.get(state.progression_row) {
         Some(Slot::Chord(entry)) => entry.pattern.clone(),
@@ -5230,23 +5364,32 @@ fn sinko_pattern(state: &AppState) -> Option<RhythmPattern> {
 /// after: two chords can both start from `Quarters`, and this is what says which
 /// one has been changed since.
 fn sinko_pattern_label(state: &AppState) -> String {
-    let Some(pattern) = sinko_pattern(state) else {
+    let Some(assigned) = sinko_pattern(state) else {
         return format!("(none){}", pattern_position_label(state, None));
     };
-    let pristine = state
+    let template = state
         .rhythm_store
         .lock()
         .unwrap()
-        .find(&pattern.name)
+        .find(&assigned.name)
         .cloned();
-    let name = match pristine {
-        Some(template) if template != pattern => format!("{}  (edited)", pattern.name),
-        _ => pattern.name.clone(),
-    };
+    let mut name = assigned.name.clone();
+    // A multi-bar pattern says which of its bars this chord took, because the
+    // grid below only ever shows one of them.
+    let bars = template.as_ref().map(|p| p.bars.len()).unwrap_or(1);
+    if bars > 1 {
+        name = format!("{} {}/{}", name, assigned.bar + 1, bars);
+    }
+    let edited = template
+        .as_ref()
+        .is_some_and(|template| !assigned.matches(template));
+    if edited {
+        name.push_str("  (edited)");
+    }
     format!(
         "{}{}",
         name,
-        pattern_position_label(state, Some(&pattern.name))
+        pattern_position_label(state, Some(&assigned.name))
     )
 }
 
@@ -5497,35 +5640,36 @@ fn sync_working(state: &mut AppState) {
     let row = sinko_target(state);
     let owned = sinko_pattern(state);
 
-    // Stale when the selection moved, or when the row's own rhythm no longer
+    // Stale when the selection moved, or when the row's own bar no longer
     // matches the draft. A row that owns nothing is *not* stale on its own: a
-    // blank draft is what it should have, and reloading would throw away the
-    // takes being recorded into it.
+    // blank draft is what it should have.
     let stale = state.working_slot != row
         || owned
             .as_ref()
-            .is_some_and(|pattern| *pattern != state.working);
+            .is_none_or(|assigned| assigned.rhythm != state.working);
     if !stale {
         return;
     }
 
-    state.working = owned.unwrap_or_else(RhythmPattern::draft);
+    match owned {
+        Some(assigned) => {
+            state.working = assigned.rhythm;
+            state.working_name = assigned.name;
+            state.working_bar = assigned.bar;
+        }
+        None => {
+            state.working = RhythmBar::silent(DEFAULT_STEPS, rhythm::DEFAULT_HOLD);
+            state.working_name = String::new();
+            state.working_bar = 0;
+        }
+    }
     state.working_slot = row;
     state.sinko_cell = 0;
-    state.takes.clear();
-    state.current_take.clear();
-    state.take_started_at = None;
 }
 
-/// True when the pattern plays the cell at `cell`, in any take.
-///
-/// The layers are a stack, so what sounds is their union.
+/// True when the pattern plays the cell at `cell`.
 fn cell_is_on(state: &AppState, cell: usize) -> bool {
-    state
-        .working
-        .layers
-        .iter()
-        .any(|layer| layer.hit(cell))
+    state.working.hit(cell)
 }
 
 /// The cell the `hits` cursor is on, clamped to the grid.
@@ -5556,10 +5700,6 @@ fn move_cell_cursor(state: &mut AppState, delta: i32, logger: &Logger) {
 }
 
 /// Turn the cell under the cursor on or off.
-///
-/// Off clears the cell in *every* take, because a hit left in a lower layer
-/// would still sound and the press would look like it did nothing. On puts the
-/// hit in the newest take, which is the one playing at full level.
 fn toggle_cell(state: &mut AppState, logger: &Logger) {
     if !working_is_assigned(state, logger, "hits") {
         return;
@@ -5569,29 +5709,15 @@ fn toggle_cell(state: &mut AppState, logger: &Logger) {
         return;
     }
     let cell = cursor_cell(state);
-
-    if cell_is_on(state, cell) {
-        for layer in &mut state.working.layers {
-            if cell < layer.len() {
-                layer.steps[cell] = false;
-            }
-        }
-        logger.input(&format!("SINKO cell {} off", cell + 1));
-    } else {
-        let enabled = match state.working.layers.first_mut() {
-            Some(top) if cell < top.len() => {
-                top.steps[cell] = true;
-                true
-            }
-            _ => false,
-        };
-        if !enabled {
-            state.flash(200);
-            logger.input("SINKO cell: the pattern has no take to put it in");
-            return;
-        }
-        logger.input(&format!("SINKO cell {} on", cell + 1));
+    let on = !state.working.hit(cell);
+    if cell < state.working.steps.len() {
+        state.working.steps[cell] = on;
     }
+    logger.input(&format!(
+        "SINKO cell {} {}",
+        cell + 1,
+        if on { "on" } else { "off" }
+    ));
 
     commit_working(state, logger);
 }
@@ -5641,131 +5767,348 @@ fn commit_working(state: &mut AppState, logger: &Logger) {
     let Some(row) = sinko_target(state) else {
         return;
     };
-    // A rhythm that arrived by recording has no name yet — the draft is a blank
-    // page until something is played into it. Name it here, against the palette
-    // so it cannot shadow a library pattern and read as `(edited)` by accident.
-    if state.working.name.trim().is_empty() {
-        state.working.name = state.rhythm_store.lock().unwrap().unique_name("Pattern");
+    // A rhythm that arrived from the looper has no name yet — the draft is a
+    // blank page until it is saved. Name it here, against the palette so it
+    // cannot shadow a library pattern and read as `(edited)` by accident.
+    if state.working_name.trim().is_empty() {
+        state.working_name = state.rhythm_store.lock().unwrap().unique_name("Pattern");
+        state.working_bar = 0;
     }
+    let assigned = AssignedRhythm {
+        name: state.working_name.clone(),
+        bar: state.working_bar,
+        rhythm: state.working.clone(),
+    };
     let changed = state
         .progression
         .lock()
         .unwrap()
-        .assign_pattern(row, Some(state.working.clone()));
+        .assign_pattern(row, Some(assigned));
     if changed {
         logger.input(&format!("SINKO row {} rhythm updated", row));
     }
 }
 
-/// Rebuild the working pattern from the takes recorded so far.
-///
-/// The newest performance goes on top at full level; every layer already there
-/// is decayed one step first. That is the overlapping-takes sound: each new pass
-/// is loudest and the older ones sit underneath, quieter every measure.
-///
-/// When `sinko_smooth` is above 1 the top layer is instead the *average* of that
-/// many recent takes, which is how a figure tapped several times converges on
-/// one clean line rather than stacking up.
-fn rebuild_working(state: &mut AppState) {
-    let resolution = state.working.steps_per_bar();
-    let smooth = state.sinko_smooth.max(1);
+/// Where the looper's bed comes from.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum LooperSource {
+    /// The chord the Progression panel has selected, four times.
+    OneChord,
+    /// The first four chords of the progression.
+    FirstFour,
+}
 
-    let mut layers: Vec<RhythmLayer> = Vec::new();
-    if !state.takes.is_empty() {
-        let head_positions = rhythm::average_takes(&state.takes, smooth);
-        layers.push(RhythmLayer::new(
-            1.0,
-            rhythm::quantize(&head_positions, resolution),
-        ));
+/// A note the tap key is holding down, and where in the bed it began.
+///
+/// The tap is a *key*, not a click: what it records is the button's down and up,
+/// which is a note's start and end. This is the down half, waiting for its up.
+#[derive(Clone, Debug)]
+struct OpenTap {
+    /// Ticks from the top of the bed, so a note held over a bar line is a
+    /// subtraction rather than a special case.
+    at: u64,
+    /// The grid cell the onset was written to.
+    cell: usize,
+}
 
-        // Every take outside the averaging window sits underneath as a layer of
-        // its own, most recent first. Each position further down the stack is
-        // one more step of decay, so the oldest take is the quietest.
-        let settled = state.takes.len().saturating_sub(smooth);
-        let mut bed: Vec<RhythmLayer> = state.takes[..settled]
-            .iter()
-            .rev()
-            .take(SINKO_LAYER_ROWS - 1)
-            .map(|take| RhythmLayer::new(1.0, rhythm::quantize(take, resolution)))
-            .collect();
-        for i in 0..bed.len() {
-            rhythm::decay_layer_gains(&mut bed[i..], rhythm::TAKE_DECAY);
+/// The tap looper's cursor and settings.
+///
+/// The recorded bars themselves live in the *transport*, because that is what
+/// plays them; this is only what the panel is looking at.
+#[derive(Clone, Debug)]
+struct LooperState {
+    source: LooperSource,
+    /// Which progression row `OneChord` means.
+    chord: usize,
+    /// The bar the cursor is editing, 0..4. Every bar is drawn; this is the one
+    /// the length, accent and clear rows act on.
+    bar: usize,
+    /// Which grid cell the `hits` row is editing.
+    cell: usize,
+    /// Steps per bar for a fresh bed.
+    resolution: usize,
+    /// The `$` key while it is down.
+    open: Option<OpenTap>,
+}
+
+impl Default for LooperState {
+    fn default() -> Self {
+        LooperState {
+            source: LooperSource::FirstFour,
+            chord: 0,
+            bar: 0,
+            cell: 0,
+            resolution: DEFAULT_STEPS,
+            open: None,
         }
-        layers.extend(bed);
     }
-
-    state.working.layers = if layers.is_empty() {
-        // A pattern that has never sounded is a blank page, not a layer.
-        vec![RhythmLayer::new(1.0, vec![false; resolution])]
-    } else {
-        layers
-    };
 }
 
-/// The latest grid of the take in progress, snapped to the working resolution.
-fn sinko_live_steps(state: &AppState) -> Vec<bool> {
-    let resolution = state.working.steps_per_bar();
-    let mut taps = state.current_take.clone();
-    if taps.is_empty() {
-        return vec![false; resolution];
-    }
-    taps.sort_unstable();
-    rhythm::quantize(&taps, resolution)
-}
-
-/// Close the take in progress and fold it into the pattern.
-fn close_take(state: &mut AppState, logger: &Logger) {
-    let take = std::mem::take(&mut state.current_take);
-    state.take_started_at = None;
-    if take.is_empty() {
-        return;
-    }
-    state.takes.push(take);
-    if state.takes.len() > rhythm::MAX_TAKES {
-        state.takes.remove(0);
-    }
-    rebuild_working(state);
-    commit_working(state, logger);
-    logger.input(&format!("SINKO take {} recorded", state.takes.len()));
-}
-
-/// One tap of the sinko key.
+/// The chords the looper would load, in order, or `None` when there are none.
 ///
-/// The tap is timestamped against the bar the scheduler published, so its
-/// position *is* the performance. Taps closer together than the debounce are
-/// dropped: a held key repeats, and a terminal without the keyboard-enhancement
-/// flags reports that repeat as an ordinary press.
-fn sinko_tap(state: &mut AppState, logger: &Logger) {
-    if !state.recording {
-        state.flash(200);
-        logger.input("SINKO tap ignored: not recording");
-        return;
+/// "One chord" repeats the selected row four times; "first four" takes the
+/// opening four and repeats the last one if the progression is shorter. A slot
+/// that is a rest contributes no notes, which is a legitimate thing to loop over.
+fn looper_chords(state: &AppState) -> Option<Vec<Vec<u8>>> {
+    let prog = state.progression.lock().unwrap();
+    let key = state.transport.key();
+    let notes_at = |index: usize| match prog.slots.get(index) {
+        Some(Slot::Chord(entry)) => Some(entry.notes(&key)),
+        Some(Slot::Rest) => Some(Vec::new()),
+        None => None,
+    };
+    match state.looper.source {
+        LooperSource::OneChord => {
+            let index = state.looper.chord.min(prog.slots.len().saturating_sub(1));
+            let notes = notes_at(index)?;
+            Some(vec![notes; arrangement::BED_BARS])
+        }
+        LooperSource::FirstFour => {
+            if prog.slots.is_empty() {
+                return None;
+            }
+            Some(
+                (0..arrangement::BED_BARS)
+                    .map(|bar| notes_at(bar.min(prog.slots.len() - 1)).unwrap_or_default())
+                    .collect(),
+            )
+        }
     }
-    let Some((bar_start, _)) = state.transport.bar_started() else {
+}
+
+/// Load the bed and start it looping.
+fn looper_arm(state: &mut AppState, logger: &Logger) {
+    let Some(chords) = looper_chords(state) else {
         state.flash(200);
-        logger.input("SINKO tap ignored: no bar clock");
+        logger.input("LOOPER: the progression has no chords to load");
         return;
     };
+    state.transport.set_bed(Some(arrangement::TapBed::over(
+        &chords,
+        state.looper.resolution,
+    )));
+    state.recording = true;
+    state.looper.bar = 0;
+    state.looper.cell = 0;
+    state.transport.playing.store(true, Ordering::Relaxed);
+    sync_metronome(state);
+    logger.input(&format!(
+        "LOOPER armed: {} bar(s) over {} chord(s)",
+        arrangement::BED_BARS,
+        chords.len()
+    ));
+}
 
+/// Stop recording, keeping the bed loaded so the loop still plays.
+///
+/// Stopping and *unloading* are different presses on purpose: a stop is what you
+/// do to listen back, and throwing away four bars you just played is not
+/// something Esc should be able to do by accident.
+fn looper_stop(state: &mut AppState, logger: &Logger) {
+    if !state.recording {
+        return;
+    }
+    state.recording = false;
+    sync_metronome(state);
+    logger.input("LOOPER stopped recording");
+}
+
+/// Unload the bed, leaving the progression as the thing that plays.
+fn looper_unload(state: &mut AppState, logger: &Logger) {
+    if !state.transport.bed_loaded() {
+        return;
+    }
+    state.transport.set_bed(None);
+    state.recording = false;
+    sync_metronome(state);
+    logger.input("LOOPER unloaded");
+}
+
+/// Where in the bed the clock is, as `(bar, ticks from the top of the bed)`.
+///
+/// The tap is timestamped against the bar the scheduler published, and *which*
+/// bar of the bed that is decides which bar it lands in — that is the whole of
+/// "the tap input plays the chord for its position in the four-bar recording".
+/// Ticks are counted from the top of the *bed* rather than from the bar line, so
+/// a note held over a bar line is one subtraction.
+fn looper_position(state: &AppState) -> Option<(usize, u64)> {
+    let (bar_start, _) = state.transport.bar_started()?;
+    let bar = state.transport.bed_bar.load(Ordering::Relaxed) % arrangement::BED_BARS;
+    let phase = bar_phase_ticks(Instant::now(), bar_start, state.transport.bar_duration()) as u64;
+    Some((bar, bar as u64 * BAR_TICKS + phase))
+}
+
+/// The grid cell a bed tick belongs to.
+fn looper_cell(bar: &arrangement::BedBar, at: u64) -> usize {
+    let steps = bar.rhythm.steps_per_bar();
+    if steps == 0 {
+        return 0;
+    }
+    let step_ticks = (BAR_TICKS / steps as u64).max(1);
+    (((at % BAR_TICKS) / step_ticks) as usize).min(steps - 1)
+}
+
+/// The `$` key going down: a note *starts* here.
+///
+/// Returns the chord that should sound, or `None` when the tap is refused. The
+/// note it opens is closed by [`looper_tap_release`]; everything else about the
+/// recording — which bar, which cell, which chord — is decided here, because
+/// that is the moment the player meant.
+fn looper_tap_press(state: &mut AppState, logger: &Logger) -> Option<Vec<u8>> {
+    if !state.recording || !state.transport.bed_loaded() {
+        state.flash(200);
+        logger.input("TAP ignored: arm the looper first");
+        return None;
+    }
+    let Some((bar, at)) = looper_position(state) else {
+        state.flash(200);
+        logger.input("TAP ignored: no bar clock");
+        return None;
+    };
     let now = Instant::now();
-    if let Some(last) = state.last_tap_at {
-        if now.duration_since(last).as_millis() < TAP_DEBOUNCE_MS {
-            return;
+    // A press while a note is still open is the same key down again — the
+    // terminal's auto-repeat, or a key-up that never arrived. The window slides,
+    // so holding the key blocks every repeat rather than letting one through
+    // once the first interval has passed.
+    if state.looper.open.is_some() {
+        if let Some(last) = state.last_tap_at {
+            if now.duration_since(last).as_millis() < TAP_REPEAT_MS {
+                state.last_tap_at = Some(now);
+                return None;
+            }
         }
     }
     state.last_tap_at = Some(now);
 
-    // A new bar began since this take started, so the take is over.
-    if let Some(started) = state.take_started_at {
-        if bar_start > started {
-            close_take(state, logger);
-        }
-    }
-    state.take_started_at = Some(bar_start);
+    // A press with no release behind it — a lost key-up, or a terminal that
+    // does not report them — closes the note it left open *here*, so the note
+    // gets the length it was held for rather than ringing until something else
+    // takes the voice.
+    close_open_tap(state, at, logger);
 
-    let phase = bar_phase_ticks(now, bar_start, state.transport.bar_duration());
-    state.current_take.push(phase);
-    logger.input(&format!("SINKO tap at {} ticks", phase));
+    // The chord of the bar being tapped, so the tap is heard where it lands
+    // rather than only on the next pass.
+    let notes = state
+        .transport
+        .bed()
+        .and_then(|bed| bed.bars.get(bar).map(|b| b.notes.clone()))
+        .unwrap_or_default();
+
+    let mut cell = 0;
+    state.transport.update_bed(|bed| {
+        if let Some(target) = bed.bars.get_mut(bar) {
+            cell = looper_cell(target, at);
+            if cell < target.rhythm.steps.len() {
+                target.rhythm.steps[cell] = true;
+            }
+        }
+    });
+    state.looper.open = Some(OpenTap { at, cell });
+    logger.input(&format!(
+        "TAP down bar {} at {} ticks",
+        bar + 1,
+        at % BAR_TICKS
+    ));
+    // The chord is handed back rather than sounded here, so the recording is
+    // testable without an audio device: the event loop is what plays it.
+    Some(notes)
+}
+
+/// The `$` key coming up: the open note *ends* here, and its length is written.
+///
+/// This is what makes the tap a performance rather than a row of dots: a stab
+/// left the bar's default hold, and a note held down keeps sounding for as long
+/// as the key was down, rounded to the grid.
+///
+/// Returns whether a note was closed, which is what tells the caller to give the
+/// voice back.
+fn looper_tap_release(state: &mut AppState, logger: &Logger) -> bool {
+    let Some(at) = looper_position(state).map(|(_, at)| at) else {
+        // The clock stopped under the note: there is no length to measure, so
+        // the hit keeps the bar's default and the voice is still handed back.
+        let had = state.looper.open.is_some();
+        state.looper.open = None;
+        return had;
+    };
+    close_open_tap(state, at, logger)
+}
+
+/// Write the length of an open note that ends at bed tick `at`.
+///
+/// A note shorter than one cell is a *hit* and keeps the bar's default hold —
+/// which is what a tap is, and what every hit sounded like before. Anything
+/// longer becomes an explicit length on the onset, and the cells it covered are
+/// cleared, because the key was down through them: a held note replaces the taps
+/// under it rather than layering with them.
+fn close_open_tap(state: &mut AppState, at: u64, logger: &Logger) -> bool {
+    let Some(open) = state.looper.open.take() else {
+        return false;
+    };
+    let mut end = at;
+    if end < open.at {
+        // The release landed after the loop came round again.
+        end += arrangement::BED_BARS as u64 * BAR_TICKS;
+    }
+    let held = end - open.at;
+
+    let bar = (open.at / BAR_TICKS) as usize % arrangement::BED_BARS;
+    let mut cells = 1;
+    let mut length = 0;
+    state.transport.update_bed(|bed| {
+        let Some(target) = bed.bars.get_mut(bar) else {
+            return;
+        };
+        let steps = target.rhythm.steps_per_bar();
+        if steps == 0 {
+            return;
+        }
+        let step_ticks = (BAR_TICKS / steps as u64).max(1);
+        // Rounded to the nearest cell, never fewer than the one it started in.
+        cells = ((held + step_ticks / 2) / step_ticks).max(1);
+        if cells <= 1 {
+            return;
+        }
+        // How far the note can be said to hold *from its own onset*: a bar's
+        // worth at most, which is what one override can carry.
+        length = (cells * step_ticks).min(BAR_TICKS) as u32;
+        let last = (open.cell + cells as usize).min(steps);
+        for step in (open.cell + 1)..last {
+            target.rhythm.steps[step] = false;
+        }
+        target.rhythm.set_cell_hold(open.cell, length);
+    });
+    if cells > 1 {
+        logger.input(&format!(
+            "TAP up bar {} — {} ticks ({} cells)",
+            bar + 1,
+            length,
+            cells
+        ));
+    } else {
+        logger.input(&format!("TAP up bar {} — a hit", bar + 1));
+    }
+    true
+}
+
+/// Whether the tap's voice has to be handed back.
+///
+/// A key-up is what normally ends the note, and this is the belt to that pair of
+/// braces: a terminal that does not report key releases, a stop or an unload
+/// while the key is down, or a pause under the note would otherwise leave the
+/// chord sounding with nothing left to release it.
+fn looper_tap_should_close(state: &AppState) -> bool {
+    state.looper.open.is_some()
+        && !(state.recording && state.transport.playing.load(Ordering::Relaxed))
+}
+
+/// Give the tap's voice back when the note can no longer be open.
+fn pump_looper(state: &mut AppState, synth: &Synth, logger: &Logger) {
+    if !looper_tap_should_close(state) {
+        return;
+    }
+    state.looper.open = None;
+    synth.stop_stab(crate::synth::AUDITION_GROUP);
+    logger.input("LOOPER tap released with the clock");
 }
 
 /// The space bar: latch both hands, unless a prompt is open.
@@ -5821,6 +6164,10 @@ fn panic_stop(state: &mut AppState, logger: &Logger) {
     // stab group on the way through the scheduler.
     state.transport.stop_now.store(true, Ordering::Relaxed);
     state.stop_flash_until = Some(Instant::now() + STOP_FLASH);
+    // The looper stops recording with the transport, but the four bars it
+    // recorded stay loaded: an Esc that threw them away would be an Esc that
+    // loses work.
+    looper_stop(state, logger);
     logger.input("TRANSPORT stop (esc)");
 }
 
@@ -5960,25 +6307,6 @@ fn handle_metronome_key(state: &mut AppState, ev: &event::KeyEvent, logger: &Log
     }
 }
 
-/// Arm or disarm tap recording.
-fn toggle_recording(state: &mut AppState, logger: &Logger) {
-    if state.recording {
-        state.recording = false;
-        close_take(state, logger);
-        sync_metronome(state);
-        logger.input("SINKO record off");
-        return;
-    }
-    // The click is the only way to feel the beat, and it needs the bar clock,
-    // which the scheduler runs whether or not the transport is playing.
-    state.recording = true;
-    state.last_tap_at = None;
-    state.take_started_at = None;
-    state.current_take.clear();
-    sync_metronome(state);
-    logger.input("SINKO record on");
-}
-
 /// Point the selected row at the next pattern in the library.
 ///
 /// The list is "none" first and then every saved pattern, so clearing an
@@ -6026,11 +6354,25 @@ fn cycle_assigned_pattern(state: &mut AppState, delta: i32, logger: &Logger) {
     };
     let label = chosen.as_ref().map(|p| p.name.clone());
 
-    let changed = state
-        .progression
-        .lock()
-        .unwrap()
-        .assign_pattern(state.progression_row, chosen);
+    // The whole pattern, spread across this chord and the ones after it. A
+    // one-bar pattern — which is nearly all of them — is exactly the old
+    // behaviour; a four-bar phrase is the looper's output landing where it was
+    // recorded.
+    let changed = match chosen.as_ref() {
+        Some(pattern) => {
+            state
+                .progression
+                .lock()
+                .unwrap()
+                .assign_phrase(state.progression_row, pattern)
+                > 0
+        }
+        None => state
+            .progression
+            .lock()
+            .unwrap()
+            .assign_pattern(state.progression_row, None),
+    };
     if changed {
         sync_working(state);
         logger.input(&format!(
@@ -6079,27 +6421,29 @@ fn cycle_resolution(state: &mut AppState, delta: i32, logger: &Logger) {
         return;
     }
 
+    // The performance is re-quantized onto the new grid rather than thrown away:
+    // a finer grid must not cost the hits somebody played. The onsets are taken
+    // in *ticks* first, so the figure lands where it sounded rather than where
+    // the old cell numbering happened to put it.
+    let old_ticks = state.working.step_ticks();
+    let onsets: Vec<u32> = state
+        .working
+        .hit_steps()
+        .into_iter()
+        .map(|step| (step as u64 * old_ticks).min(BAR_TICKS - 1) as u32)
+        .collect();
     let hold = state.working.hold;
     let mute = state.working.mute_ticks;
     let swing = state.working.swing;
-    let name = state.working.name.clone();
-    match RhythmPattern::blank(name, next) {
-        Ok(mut pattern) => {
-            // The hold is ticks, so it survives a grid change — the whole point
-            // of measuring it in ticks rather than in cells.
-            pattern.hold = hold;
-            pattern.mute_ticks = mute;
-            pattern.swing = swing;
-            // Per-cell lengths and accents are indexed by cell, so a new grid
-            // invalidates them: they are dropped with the draft rather than
-            // silently re-pointed at different beats.
-            state.working = pattern;
-            rebuild_working(state);
-            commit_working(state, logger);
-            logger.input(&format!("SINKO quant -> {} steps per bar", next));
-        }
-        Err(err) => logger.input(&format!("SINKO quant refused: {}", err)),
-    }
+    // The hold is ticks, so it survives a grid change — the whole point of
+    // measuring it in ticks rather than in cells. Per-cell lengths and accents are
+    // indexed by cell, so a new grid invalidates them: they are dropped with the
+    // draft rather than silently re-pointed at different beats.
+    state.working = rhythm::quantize_bar(&onsets, next, hold);
+    state.working.mute_ticks = mute;
+    state.working.swing = swing;
+    commit_working(state, logger);
+    logger.input(&format!("SINKO quant -> {} steps per bar", next));
 }
 
 /// Start a new pattern, named and already playing on the selected row.
@@ -6122,21 +6466,25 @@ fn new_pattern(state: &mut AppState, logger: &Logger) {
         .lock()
         .unwrap()
         .unique_name("New Pattern");
-    let mut pattern = RhythmPattern::draft();
-    pattern.name = name.clone();
+    let resolution = state.working.steps_per_bar().max(DEFAULT_STEPS);
+    let bar = RhythmBar::silent(resolution, state.working.hold);
+    let assigned = AssignedRhythm {
+        name: name.clone(),
+        bar: 0,
+        rhythm: bar.clone(),
+    };
 
     // The entry owns it; the library is untouched until it is saved there.
     state
         .progression
         .lock()
         .unwrap()
-        .assign_pattern(row, Some(pattern.clone()));
-    state.working = pattern;
+        .assign_pattern(row, Some(assigned));
+    state.working = bar;
+    state.working_name = name.clone();
+    state.working_bar = 0;
     state.working_slot = Some(row);
     state.sinko_cell = 0;
-    state.takes.clear();
-    state.current_take.clear();
-    state.take_started_at = None;
     state.rhythm_status = Some(ActionStatus::ok(name.clone()));
     logger.input(&format!("SINKO new pattern '{}' on row {}", name, row));
 }
@@ -6162,14 +6510,13 @@ fn save_working_pattern(state: &mut AppState, typed: &str, logger: &Logger) {
     }
 
     let base = if typed.is_empty() {
-        state.working.name.clone()
+        state.working_name.clone()
     } else {
         typed.to_string()
     };
     let name = state.rhythm_store.lock().unwrap().unique_name(&base);
 
-    let mut pattern = state.working.clone();
-    pattern.name = name.clone();
+    let pattern = RhythmPattern::single(name.clone(), state.working.clone());
 
     let saved = {
         let mut store = state.rhythm_store.lock().unwrap();
@@ -6185,12 +6532,16 @@ fn save_working_pattern(state: &mut AppState, typed: &str, logger: &Logger) {
 
     // The entry keeps a copy of its own, now named after the library entry, so
     // the row reads `Cut` rather than `Cut  (edited)`.
-    state
-        .progression
-        .lock()
-        .unwrap()
-        .assign_pattern(state.progression_row, Some(pattern.clone()));
-    state.working = pattern;
+    state.progression.lock().unwrap().assign_pattern(
+        state.progression_row,
+        Some(AssignedRhythm {
+            name: name.clone(),
+            bar: 0,
+            rhythm: state.working.clone(),
+        }),
+    );
+    state.working_name = name.clone();
+    state.working_bar = 0;
     state.rhythm_status = Some(ActionStatus::ok(name.clone()));
     state.flash(600);
     logger.input(&format!(
@@ -6203,11 +6554,14 @@ fn save_working_pattern(state: &mut AppState, typed: &str, logger: &Logger) {
 fn sinko_action(state: &mut AppState, row: usize, logger: &Logger) {
     match row {
         SINKO_ROW_HITS => toggle_cell(state, logger),
-        SINKO_ROW_RECORD => toggle_recording(state, logger),
+        SINKO_ROW_LOOP => looper_arm(state, logger),
         SINKO_ROW_NEW => new_pattern(state, logger),
         SINKO_ROW_SAVE => {
-            let prefill = state.working.name.clone();
-            state.modal = Some(Modal::RhythmNameInput { buffer: prefill });
+            let prefill = state.working_name.clone();
+            state.modal = Some(Modal::RhythmNameInput {
+                buffer: prefill,
+                target: NameTarget::Working,
+            });
             logger.input("MODAL pattern name");
         }
         SINKO_ROW_COPY => copy_sinko(state, logger),
@@ -6232,7 +6586,7 @@ fn copy_sinko(state: &mut AppState, logger: &Logger) {
         return;
     }
 
-    let patterns: Vec<Option<RhythmPattern>> = {
+    let patterns: Vec<Option<AssignedRhythm>> = {
         let prog = state.progression.lock().unwrap();
         rows.iter()
             .map(|row| match prog.slots.get(*row) {
@@ -6291,15 +6645,20 @@ fn paste_sinko(state: &mut AppState, logger: &Logger) {
 
     // Show the chord the Sinko panel is describing straight away rather than
     // waiting for the next key.
-    state.working = match patterns.first().cloned().flatten() {
-        Some(pattern) => pattern,
-        None => RhythmPattern::draft(),
-    };
+    match patterns.first().cloned().flatten() {
+        Some(assigned) => {
+            state.working = assigned.rhythm;
+            state.working_name = assigned.name;
+            state.working_bar = assigned.bar;
+        }
+        None => {
+            state.working = RhythmBar::silent(DEFAULT_STEPS, rhythm::DEFAULT_HOLD);
+            state.working_name = String::new();
+            state.working_bar = 0;
+        }
+    }
     state.working_slot = sinko_target(state);
     state.sinko_cell = 0;
-    state.takes.clear();
-    state.current_take.clear();
-    state.take_started_at = None;
 
     if !changed {
         state.flash(200);
@@ -6461,10 +6820,10 @@ fn sinko_rows(state: &AppState) -> Vec<usize> {
 ///
 /// One entry names itself; several say how many and whether any of them is a
 /// chord with no rhythm, so a phrase paste is legible before it happens.
-fn clipboard_label(patterns: &[Option<RhythmPattern>]) -> String {
+fn clipboard_label(patterns: &[Option<AssignedRhythm>]) -> String {
     match patterns {
         [] => "nothing".to_string(),
-        [Some(pattern)] => pattern.name.clone(),
+        [Some(assigned)] => assigned.name.clone(),
         [None] => "(no rhythm)".to_string(),
         many => {
             let named = many.iter().filter(|p| p.is_some()).count();
@@ -6669,6 +7028,7 @@ fn render_synth_panel<W: io::Write>(
     let eq_focused = state.focus == Focus::Eq;
     let spectrum_focused = state.focus == Focus::Spectrum;
     let fx_focused = state.focus == Focus::Fx;
+    let loops_focused = state.focus == Focus::Loops;
 
     // The page is in the title, because a paged table whose page you cannot see
     // is a table with settings you will never find.
@@ -6711,6 +7071,12 @@ fn render_synth_panel<W: io::Write>(
             CHAIN_SLOTS,
             fx_slot_at(state, params).fx().label()
         )
+    } else if loops_focused {
+        format!(
+            " Loops [bar {} of {}] ",
+            state.looper.bar + 1,
+            arrangement::BED_BARS
+        )
     } else {
         " Synth ".to_string()
     };
@@ -6718,7 +7084,12 @@ fn render_synth_panel<W: io::Write>(
     draw_panel_header(
         stdout,
         header,
-        focused || ensembles_focused || eq_focused || spectrum_focused || fx_focused,
+        focused
+            || ensembles_focused
+            || eq_focused
+            || spectrum_focused
+            || fx_focused
+            || loops_focused,
     )?;
 
     if focused {
@@ -6731,6 +7102,8 @@ fn render_synth_panel<W: io::Write>(
         render_spectrum_body(stdout, params, state)?;
     } else if fx_focused {
         render_fx_body(stdout, params, state)?;
+    } else if loops_focused {
+        render_loops_body(stdout, state)?;
     } else {
         render_synth_summary(stdout, params, state)?;
     }
@@ -6965,6 +7338,407 @@ fn save_fx_preset(
 }
 
 /// The rack, opened out: one slot at a time, in full.
+/// The looper's selected bar, as the bed holds it.
+fn looper_bar(state: &AppState) -> Option<arrangement::BedBar> {
+    state
+        .transport
+        .bed()
+        .and_then(|bed| bed.bars.get(state.looper.bar).cloned())
+}
+
+/// Edit the looper's selected bar in place.
+fn edit_looper_bar(state: &AppState, edit: impl FnOnce(&mut arrangement::BedBar)) {
+    let bar = state.looper.bar;
+    state.transport.update_bed(|bed| {
+        if let Some(target) = bed.bars.get_mut(bar) {
+            edit(target);
+        }
+    });
+}
+
+/// Move the looper's cursor, and step its settings.
+///
+/// Nothing here needs a synth: the looper edits its own bars, and `$` is the only
+/// thing that makes a sound.
+fn adjust_loops(state: &mut AppState, delta: i32, logger: &Logger) {
+    match state.looper_row {
+        LOOP_ROW_SOURCE => {
+            state.looper.source = match state.looper.source {
+                LooperSource::OneChord => LooperSource::FirstFour,
+                LooperSource::FirstFour => LooperSource::OneChord,
+            };
+            logger.input(&format!(
+                "LOOPER source = {}",
+                match state.looper.source {
+                    LooperSource::OneChord => "one chord, four times",
+                    LooperSource::FirstFour => "the first four chords",
+                }
+            ));
+        }
+        LOOP_ROW_CHORD => {
+            let len = state.progression.lock().unwrap().slots.len();
+            if len == 0 {
+                state.flash(200);
+                return;
+            }
+            let next = (state.looper.chord as i32 + delta).rem_euclid(len as i32);
+            state.looper.chord = next as usize;
+            logger.input(&format!("LOOPER chord = row {}", next + 1));
+        }
+        LOOP_ROW_BAR => {
+            let next = (state.looper.bar as i32 + delta).rem_euclid(arrangement::BED_BARS as i32);
+            state.looper.bar = next as usize;
+            state.looper.cell = 0;
+            logger.input(&format!("LOOPER bar = {}", next + 1));
+        }
+        LOOP_ROW_QUANT => {
+            let options = rhythm::VALID_STEPS;
+            let index = options
+                .iter()
+                .position(|n| *n == state.looper.resolution)
+                .unwrap_or(1) as i32;
+            let next = options[((index + delta).rem_euclid(options.len() as i32)) as usize];
+            state.looper.resolution = next;
+            logger.input(&format!("LOOPER quant = {} steps per bar", next));
+        }
+        LOOP_ROW_HITS => {
+            let Some(bar) = looper_bar(state) else {
+                state.flash(200);
+                logger.input("LOOPER: load the loop first");
+                return;
+            };
+            let cells = bar.rhythm.steps_per_bar();
+            if cells == 0 {
+                return;
+            }
+            let next = (state.looper.cell as i32 + delta).clamp(0, cells as i32 - 1);
+            state.looper.cell = next as usize;
+            logger.input(&format!("LOOPER cell {} of {}", next + 1, cells));
+        }
+        LOOP_ROW_LENGTH => {
+            let Some(bar) = looper_bar(state) else {
+                state.flash(200);
+                return;
+            };
+            let cell = state.looper.cell;
+            let rungs: Vec<i32> = rhythm::NOTE_LADDER.iter().map(|t| *t as i32).collect();
+            let next = rhythm::rung_step(&rungs, bar.rhythm.cell_hold(cell) as i32, delta);
+            edit_looper_bar(state, |bar| bar.rhythm.set_cell_hold(cell, next as u32));
+            logger.input(&format!(
+                "LOOPER cell {} length -> {} ticks",
+                cell + 1,
+                next
+            ));
+        }
+        LOOP_ROW_ACCENT => {
+            let Some(bar) = looper_bar(state) else {
+                state.flash(200);
+                return;
+            };
+            let cell = state.looper.cell;
+            let current = (bar.rhythm.cell_velocity(cell) * 100.0).round() as i32;
+            let next = rhythm::rung_step(&ACCENT_RUNGS, current, delta);
+            edit_looper_bar(state, |bar| {
+                bar.rhythm.set_cell_velocity(cell, next as f32 / 100.0)
+            });
+            logger.input(&format!("LOOPER cell {} accent -> {}%", cell + 1, next));
+        }
+        LOOP_ROW_HOLD => {
+            let Some(bar) = looper_bar(state) else {
+                state.flash(200);
+                return;
+            };
+            let rungs: Vec<i32> = rhythm::NOTE_LADDER.iter().map(|t| *t as i32).collect();
+            let next = rhythm::rung_step(&rungs, bar.rhythm.hold as i32, delta);
+            edit_looper_bar(state, |bar| bar.rhythm.hold = next as u32);
+            logger.input(&format!("LOOPER hold -> {} ticks", next));
+        }
+        _ => {}
+    }
+}
+
+/// `Enter` on a looper row.
+fn loops_action(state: &mut AppState, logger: &Logger) {
+    match state.looper_row {
+        LOOP_ROW_HITS => {
+            let Some(bar) = looper_bar(state) else {
+                state.flash(200);
+                logger.input("LOOPER: load the loop first");
+                return;
+            };
+            let cell = state.looper.cell;
+            if cell >= bar.rhythm.steps_per_bar() {
+                return;
+            }
+            let on = !bar.rhythm.hit(cell);
+            edit_looper_bar(state, |bar| bar.rhythm.steps[cell] = on);
+            logger.input(&format!(
+                "LOOPER cell {} {}",
+                cell + 1,
+                if on { "on" } else { "off" }
+            ));
+        }
+        LOOP_ROW_CLEAR => {
+            edit_looper_bar(state, |bar| bar.rhythm.clear_hits());
+            logger.input(&format!("LOOPER bar {} cleared", state.looper.bar + 1));
+        }
+        LOOP_ROW_RECORD => {
+            if state.recording {
+                looper_stop(state, logger);
+            } else if state.transport.bed_loaded() {
+                looper_unload(state, logger);
+            } else {
+                looper_arm(state, logger);
+            }
+        }
+        LOOP_ROW_SAVE => {
+            let prefill = state.rhythm_store.lock().unwrap().unique_name("Loop");
+            state.modal = Some(Modal::RhythmNameInput {
+                buffer: prefill,
+                target: NameTarget::Loop,
+            });
+            logger.input("MODAL loop name");
+        }
+        _ => {}
+    }
+}
+
+/// Save the looper's four bars into the library under a name.
+///
+/// The bed is what the looper recorded; a pattern is what the rest of the tool
+/// understands, so this is the whole of the hand-off — and it is why the looper
+/// needs no export path, no project format and no place in the session document.
+fn save_loop_pattern(state: &mut AppState, typed: &str, logger: &Logger) {
+    let Some(bed) = state.transport.bed() else {
+        state.rhythm_status = Some(ActionStatus::refused("nothing loaded to save".to_string()));
+        state.flash(300);
+        logger.input("LOOPER save refused: no bed");
+        return;
+    };
+    if bed.hit_count() == 0 {
+        state.rhythm_status = Some(ActionStatus::refused("nothing tapped yet".to_string()));
+        state.flash(300);
+        logger.input("LOOPER save refused: the loop is silent");
+        return;
+    }
+    let base = if typed.is_empty() { "Loop" } else { typed };
+    let name = state.rhythm_store.lock().unwrap().unique_name(base);
+    let pattern = RhythmPattern {
+        name: name.clone(),
+        bars: bed.bars.iter().map(|bar| bar.rhythm.clone()).collect(),
+    };
+    if let Err(err) = pattern.validate() {
+        state.rhythm_status = Some(ActionStatus::failed(err.to_string()));
+        state.flash(300);
+        logger.input(&format!("LOOPER SAVE ERROR: {}", err));
+        return;
+    }
+
+    let saved = {
+        let mut store = state.rhythm_store.lock().unwrap();
+        store.add(pattern.clone());
+        store.save(&state.rhythm_user_path)
+    };
+    if let Err(err) = saved {
+        state.rhythm_status = Some(ActionStatus::failed(err.to_string()));
+        state.flash(300);
+        logger.input(&format!("LOOPER SAVE ERROR: {}", err));
+        return;
+    }
+    state.rhythm_status = Some(ActionStatus::ok(name.clone()));
+    state.flash(600);
+    logger.input(&format!(
+        "LOOPER saved '{}' ({} bars) — assign it from Sinko",
+        name,
+        pattern.bars.len()
+    ));
+}
+
+/// The four-bar tap looper.
+///
+/// A scratch pad, not a new kind of thing: it loads one chord or the first four
+/// of the progression, loops them with the click, and records `$` taps into
+/// them. What it produces is a pattern like any other — saved to the library and
+/// assigned from Sinko — so nothing downstream has to know a looper made it.
+fn render_loops_body<W: io::Write>(stdout: &mut W, state: &AppState) -> io::Result<()> {
+    let row = |r: usize| state.focus == Focus::Loops && state.looper_row == r;
+    let marker = |r: usize| if row(r) { "▸" } else { " " };
+    let bar = state.looper.bar.min(arrangement::BED_BARS - 1);
+    let bed = state.transport.bed();
+
+    let rows = [
+        (
+            LOOP_ROW_SOURCE,
+            "source",
+            match state.looper.source {
+                LooperSource::OneChord => "one chord, four times".to_string(),
+                LooperSource::FirstFour => "the first four chords".to_string(),
+            },
+        ),
+        (
+            LOOP_ROW_CHORD,
+            "chord",
+            state
+                .progression
+                .lock()
+                .unwrap()
+                .slots
+                .get(state.looper.chord)
+                .map(|slot| slot.label(&state.transport.key()))
+                .unwrap_or_else(|| "(none)".to_string()),
+        ),
+        (
+            LOOP_ROW_BAR,
+            "bar",
+            format!("{} of {}", bar + 1, arrangement::BED_BARS),
+        ),
+        (
+            LOOP_ROW_QUANT,
+            "quant",
+            format_resolution(state.looper.resolution).to_string(),
+        ),
+    ];
+
+    for (index, label, value) in rows {
+        draw_row(
+            stdout,
+            &format!("  {} {:<9}{}", marker(index), label, value),
+            row(index),
+        )?;
+    }
+
+    // The `hits` row, then **all four bars** under it. One bar at a time hid the
+    // shape of the thing being made — whether the turnaround lands, which bars
+    // are empty — and the panel has the rows to spare. The bar the cursor is on
+    // carries the edit cursor and the row band; the bar the clock is on carries
+    // the playhead.
+    let editing = state.focus == Focus::Loops
+        && matches!(
+            state.looper_row,
+            LOOP_ROW_HITS | LOOP_ROW_LENGTH | LOOP_ROW_ACCENT
+        );
+    let loaded = bed.as_ref().and_then(|bed| bed.bars.get(bar));
+    let steps = loaded.map(|b| b.rhythm.steps_per_bar()).unwrap_or(0);
+    let cell = state.looper.cell.min(steps.saturating_sub(1));
+    let cursor = if editing && steps > 0 {
+        Some(cell)
+    } else {
+        None
+    };
+    draw_row(
+        stdout,
+        &format!(
+            "  {} {:<9}{}",
+            marker(LOOP_ROW_HITS),
+            "hits",
+            match loaded {
+                Some(_) => format!("{} of {}", cell + 1, steps),
+                None => "—".to_string(),
+            }
+        ),
+        row(LOOP_ROW_HITS),
+    )?;
+
+    // `hits`, the four bars, then the same rows the panel always had. The index
+    // is the bar number rather than the bed's order, because that is what the
+    // `bar` row and the player's ear both count in.
+    let playhead_bar = bar_index(state);
+    for index in 0..arrangement::BED_BARS {
+        let loaded = bed.as_ref().and_then(|bed| bed.bars.get(index));
+        let steps = loaded.map(|b| b.rhythm.steps_per_bar()).unwrap_or(0);
+        let grid = match loaded {
+            Some(shown) => sinko_grid_line(
+                &shown.rhythm.steps,
+                &shown.rhythm.sustain(),
+                if index == playhead_bar {
+                    sinko_playhead(state, steps)
+                } else {
+                    None
+                },
+                if index == bar { cursor } else { None },
+                DEFAULT_SCREEN.grid_budget(),
+            ),
+            None => "-".repeat(32),
+        };
+        let selected = index == bar;
+        let number = if selected { "▸" } else { " " };
+        draw_row(
+            stdout,
+            &format!("   {} {}  {}", number, index + 1, grid),
+            selected && editing,
+        )?;
+    }
+
+    let (length, accent, hold) = match loaded {
+        Some(bar) => (
+            if bar.rhythm.has_hold_override(cell) {
+                format!(
+                    "{}  (override)",
+                    format_ticks(bar.rhythm.cell_hold(cell) as u64)
+                )
+            } else {
+                format!(
+                    "{}  (bar default)",
+                    format_ticks(bar.rhythm.cell_hold(cell) as u64)
+                )
+            },
+            format!(
+                "{}%",
+                (bar.rhythm.cell_velocity(cell) * 100.0).round() as i32
+            ),
+            format!(
+                "{}  —  {} ticks",
+                format_ticks(bar.rhythm.hold as u64),
+                bar.rhythm.hold
+            ),
+        ),
+        None => ("—".to_string(), "—".to_string(), "—".to_string()),
+    };
+    for (index, label, value) in [
+        (LOOP_ROW_LENGTH, "length", length),
+        (LOOP_ROW_ACCENT, "accent", accent),
+        (LOOP_ROW_HOLD, "hold", hold),
+    ] {
+        draw_row(
+            stdout,
+            &format!("  {} {:<9}{}", marker(index), label, value),
+            row(index),
+        )?;
+    }
+
+    draw_row(
+        stdout,
+        &format!("  {} [Clear Bar]", marker(LOOP_ROW_CLEAR)),
+        row(LOOP_ROW_CLEAR),
+    )?;
+    draw_row(
+        stdout,
+        &format!(
+            "  {} {}",
+            marker(LOOP_ROW_RECORD),
+            if state.recording {
+                "[● recording — enter to stop]"
+            } else if state.transport.bed_loaded() {
+                "[Loop loaded — enter to unload, `$` records again]"
+            } else {
+                "[Record — load and loop]"
+            }
+        ),
+        row(LOOP_ROW_RECORD),
+    )?;
+    draw_row(
+        stdout,
+        &format!("  {} [Save Loop As...]", marker(LOOP_ROW_SAVE)),
+        row(LOOP_ROW_SAVE),
+    )?;
+    Ok(())
+}
+
+/// The bed's bar the scheduler is on, for the grid's playhead.
+fn bar_index(state: &AppState) -> usize {
+    state.transport.bed_bar.load(Ordering::Relaxed) % arrangement::BED_BARS
+}
+
 fn render_fx_body<W: io::Write>(
     stdout: &mut W,
     params: &SynthParams,
@@ -7775,31 +8549,39 @@ fn render_synth_summary<W: io::Write>(
     Ok(())
 }
 
+/// The ensemble list: a window onto however many the library holds.
+///
+/// It used to draw every row, which was fine at seven ensembles and stopped
+/// being fine at forty-two: the list ran off the bottom of any terminal, taking
+/// the rows below it with it, and an ensemble past the fold could be selected
+/// without ever being seen. It scrolls now, the way the log does, and always
+/// draws [`ENSEMBLE_ROWS`] rows so the panel below it does not move as the window
+/// slides.
+///
+/// `[Save As...]` is the last row of the same list rather than a fixed row under
+/// it, so one window covers both and the cursor scrolls to either without a
+/// special case.
 fn render_ensembles_body<W: io::Write>(stdout: &mut W, state: &AppState) -> io::Result<()> {
     let focused = state.focus == Focus::SynthEnsembles;
-    for (i, ensemble) in state.ensemble_store.ensembles.iter().enumerate() {
-        let marker = if focused && i == state.ensemble_row {
-            "▸"
-        } else {
-            " "
-        };
-        draw_row(
-            stdout,
-            &format!("  {} {}", marker, ensemble.name),
-            focused && i == state.ensemble_row,
-        )?;
+    let names: Vec<&str> = state
+        .ensemble_store
+        .ensembles
+        .iter()
+        .map(|ensemble| ensemble.name.as_str())
+        .chain(std::iter::once("[Save As...]"))
+        .collect();
+
+    let start = state.ensemble_scroll.min(names.len().saturating_sub(1));
+    let mut drawn = 0;
+    for (i, name) in names.iter().enumerate().skip(start).take(ENSEMBLE_ROWS) {
+        let here = focused && i == state.ensemble_row;
+        let marker = if here { "▸" } else { " " };
+        draw_row(stdout, &format!("  {} {}", marker, name), here)?;
+        drawn += 1;
     }
-    let save_row = state.ensemble_store.ensembles.len();
-    let marker = if focused && state.ensemble_row == save_row {
-        "▸"
-    } else {
-        " "
-    };
-    draw_row(
-        stdout,
-        &format!("  {} [Save As...]", marker),
-        focused && state.ensemble_row == save_row,
-    )?;
+    for _ in drawn..ENSEMBLE_ROWS {
+        execute!(stdout, Print("\r\n"))?;
+    }
     Ok(())
 }
 
@@ -8045,6 +8827,19 @@ fn render_sinko_panel<W: io::Write>(
         state.sinko_row == SINKO_ROW_SWING,
     )?;
 
+    // Where the bar is, and which cell the cursor is on. Both are needed by the
+    // grid, which is drawn under the row that edits it.
+    let playhead = sinko_playhead(state, steps);
+    let cursor = if state.focus == Focus::Sinko
+        && matches!(
+            state.sinko_row,
+            SINKO_ROW_HITS | SINKO_ROW_LENGTH | SINKO_ROW_ACCENT
+        ) {
+        Some(cursor_cell(state))
+    } else {
+        None
+    };
+
     draw_row(
         stdout,
         &format!(
@@ -8054,6 +8849,23 @@ fn render_sinko_panel<W: io::Write>(
             hits_row(state)
         ),
         state.sinko_row == SINKO_ROW_HITS,
+    )?;
+    // The grid is drawn under the row that edits it rather than as a row of its
+    // own: it is a picture of that row's value, and a cursor that could sit on
+    // the picture would be a cursor with nothing to do.
+    execute!(
+        stdout,
+        Print(format!(
+            "       {:>5}  {}\r\n",
+            "",
+            sinko_grid_line(
+                &state.working.steps,
+                &state.working.sustain(),
+                playhead,
+                cursor,
+                budget,
+            )
+        ))
     )?;
 
     draw_row(
@@ -8100,90 +8912,22 @@ fn render_sinko_panel<W: io::Write>(
         state.sinko_row == SINKO_ROW_MUTE,
     )?;
 
-    let smooth = state.sinko_smooth;
     draw_row(
         stdout,
         &format!(
             "  {} {:<9}{}",
-            row(SINKO_ROW_SMOOTH),
-            "smooth",
-            if smooth == 1 {
-                "1 take per layer".to_string()
-            } else {
-                format!("{} takes averaged", smooth)
-            }
-        ),
-        state.sinko_row == SINKO_ROW_SMOOTH,
-    )?;
-
-    draw_row(
-        stdout,
-        &format!(
-            "  {} {:<9}{}",
-            row(SINKO_ROW_RECORD),
-            "record",
+            row(SINKO_ROW_LOOP),
+            "loop",
             if state.recording {
-                "[● recording]"
+                "[● tapping 4 bars]".to_string()
+            } else if state.transport.bed_loaded() {
+                "[4 bars loaded]".to_string()
             } else {
-                "[record]"
+                "[tap 4 bars]".to_string()
             }
         ),
-        state.sinko_row == SINKO_ROW_RECORD,
+        state.sinko_row == SINKO_ROW_LOOP,
     )?;
-
-    // One grid line per layer, so the decaying stack is visible as it builds,
-    // and one for the take being tapped right now.
-    let playhead = sinko_playhead(state, steps);
-    let live = sinko_live_steps(state);
-    let blank = vec![false; steps];
-    // The cursor is drawn on the newest take's line, because that is the take a
-    // new hit goes into.
-    // The cursor is drawn on the newest take's line, because that is the take a
-    // new hit goes into — and on the two rows that edit the cell it points at,
-    // so `length` and `accent` say which hit they are about without a second
-    // cursor to keep in step.
-    let cursor = if state.focus == Focus::Sinko
-        && matches!(
-            state.sinko_row,
-            SINKO_ROW_HITS | SINKO_ROW_LENGTH | SINKO_ROW_ACCENT
-        ) {
-        Some(cursor_cell(state))
-    } else {
-        None
-    };
-    for i in 0..SINKO_LAYER_ROWS {
-        let at = SINKO_ROW_RECORD + 1 + i;
-        let line_cursor = if i == 0 { cursor } else { None };
-        match state.working.layers.get(i) {
-            Some(layer) => execute!(
-                stdout,
-                Print(format!(
-                    "  {} {:>5.2}  {}\r\n",
-                    row(at),
-                    layer.gain,
-                    sinko_grid_line(&layer.steps, playhead, line_cursor, budget)
-                ))
-            )?,
-            None if i == state.working.layers.len() => execute!(
-                stdout,
-                Print(format!(
-                    "  {} {:>5}  {}\r\n",
-                    row(at),
-                    "live",
-                    sinko_grid_line(&live, playhead, line_cursor, budget)
-                ))
-            )?,
-            None => execute!(
-                stdout,
-                Print(format!(
-                    "  {} {:>5}  {}\r\n",
-                    row(at),
-                    "·",
-                    sinko_grid_line(&blank, playhead, line_cursor, budget)
-                ))
-            )?,
-        }
-    }
 
     draw_row(
         stdout,
@@ -8797,8 +9541,12 @@ fn render_modal<W: io::Write>(
             "  Save ensemble as: {}   [Enter] save  [Esc] cancel  ",
             shown(buffer)
         ),
-        Modal::RhythmNameInput { buffer } => format!(
-            "  Save rhythm pattern as: {}   [Enter] save + assign  [Esc] cancel  ",
+        Modal::RhythmNameInput { buffer, target } => format!(
+            "  {} {}   [Enter] save  [Esc] cancel  ",
+            match target {
+                NameTarget::Working => "Save rhythm pattern as:",
+                NameTarget::Loop => "Save loop as:",
+            },
             shown(buffer)
         ),
         Modal::ImportPathInput { buffer } => format!(
@@ -8873,12 +9621,13 @@ const GRID_BUDGET_MAX: usize = 120;
 /// width the layout is designed for, and the height every always-drawn panel
 /// fits in — which `panel_view_heights_are_tracked` is what keeps true.
 ///
-/// One slot is exempt, deliberately: the Synth panel's, whose four views are the
-/// synth table (28 rows), the equaliser (34), the spectrum (33) and the ensemble
-/// list — and the last of those is as long as the library is, so it scrolls off
-/// the bottom of any terminal rather than being cut. So the panels that are on
-/// screen *whatever* the focus cost this many rows, and the views of that one
-/// slot cost what their content costs.
+/// The Synth slot is the one that decides this: its five views are the synth
+/// table (28 rows), the equaliser (34), the spectrum (33), the rack (25) and the
+/// ensemble list (34). The last of those is a *window* rather than a fixed row
+/// list, because the library it shows is longer than any terminal and used to run
+/// off the bottom of one. So the panels that are on screen *whatever* the focus
+/// cost this many rows, and the views of that one slot cost what their content
+/// costs — no more than this.
 const DEFAULT_SCREEN: Screen = Screen {
     width: MIN_SCREEN_WIDTH,
     height: 35,
@@ -9509,6 +10258,7 @@ mod tests {
             history_view: HistoryView::Off,
             history_row: 0,
             history_scroll: 0,
+            ensemble_scroll: 0,
             pending_play: None,
             history_held: None,
             history_timed: None,
@@ -9541,18 +10291,18 @@ mod tests {
             rhythm_store: Arc::new(Mutex::new(RhythmStore::default())),
             sinko_row: 0,
             sinko_cell: 0,
-            takes: Vec::new(),
-            current_take: Vec::new(),
             last_esc: None,
             stop_flash_until: None,
             recording: false,
             metronome_on: false,
             last_tap_at: None,
-            take_started_at: None,
-            sinko_smooth: SINKO_SMOOTH_DEFAULT,
-            working: RhythmPattern::draft(),
+            working: RhythmBar::silent(DEFAULT_STEPS, rhythm::DEFAULT_HOLD),
+            working_name: String::new(),
+            working_bar: 0,
             working_slot: None,
-        sinko_clipboard: None,
+            looper: LooperState::default(),
+            looper_row: 0,
+            sinko_clipboard: None,
             rhythm_status: None,
             rhythm_user_path: std::env::temp_dir().join("chord-tool-unused-rhythms.toml"),
             flash_until: None,
@@ -10114,8 +10864,10 @@ mod tests {
         use crate::progression::ProgressionEntry;
         let key = Key::new(60, Scale::Major);
         let mut first = ProgressionEntry::new(ScaleDegree::I, None);
-        first.pattern =
-            Some(crate::rhythm::RhythmPattern::from_step_string("Q", 1.0, "xxxx").unwrap());
+        first.pattern = AssignedRhythm::from_pattern(
+            &crate::rhythm::RhythmPattern::from_step_string("Q", 1.0, "xxxx").unwrap(),
+            0,
+        );
         let slots = vec![
             Slot::Chord(first),
             Slot::Chord(ProgressionEntry::new(ScaleDegree::V, None)),
@@ -11164,6 +11916,86 @@ mod tests {
         );
     }
 
+    // ---- Ensembles panel ----
+
+    /// The ensemble list's body, as text.
+    fn render_ensembles(state: &AppState) -> String {
+        let mut out: Vec<u8> = Vec::new();
+        render_ensembles_body(&mut out, state).unwrap();
+        strip_ansi(&String::from_utf8(out).unwrap())
+    }
+
+    #[test]
+    fn the_ensemble_list_is_a_window_of_a_constant_height() {
+        // Seventy-four ensembles plus the save row will not fit on any terminal, so
+        // the panel draws a window of them. The height must not change as the
+        // window slides, or the panel underneath jumps with every arrow key.
+        let mut s = state(Focus::SynthEnsembles);
+        assert!(
+            s.ensemble_store.ensembles.len() > ENSEMBLE_ROWS,
+            "this test is only meaningful while the list is longer than the window"
+        );
+
+        for row in [0, ENSEMBLE_ROWS, s.row_count() - 1] {
+            s.set_current_row(row);
+            assert_eq!(
+                render_ensembles(&s).lines().count(),
+                ENSEMBLE_ROWS,
+                "the window changed height at row {row}"
+            );
+        }
+    }
+
+    #[test]
+    fn every_ensemble_row_can_be_reached_and_seen() {
+        // The bug this replaced: the list drew every row, so anything past the
+        // bottom of the terminal could be selected without ever being read.
+        let mut s = state(Focus::SynthEnsembles);
+        for row in 0..s.row_count() {
+            s.set_current_row(row);
+            let text = render_ensembles(&s);
+            let expected = s
+                .ensemble_store
+                .ensembles
+                .get(row)
+                .map(|ensemble| ensemble.name.as_str())
+                .unwrap_or("[Save As...]");
+            assert!(
+                text.contains(expected),
+                "row {row} ({expected}) is selected but not drawn"
+            );
+            assert!(
+                (s.ensemble_scroll..s.ensemble_scroll + ENSEMBLE_ROWS).contains(&row),
+                "row {row} is outside the window at {}",
+                s.ensemble_scroll
+            );
+        }
+    }
+
+    #[test]
+    fn the_save_row_is_the_last_row_of_the_same_list() {
+        // Not a fixed row under a scrolling list: it scrolls with them, so one
+        // window covers both and neither needs a special case.
+        let mut s = state(Focus::SynthEnsembles);
+        let last = s.row_count() - 1;
+        assert_eq!(last, s.ensemble_store.ensembles.len());
+        s.set_current_row(last);
+        let text = render_ensembles(&s);
+        assert!(text.contains("[Save As...]"), "{text}");
+        assert!(text.contains('▸'), "and the cursor is on it");
+    }
+
+    #[test]
+    fn entering_the_ensembles_panel_scrolls_the_remembered_row_into_view() {
+        // The cursor survives a trip to another panel, so the window has to be
+        // brought back to it rather than opening at the top of the list.
+        let mut s = state(Focus::SynthEnsembles);
+        s.set_current_row(s.row_count() - 1);
+        s.ensemble_scroll = 0;
+        s.scroll_ensembles_into_view();
+        assert!((s.ensemble_scroll..s.ensemble_scroll + ENSEMBLE_ROWS).contains(&s.ensemble_row));
+    }
+
     #[test]
     fn the_ensembles_save_row_is_a_button_too() {
         // The same latent trap existed here before the rule was introduced.
@@ -11533,8 +12365,7 @@ mod tests {
             .join("no-such-directory")
             .join("rhythms.toml");
         new_pattern(&mut s, &log);
-        s.current_take = vec![0];
-        close_take(&mut s, &log);
+        tapped(&mut s, &[0]);
         save_working_pattern(&mut s, "Tapped", &log);
         let status = s.rhythm_status.as_ref().expect("a failure is reported");
         assert!(
@@ -11678,6 +12509,50 @@ mod tests {
     }
 
     #[test]
+    fn replace_runs_from_the_key_as_well_as_the_menu() {
+        // The menu only opens for a run, so the single-slot case needs its own
+        // way in. This is that way in: the same edit, through the hotkey, on a
+        // cursor with no anchor — a selection of exactly one.
+        let log = logger();
+        let mut s = sinko_state();
+        s.focus = Focus::Progression;
+        s.progression_row = 0;
+        s.progression_anchor = None;
+        assert_eq!(s.selection_len(), 1, "one slot, not a run");
+        assert!(!s.progression_menu_active(), "so the menu is away");
+
+        s.held.insert(KeyPosition::LeftMiddle);
+        s.registers.lock_both(&s.held);
+        s.held.clear();
+
+        handle_hotkey(&mut s, Hotkey::ReplaceChord, false, &log);
+        match &s.progression.lock().unwrap().slots[0] {
+            Slot::Chord(e) => assert_eq!(e.degree, ScaleDegree::V),
+            other => panic!("expected a chord, got {:?}", other),
+        }
+        assert!(s.progression.lock().unwrap().can_undo(), "and it is undoable");
+    }
+
+    #[test]
+    fn replace_from_the_key_is_scoped_to_the_progression_panel() {
+        // Like every other progression action: the selection lives in that panel,
+        // so acting on it from a panel that is not on screen would be a keystroke
+        // with nothing to see.
+        let log = logger();
+        let mut s = sinko_state();
+        s.focus = Focus::Transport;
+        s.progression_row = 0;
+        s.held.insert(KeyPosition::LeftMiddle);
+        s.registers.lock_both(&s.held);
+        s.held.clear();
+
+        let before = degrees(&s);
+        handle_hotkey(&mut s, Hotkey::ReplaceChord, false, &log);
+        assert_eq!(degrees(&s), before, "nothing was replaced");
+        assert!(s.is_flashing());
+    }
+
+    #[test]
     fn the_rhythm_annotation_survives_a_replace() {
         // What the panel shows about the rhythm must not change when only the
         // chord is swapped.
@@ -11769,7 +12644,7 @@ mod tests {
         let log = logger();
         let mut s = sinko_state();
 
-        s.working = RhythmPattern::from_step_string("g", 1.0, "xxxx").unwrap();
+        s.working = RhythmBar::from_step_string(1.0, "xxxx").unwrap();
         begin_synth_edit(&mut s, &SynthParams::defaults());
         assert!(!esc_is_free(&s), "an edit owns Esc");
         handle_synth_edit(&mut s, &SynthParams::defaults(), &key(KeyCode::Esc), &log);
@@ -11894,19 +12769,18 @@ mod tests {
         s.sinko_row = SINKO_ROW_HITS;
         new_pattern(&mut s, &log);
 
-        let name = s.working.name.clone();
-        let mut pattern = RhythmPattern::from_step_string("f", 1.0, steps_str).unwrap();
-        if pattern.steps_per_bar() != steps {
-            pattern = RhythmPattern::blank("f", steps).unwrap();
+        let mut bar = RhythmBar::from_step_string(1.0, steps_str)
+            .unwrap_or_else(|_| RhythmBar::silent(steps, rhythm::DEFAULT_HOLD));
+        if bar.steps_per_bar() != steps {
+            bar = RhythmBar::silent(steps, rhythm::DEFAULT_HOLD);
         }
-        pattern.name = name;
-        own(&mut s, pattern);
+        own(&mut s, bar);
         s
     }
 
-    /// The top take's grid as a step string.
+    /// The working bar's grid as a step string.
     fn top_grid(s: &AppState) -> String {
-        s.working.layers[0].to_step_string()
+        s.working.to_step_string()
     }
 
     #[test]
@@ -11950,46 +12824,6 @@ mod tests {
     }
 
     #[test]
-    fn turning_a_hit_off_clears_it_in_every_take() {
-        // The regression this guards: a hit left in a lower take would still
-        // sound, so the press would look like it did nothing.
-        let log = logger();
-        let mut s = hits_state(4, "x---");
-        s.sinko_cell = 0;
-        // A second take, with the same hit and one of its own.
-        let mut lower = RhythmLayer::new(0.7, vec![true, false, false, false]);
-        lower.steps[3] = true;
-        s.working.layers.push(lower);
-        assert!(cell_is_on(&s, 0), "both takes hit cell 1");
-
-        toggle_cell(&mut s, &log);
-        assert!(!cell_is_on(&s, 0), "cell 1 is gone from the pattern");
-        assert!(
-            s.working.layers.iter().all(|layer| !layer.hit(0)),
-            "and from every take"
-        );
-        assert!(
-            s.working.layers[1].hit(3),
-            "while the other hit in that take survives"
-        );
-    }
-
-    #[test]
-    fn turning_a_hit_on_puts_it_in_the_newest_take() {
-        let log = logger();
-        let mut s = hits_state(4, "x---");
-        s.sinko_cell = 2;
-        // A quieter take underneath, without the hit.
-        s.working.layers.push(RhythmLayer::new(0.7, vec![true, false, false, false]));
-        s.working.layers[0].gain = 1.0;
-
-        toggle_cell(&mut s, &log);
-        assert!(s.working.layers[0].hit(2), "the newest take has it");
-        assert!(!s.working.layers[1].hit(2), "the older one does not");
-        assert_eq!(s.working.layers[0].gain, 1.0, "and it is the loud one");
-    }
-
-    #[test]
     fn a_toggled_hit_is_heard_without_saving() {
         let log = logger();
         let mut s = hits_state(4, "x---");
@@ -12000,7 +12834,17 @@ mod tests {
         // The entry the scheduler reads is the one that changed, with no save
         // and no library write in between.
         let played = sinko_pattern(&s).expect("the row plays a rhythm");
-        assert!(played.layers[0].hit(2), "the chord has the new hit");
+        assert!(played.rhythm.hit(2), "the chord has the new hit");
+    }
+
+    /// Tap those tick positions into the working bar and write it through.
+    ///
+    /// What `$` does, minus the transport: the looper records positions into its
+    /// own bar, so a test can put them there directly.
+    fn tapped(s: &mut AppState, ticks: &[u32]) {
+        let steps = s.working.steps_per_bar();
+        s.working.steps = rhythm::quantize(ticks, steps);
+        commit_working(s, &logger());
     }
 
     /// The `hits` row, trimmed.
@@ -12116,7 +12960,7 @@ mod tests {
         let mut s = sinko_state();
         s.sinko_row = SINKO_ROW_HOLD;
         // An assigned pattern, because a pattern nothing plays cannot be edited.
-        own(&mut s, RhythmPattern::from_step_string("g", 0.25, "xxxx").unwrap());
+        own(&mut s, RhythmBar::from_step_string(0.25, "xxxx").unwrap());
         assert_eq!(s.working.hold, 240, "a 16th to start");
 
         adjust_current(&mut s, &SynthParams::defaults(), 1, &log);
@@ -12136,7 +12980,7 @@ mod tests {
         let log = logger();
         let mut s = sinko_state();
         s.sinko_row = SINKO_ROW_HOLD;
-        own(&mut s, RhythmPattern::from_step_string("g", 1.0, "x---").unwrap());
+        own(&mut s, RhythmBar::from_step_string(1.0, "x---").unwrap());
 
         for _ in 0..20 {
             adjust_current(&mut s, &SynthParams::defaults(), 1, &log);
@@ -12155,7 +12999,7 @@ mod tests {
         let log = logger();
         let mut s = sinko_state();
         s.sinko_row = SINKO_ROW_HOLD;
-        own(&mut s, RhythmPattern::from_step_string("Q", 0.8, "xxxx").unwrap());
+        own(&mut s, RhythmBar::from_step_string(0.8, "xxxx").unwrap());
         assert_eq!(s.working.hold, 768);
 
         adjust_current(&mut s, &SynthParams::defaults(), 1, &log);
@@ -12207,7 +13051,7 @@ mod tests {
         let log = logger();
         let mut s = sinko_state();
         s.sinko_row = SINKO_ROW_MUTE;
-        own(&mut s, RhythmPattern::from_step_string("Cut", 1.0, "xxxx").unwrap());
+        own(&mut s, RhythmBar::from_step_string(1.0, "xxxx").unwrap());
         assert_eq!(s.working.mute_ticks, 0);
 
         for expected in [120, 240, 480, 720, 960] {
@@ -12226,218 +13070,6 @@ mod tests {
             adjust_current(&mut s, &SynthParams::defaults(), -1, &log);
         }
         assert_eq!(s.working.mute_ticks, 0, "and never below none");
-    }
-
-    // ---- Recording takes ----
-
-    /// A Sinko state that is recording against a bar that has just started.
-    fn arm(s: &mut AppState) {
-        s.transport.publish_bar(Instant::now(), 0);
-        s.recording = true;
-        s.last_tap_at = None;
-    }
-
-    #[test]
-    fn the_live_row_is_empty_before_anything_is_tapped() {
-        let s = sinko_state();
-        let live = sinko_live_steps(&s);
-        assert_eq!(live.len(), rhythm::DEFAULT_STEPS);
-        assert!(live.iter().all(|on| !on), "nothing has been played yet");
-    }
-
-    #[test]
-    fn the_live_row_snaps_the_take_in_progress() {
-        let mut s = sinko_state();
-        s.current_take = vec![0, 1000];
-        let live = sinko_live_steps(&s);
-        assert!(live[0], "the downbeat");
-        assert!(live[4], "1000 ticks snaps to cell 4 of 16");
-        assert_eq!(live.iter().filter(|on| **on).count(), 2);
-    }
-
-    #[test]
-    fn a_tap_is_timestamped_against_the_published_bar() {
-        let log = logger();
-        let mut s = sinko_state();
-        arm(&mut s);
-
-        sinko_tap(&mut s, &log);
-        assert_eq!(s.current_take.len(), 1);
-        assert!(
-            s.current_take[0] < 200,
-            "a tap right after the downbeat lands near it, was {}",
-            s.current_take[0]
-        );
-    }
-
-    #[test]
-    fn taps_are_ignored_when_recording_is_off() {
-        let log = logger();
-        let mut s = sinko_state();
-        s.transport.publish_bar(Instant::now(), 0);
-
-        sinko_tap(&mut s, &log);
-        assert!(s.current_take.is_empty());
-        assert!(s.is_flashing(), "a refused tap must say so");
-    }
-
-    #[test]
-    fn taps_are_ignored_without_a_bar_clock() {
-        let log = logger();
-        let mut s = sinko_state();
-        s.recording = true;
-
-        sinko_tap(&mut s, &log);
-        assert!(s.current_take.is_empty(), "there is no bar to sit inside");
-        assert!(s.is_flashing());
-    }
-
-    #[test]
-    fn taps_closer_than_the_debounce_are_a_key_repeat_not_a_second_tap() {
-        let log = logger();
-        let mut s = sinko_state();
-        arm(&mut s);
-
-        sinko_tap(&mut s, &log);
-        sinko_tap(&mut s, &log);
-        sinko_tap(&mut s, &log);
-        assert_eq!(
-            s.current_take.len(),
-            1,
-            "three presses in the same millisecond are one tap"
-        );
-
-        // Past the debounce, it is a real second tap.
-        s.last_tap_at = Some(Instant::now() - Duration::from_millis(TAP_DEBOUNCE_MS as u64 + 10));
-        sinko_tap(&mut s, &log);
-        assert_eq!(s.current_take.len(), 2);
-    }
-
-    #[test]
-    fn a_take_closes_when_the_bar_moves_on() {
-        let log = logger();
-        let mut s = sinko_state();
-        arm(&mut s);
-        sinko_tap(&mut s, &log);
-        assert_eq!(s.takes.len(), 0, "still recording the first take");
-
-        // The next bar: the scheduler publishes a later bar start.
-        s.transport
-            .publish_bar(Instant::now() + Duration::from_secs(2), 1);
-        s.last_tap_at = None;
-        sinko_tap(&mut s, &log);
-
-        assert_eq!(s.takes.len(), 1, "the first take is committed");
-        assert_eq!(s.takes[0].len(), 1);
-        assert_eq!(s.current_take.len(), 1, "and a new one has begun");
-    }
-
-    #[test]
-    fn an_empty_take_is_not_committed() {
-        let log = logger();
-        let mut s = sinko_state();
-        arm(&mut s);
-        close_take(&mut s, &log);
-        assert!(s.takes.is_empty(), "a bar with no taps is not a take");
-    }
-
-    #[test]
-    fn committed_takes_stack_into_decaying_layers() {
-        let log = logger();
-        let mut s = sinko_state();
-        assert_eq!(s.sinko_smooth, 1, "one take per layer is the default");
-
-        for i in 0..3u32 {
-            s.current_take = vec![i * 240];
-            close_take(&mut s, &log);
-        }
-
-        // Three takes, three layers, newest loudest and each older one a step
-        // quieter: the overlapping-takes sound this panel exists for.
-        assert_eq!(s.working.layers.len(), 3);
-        assert_eq!(s.working.layers[0].gain, 1.0);
-        assert!(s.working.layers[1].gain < s.working.layers[0].gain);
-        assert!(s.working.layers[2].gain < s.working.layers[1].gain);
-        assert!(s.working.layers[0].hit(2), "the newest take's own hit");
-    }
-
-    #[test]
-    fn two_takes_inside_the_window_average_into_one_layer() {
-        let log = logger();
-        let mut s = sinko_state();
-        s.sinko_smooth = 2;
-        // The same two-hit gesture, played a little late the second time.
-        s.current_take = vec![0, 480];
-        close_take(&mut s, &log);
-        s.current_take = vec![40, 520];
-        close_take(&mut s, &log);
-
-        // Averaging is by ordinal, so the layer is the mean gesture: (0+40)/2 =
-        // 20 ticks and (480+520)/2 = 500, which are cells 0 and 2 of 16.
-        assert_eq!(s.working.layers.len(), 1, "both takes are inside the window");
-        assert!(s.working.layers[0].hit(0));
-        assert!(s.working.layers[0].hit(2), "500 ticks is cell 2 of 16");
-        assert_eq!(s.working.layers[0].gain, 1.0, "an average is not decayed");
-    }
-
-    #[test]
-    fn smoothing_averages_recent_takes_instead_of_stacking_them() {
-        let log = logger();
-        let mut s = sinko_state();
-        s.sinko_smooth = 3;
-        // The same figure three times, a few ticks apart each time.
-        for jitter in [0u32, 20, 40] {
-            s.current_take = vec![jitter, 960 + jitter];
-            close_take(&mut s, &log);
-        }
-        assert_eq!(s.takes.len(), 3);
-        // Averaged into one top layer rather than stacked into three.
-        assert_eq!(s.working.layers.len(), 1);
-        assert!(s.working.layers[0].hit(0));
-        assert!(s.working.layers[0].hit(4), "960 ticks is cell 4 of 16");
-        assert_eq!(s.working.layers[0].gain, 1.0);
-    }
-
-    #[test]
-    fn a_take_outside_the_averaging_window_sits_underneath_quieter() {
-        let log = logger();
-        let mut s = sinko_state();
-        s.sinko_smooth = 2;
-
-        // Two takes, both inside the window: one averaged layer.
-        s.current_take = vec![0];
-        close_take(&mut s, &log);
-        s.current_take = vec![960];
-        close_take(&mut s, &log);
-        assert_eq!(s.working.layers.len(), 1);
-
-        // A third pushes the first out of the window, where it becomes a
-        // quieter layer of its own instead of vanishing.
-        s.current_take = vec![1920];
-        close_take(&mut s, &log);
-        assert_eq!(s.working.layers.len(), 2);
-        assert_eq!(s.working.layers[0].gain, 1.0, "the averaged top layer");
-        assert!(
-            (s.working.layers[1].gain - rhythm::TAKE_DECAY).abs() < 1e-6,
-            "the settled take, one step down"
-        );
-        assert!(s.working.layers[1].hit(0), "and it is the first take");
-    }
-
-    #[test]
-    fn the_layer_stack_is_capped_at_the_voice_groups() {
-        let log = logger();
-        let mut s = sinko_state();
-        s.sinko_smooth = 1;
-        for i in 0..8u32 {
-            s.current_take = vec![i * 240];
-            close_take(&mut s, &log);
-        }
-        assert_eq!(
-            s.working.layers.len(),
-            SINKO_LAYER_ROWS,
-            "a deeper stack than the synth has voice groups would be silently cut"
-        );
     }
 
     // ---- Assigning, saving, offsets and the grid ----
@@ -12545,10 +13177,7 @@ mod tests {
     fn the_swing_row_walks_from_follow_to_an_override() {
         let log = logger();
         let mut s = sinko_state();
-        own(
-            &mut s,
-            RhythmPattern::from_step_string("S", 1.0, "xxxx").unwrap(),
-        );
+        own(&mut s, RhythmBar::from_step_string(1.0, "xxxx").unwrap());
         s.sinko_row = SINKO_ROW_SWING;
         assert_eq!(s.working.swing, None, "a new pattern follows the transport");
 
@@ -12563,7 +13192,7 @@ mod tests {
 
         // It is written through to the entry like every other row.
         assert_eq!(
-            sinko_pattern(&s).expect("assigned").swing,
+            sinko_pattern(&s).expect("assigned").rhythm.swing,
             Some(0.1),
             "the override is on the chord's own rhythm"
         );
@@ -12572,10 +13201,7 @@ mod tests {
     #[test]
     fn the_swing_row_names_the_transport_when_it_follows_it() {
         let mut s = sinko_state();
-        own(
-            &mut s,
-            RhythmPattern::from_step_string("S", 1.0, "xxxx").unwrap(),
-        );
+        own(&mut s, RhythmBar::from_step_string(1.0, "xxxx").unwrap());
         s.transport.set_swing(0.6);
 
         let text = render_sinko(&s);
@@ -12593,10 +13219,7 @@ mod tests {
     fn the_length_row_edits_the_hit_under_the_cursor() {
         let log = logger();
         let mut s = sinko_state();
-        own(
-            &mut s,
-            RhythmPattern::from_step_string("L", 1.0, "x-x-").unwrap(),
-        );
+        own(&mut s, RhythmBar::from_step_string(1.0, "x-x-").unwrap());
         s.sinko_row = SINKO_ROW_HITS;
         s.sinko_cell = 0;
 
@@ -12616,7 +13239,7 @@ mod tests {
 
         // And it is written through, so the chord is what changes.
         assert_eq!(
-            sinko_pattern(&s).expect("assigned").cell_hold(0),
+            sinko_pattern(&s).expect("assigned").rhythm.cell_hold(0),
             s.working.hold
         );
     }
@@ -12625,10 +13248,7 @@ mod tests {
     fn the_shape_rows_refuse_a_cell_with_no_hit() {
         let log = logger();
         let mut s = sinko_state();
-        own(
-            &mut s,
-            RhythmPattern::from_step_string("L", 1.0, "x---").unwrap(),
-        );
+        own(&mut s, RhythmBar::from_step_string(1.0, "x---").unwrap());
         s.sinko_cell = 2;
         s.sinko_row = SINKO_ROW_LENGTH;
         assert!(!cell_is_on(&s, 2));
@@ -12646,10 +13266,7 @@ mod tests {
     fn the_accent_row_edits_the_hit_under_the_cursor() {
         let log = logger();
         let mut s = sinko_state();
-        own(
-            &mut s,
-            RhythmPattern::from_step_string("A", 1.0, "x-x-").unwrap(),
-        );
+        own(&mut s, RhythmBar::from_step_string(1.0, "x-x-").unwrap());
         s.sinko_row = SINKO_ROW_HITS;
         s.sinko_cell = 2;
 
@@ -12699,10 +13316,7 @@ mod tests {
     fn the_shape_rows_name_the_cell_they_are_about() {
         let log = logger();
         let mut s = sinko_state();
-        own(
-            &mut s,
-            RhythmPattern::from_step_string("A", 1.0, "x-x-").unwrap(),
-        );
+        own(&mut s, RhythmBar::from_step_string(1.0, "x-x-").unwrap());
 
         s.sinko_cell = 1;
         s.sinko_row = SINKO_ROW_ACCENT;
@@ -12741,8 +13355,7 @@ mod tests {
         let log = logger();
         let mut s = sinko_state();
         s.rhythm_user_path = unique_export_dir("rhythm-save").join("rhythms.toml");
-        s.current_take = vec![0, 480, 960];
-        close_take(&mut s, &log);
+        tapped(&mut s, &[0, 480, 960]);
 
         save_working_pattern(&mut s, "Tapped", &log);
 
@@ -12753,7 +13366,7 @@ mod tests {
         let store = RhythmStore::load(&rhythm_store::default_path(), &s.rhythm_user_path).unwrap();
         let saved = store.find("Tapped").expect("the saved pattern");
         assert!(saved.any_hit());
-        assert_eq!(saved.steps_per_bar(), rhythm::DEFAULT_STEPS);
+        assert_eq!(saved.bars[0].steps_per_bar(), rhythm::DEFAULT_STEPS);
     }
 
     #[test]
@@ -12763,8 +13376,6 @@ mod tests {
         s.rhythm_user_path = unique_export_dir("rhythm-orphan").join("rhythms.toml");
         s.progression.lock().unwrap().slots = vec![Slot::Rest];
         s.progression_row = 0;
-        s.current_take = vec![0];
-        close_take(&mut s, &log);
 
         save_working_pattern(&mut s, "Orphan", &log);
         assert!(
@@ -12787,9 +13398,9 @@ mod tests {
             let mut store = s.rhythm_store.lock().unwrap();
             store.add(RhythmPattern::from_step_string("Mine", 0.5, "x---").unwrap());
         }
-        s.current_take = vec![0];
-        close_take(&mut s, &log);
 
+        // A pattern with no hits is refused rather than saved, so give it one.
+        tapped(&mut s, &[0]);
         save_working_pattern(&mut s, "Mine", &log);
         assert_eq!(assigned_in(&s).as_deref(), Some("Mine 2"));
     }
@@ -12817,8 +13428,7 @@ mod tests {
         let mut s = sinko_state();
         s.rhythm_user_path = unique_export_dir("rhythm-mute").join("rhythms.toml");
         new_pattern(&mut s, &log);
-        s.current_take = vec![0, 960, 1920, 2880];
-        close_take(&mut s, &log);
+        tapped(&mut s, &[0, 960, 1920, 2880]);
 
         s.sinko_row = SINKO_ROW_MUTE;
         for _ in 0..5 {
@@ -12826,7 +13436,10 @@ mod tests {
         }
         assert_eq!(s.working.mute_ticks, rhythm::MAX_MUTE_TICKS, "a quarter");
         assert_eq!(
-            sinko_pattern(&s).expect("the row's own rhythm").mute_ticks,
+            sinko_pattern(&s)
+                .expect("the row's own rhythm")
+                .rhythm
+                .mute_ticks,
             rhythm::MAX_MUTE_TICKS,
             "and the entry plays it"
         );
@@ -12933,10 +13546,9 @@ mod tests {
         let log = logger();
         let mut s = sinko_state();
         new_pattern(&mut s, &log);
-        s.current_take = vec![0, 960, 1920, 2880];
-        close_take(&mut s, &log);
+        tapped(&mut s, &[0, 960, 1920, 2880]);
         assert_eq!(s.working.steps_per_bar(), 16);
-        assert!(s.working.layers[0].hit(4), "960 ticks is cell 4 of 16");
+        assert!(s.working.hit(4), "960 ticks is cell 4 of 16");
 
         // A hold is ticks, so changing the grid must not change the note.
         s.sinko_row = SINKO_ROW_HOLD;
@@ -12957,8 +13569,8 @@ mod tests {
         );
         assert_eq!(s.working.hold, 720, "and the hold survived the grid change");
         // 960 ticks is cell 2 of 8; the other taps land on 0, 4 and 6.
-        assert!(s.working.layers[0].hit(2), "the take was re-quantized");
-        let hits: Vec<usize> = (0..8).filter(|i| s.working.layers[0].hit(*i)).collect();
+        assert!(s.working.hit(2), "the take was re-quantized");
+        let hits: Vec<usize> = (0..8).filter(|i| s.working.hit(*i)).collect();
         assert_eq!(hits, vec![0, 2, 4, 6]);
     }
 
@@ -12966,22 +13578,25 @@ mod tests {
     fn the_sinko_grid_is_drawn_at_the_working_resolution() {
         let mut s = sinko_state();
         // One hit on the downbeat of a four-cell grid.
-        s.working = RhythmPattern::from_step_string("g", 0.5, "x---").unwrap();
-        let line = sinko_grid_line(&s.working.layers[0].steps, None, None, DEFAULT_SCREEN.grid_budget());
+        s.working = RhythmBar::from_step_string(0.5, "x---").unwrap();
+        let line = sinko_grid_line(&s.working.steps, &[], None, None, DEFAULT_SCREEN.grid_budget());
         let width = sinko_cell_width(4, DEFAULT_SCREEN.grid_budget());
         assert_eq!(line.matches('x').count(), width, "one hit cell");
         assert_eq!(line.matches('|').count(), BEATS_PER_BAR as usize + 1);
         assert_eq!(line.matches('·').count(), 3 * width, "and three rests");
 
-        s.working = RhythmPattern::from_step_string("g", 0.5, "xxxxxxxx").unwrap();
-        let line = sinko_grid_line(&s.working.layers[0].steps, None, None, DEFAULT_SCREEN.grid_budget());
-        assert_eq!(line.matches('x').count(), 8 * sinko_cell_width(8, DEFAULT_SCREEN.grid_budget()));
+        s.working = RhythmBar::from_step_string(0.5, "xxxxxxxx").unwrap();
+        let line = sinko_grid_line(&s.working.steps, &[], None, None, DEFAULT_SCREEN.grid_budget());
+        assert_eq!(
+            line.matches('x').count(),
+            8 * sinko_cell_width(8, DEFAULT_SCREEN.grid_budget())
+        );
     }
 
     #[test]
     fn the_widest_grid_still_fits_the_screen() {
         let steps = vec![true; 64];
-        let line = sinko_grid_line(&steps, None, None, DEFAULT_SCREEN.grid_budget());
+        let line = sinko_grid_line(&steps, &[], None, None, DEFAULT_SCREEN.grid_budget());
         assert!(
             line.chars().count() <= 80,
             "a 64-step grid is {} chars",
@@ -12992,7 +13607,7 @@ mod tests {
     #[test]
     fn the_playhead_marks_exactly_one_cell() {
         let steps = vec![true; 16];
-        let line = sinko_grid_line(&steps, Some(5), None, DEFAULT_SCREEN.grid_budget());
+        let line = sinko_grid_line(&steps, &[], Some(5), None, DEFAULT_SCREEN.grid_budget());
         let width = sinko_cell_width(16, DEFAULT_SCREEN.grid_budget());
         assert_eq!(
             line.matches('X').count(),
@@ -13045,18 +13660,18 @@ mod tests {
         assign(&mut s, 3, "Quarters");
         s.sinko_row = SINKO_ROW_CHORD;
         sync_working(&mut s);
-        assert_eq!(s.working.name, "Offbeat Eighths", "the selected chord");
+        assert_eq!(s.working_name, "Offbeat Eighths", "the selected chord");
 
         adjust_current(&mut s, &SynthParams::defaults(), 1, &log);
         assert_eq!(s.progression_row, 3, "right selects the next chord");
         assert_eq!(
-            s.working.name, "Quarters",
+            s.working_name, "Quarters",
             "and the field's contents follow in the same press"
         );
 
         adjust_current(&mut s, &SynthParams::defaults(), -1, &log);
         assert_eq!(s.progression_row, 2, "left selects the previous chord");
-        assert_eq!(s.working.name, "Offbeat Eighths");
+        assert_eq!(s.working_name, "Offbeat Eighths");
     }
 
     #[test]
@@ -13100,8 +13715,7 @@ mod tests {
         let log = logger();
         let mut s = sinko_state();
         s.rhythm_user_path = unique_export_dir("rhythm-end-to-end").join("rhythms.toml");
-        s.current_take = vec![0, 960, 1920, 2880];
-        close_take(&mut s, &log);
+        tapped(&mut s, &[0, 960, 1920, 2880]);
         save_working_pattern(&mut s, "Four on the floor", &log);
 
         let (slots, key) = {
@@ -13140,16 +13754,15 @@ mod tests {
 
         // A rhythm owned by the selected slot, as [New Pattern] leaves it.
         new_pattern(&mut s, &log);
-        s.current_take = vec![0, 960, 1920, 2880];
-        close_take(&mut s, &log);
+        tapped(&mut s, &[0, 960, 1920, 2880]);
 
-        let hold_before = sinko_pattern(&s).expect("the row's own rhythm").hold;
+        let hold_before = sinko_pattern(&s).expect("the row's own rhythm").rhythm.hold;
         assert_eq!(hold_before, rhythm::DEFAULT_HOLD);
 
         // Nudge the hold. Nothing is saved by hand.
         s.sinko_row = SINKO_ROW_HOLD;
         adjust_current(&mut s, &SynthParams::defaults(), 1, &log);
-        let hold_after = sinko_pattern(&s).expect("still there").hold;
+        let hold_after = sinko_pattern(&s).expect("still there").rhythm.hold;
         assert_ne!(hold_after, hold_before, "the chord's rhythm has changed");
         assert_eq!(hold_after, 480, "and the entry holds it");
         assert!(
@@ -13742,8 +14355,8 @@ mod tests {
         assert!(wide > narrow, "{} should beat {}", wide, narrow);
 
         let steps = vec![true; 16];
-        let small = sinko_grid_line(&steps, None, None, narrow);
-        let large = sinko_grid_line(&steps, None, None, wide);
+        let small = sinko_grid_line(&steps, &[], None, None, narrow);
+        let large = sinko_grid_line(&steps, &[], None, None, wide);
         assert!(
             visible_width(&large) > visible_width(&small),
             "{} vs {}",
@@ -13976,6 +14589,7 @@ mod tests {
             vec![
                 Focus::Transport,
                 Focus::Sinko,
+                Focus::Loops,
                 Focus::Synth,
                 Focus::SynthEnsembles,
                 Focus::Eq,
@@ -14005,8 +14619,9 @@ mod tests {
             Focus::Synth,
             Focus::SynthEnsembles,
             // Every view of the Synth slot, because they share the panel and do
-            // not share its shape: the equaliser and the rack are both grids of
-            // their own.
+            // not share its shape: the equaliser, the rack and the looper are all
+            // grids of their own.
+            Focus::Loops,
             Focus::Eq,
             Focus::Spectrum,
             Focus::Fx,
@@ -14095,46 +14710,6 @@ mod tests {
             handle_hotkey(&mut s, Hotkey::MetronomeToggle, false, &log);
             assert!(s.metronome_on, "focus {:?}", focus);
         }
-    }
-
-    #[test]
-    fn arming_a_take_never_forgets_a_metronome_you_turned_on() {
-        let log = logger();
-        let mut s = sinko_state();
-        toggle_metronome(&mut s, &log);
-        assert!(s.metronome_on);
-
-        // Recording needs the click, and it is already on.
-        toggle_recording(&mut s, &log);
-        assert!(s.transport.metronome.load(Ordering::Relaxed));
-
-        // Stopping the take leaves the user's own switch alone.
-        toggle_recording(&mut s, &log);
-        assert!(s.metronome_on, "the switch survived the take");
-        assert!(
-            s.transport.metronome.load(Ordering::Relaxed),
-            "and the click keeps running"
-        );
-    }
-
-    #[test]
-    fn recording_runs_the_click_and_gives_it_back() {
-        let log = logger();
-        let mut s = sinko_state();
-        assert!(!s.metronome_on);
-
-        toggle_recording(&mut s, &log);
-        assert!(
-            s.transport.metronome.load(Ordering::Relaxed),
-            "a take needs the beat"
-        );
-
-        toggle_recording(&mut s, &log);
-        assert!(!s.metronome_on, "the switch was never on");
-        assert!(
-            !s.transport.metronome.load(Ordering::Relaxed),
-            "so the click stops with the take"
-        );
     }
 
     /// The Transport panel's metronome row, trimmed.
@@ -14710,8 +15285,16 @@ mod tests {
         );
         assert_eq!(
             ui_height(Focus::Sinko, &chords),
-            35,
+            31,
             "the Sinko panel is the tallest view"
+        );
+        // The looper draws four grids where Sinko draws one, so all four bars
+        // are visible at once. It still shares the Synth slot, so it costs the
+        // walk nothing.
+        assert_eq!(
+            ui_height(Focus::Loops, &chords),
+            29,
+            "the looper's height changed"
         );
         assert_eq!(
             ui_height(Focus::Transport, &chords),
@@ -14748,13 +15331,29 @@ mod tests {
             "the Spectrum panel"
         );
         assert!(ui_height(Focus::Spectrum, &chords) <= DEFAULT_SCREEN.height);
+        // The ensemble list is the one view of this slot that is a *window* rather
+        // than a fixed row list, because the library it shows is as long as it is.
+        // It did not used to be: it drew every ensemble, ran off the bottom of any
+        // terminal, and could not be scrolled — which is what this assertion is
+        // here to stop coming back.
+        assert_eq!(
+            ui_height(Focus::SynthEnsembles, &chords),
+            34,
+            "the ensemble list must be windowed, not drawn whole"
+        );
     }
 
     // ---- Sinko panel ----
 
-    fn render_sinko(state: &AppState) -> String {
+    fn render_loops(s: &AppState) -> String {
         let mut out: Vec<u8> = Vec::new();
-        render_sinko_panel(&mut out, state, DEFAULT_SCREEN.grid_budget()).unwrap();
+        render_loops_body(&mut out, s).unwrap();
+        strip_ansi(&String::from_utf8(out).unwrap())
+    }
+
+    fn render_sinko(s: &AppState) -> String {
+        let mut out: Vec<u8> = Vec::new();
+        render_sinko_panel(&mut out, s, DEFAULT_SCREEN.grid_budget()).unwrap();
         strip_ansi(&String::from_utf8(out).unwrap())
     }
 
@@ -14790,22 +15389,23 @@ mod tests {
             .find(name)
             .unwrap_or_else(|| panic!("no library pattern named {:?}", name))
             .clone();
+        let assigned = AssignedRhythm::from_pattern(&pattern, 0);
         assert!(
-            s.progression.lock().unwrap().assign_pattern(row, Some(pattern)),
+            s.progression.lock().unwrap().assign_pattern(row, assigned),
             "assigning {:?} changed nothing",
             name
         );
     }
 
     /// Give the selected row a rhythm of its own, as the panel would.
-    fn own(s: &mut AppState, pattern: RhythmPattern) {
-        s.working = pattern;
+    fn own(s: &mut AppState, bar: RhythmBar) {
+        s.working = bar;
         s.working_slot = Some(s.progression_row);
         commit_working(s, &logger());
     }
 
     /// The rhythm on a specific row, whoever is selected.
-    fn sinko_pattern_at(s: &AppState, row: usize) -> Option<RhythmPattern> {
+    fn sinko_pattern_at(s: &AppState, row: usize) -> Option<AssignedRhythm> {
         match s.progression.lock().unwrap().slots.get(row) {
             Some(Slot::Chord(entry)) => entry.pattern.clone(),
             _ => None,
@@ -14882,8 +15482,8 @@ mod tests {
             }
         };
         assert_eq!(edited.name, "Quarters", "the name is unchanged");
-        assert!(!edited.layers[0].hit(3), "row 2 lost the hit");
-        assert!(neighbour.layers[0].hit(3), "row 3 was not touched");
+        assert!(!edited.rhythm.hit(3), "row 2 lost the hit");
+        assert!(neighbour.rhythm.hit(3), "row 3 was not touched");
         assert_ne!(edited, neighbour, "they are two rhythms, not one");
 
         // And the arrangement — what the scheduler plays and the exporter
@@ -14924,7 +15524,7 @@ mod tests {
         );
         // The panel follows the undo rather than showing a stale grid.
         sync_working(&mut s);
-        assert!(s.working.layers[0].hit(2));
+        assert!(s.working.hit(2), "the grid shows the hit again");
     }
 
     #[test]
@@ -14947,7 +15547,7 @@ mod tests {
             pristine,
             "the library copy is untouched"
         );
-        assert!(!sinko_pattern(&s).unwrap().layers[0].hit(0));
+        assert!(!sinko_pattern(&s).unwrap().rhythm.hit(0));
     }
 
     #[test]
@@ -14980,10 +15580,10 @@ mod tests {
                 .flatten(),
             "the only copied rhythm is the one that landed"
         );
-        assert!(!pasted.layers[0].hit(1), "the edit came along");
+        assert!(!pasted.rhythm.hit(1), "the edit came along");
         assert_eq!(pasted.name, "Quarters", "and so did the name");
         assert!(
-            s.working == pasted,
+            s.working == pasted.rhythm,
             "the grid shows what was pasted, not the next Tab"
         );
 
@@ -14998,8 +15598,11 @@ mod tests {
                 other => panic!("expected a chord, got {:?}", other),
             }
         };
-        assert!(vi.layers[0].hit(2), "vi kept its own hit");
-        assert!(!sinko_pattern(&s).unwrap().layers[0].hit(2));
+        assert!(vi.rhythm.hit(2), "vi kept its own hit");
+        assert!(
+            !sinko_pattern(&s).unwrap().rhythm.hit(2),
+            "and IV lost its own"
+        );
     }
 
     #[test]
@@ -15111,8 +15714,14 @@ mod tests {
         paste_sinko(&mut s, &log);
         assert!(s.is_flashing(), "an empty clipboard refuses");
         assert_eq!(
-            sinko_pattern(&s).unwrap(),
-            s.rhythm_store.lock().unwrap().find("Quarters").cloned().unwrap()
+            sinko_pattern(&s).unwrap().rhythm,
+            s.rhythm_store
+                .lock()
+                .unwrap()
+                .find("Quarters")
+                .cloned()
+                .unwrap()
+                .bars[0]
         );
     }
 
@@ -15198,32 +15807,6 @@ mod tests {
     }
 
     #[test]
-    fn tapping_a_take_gives_a_chord_with_no_rhythm_one_of_its_own() {
-        // Recording is how a rhythm gets onto a chord, so it must not need a
-        // pattern to exist first — and it must not need a save afterwards.
-        let log = logger();
-        let mut s = sinko_state();
-        assert!(sinko_pattern(&s).is_none());
-
-        s.recording = true;
-        s.transport.publish_bar(Instant::now(), 0);
-        sinko_tap(&mut s, &log);
-        close_take(&mut s, &log);
-
-        let own = sinko_pattern(&s).expect("the chord now owns a rhythm");
-        assert!(own.any_hit(), "with the take in it");
-        assert!(
-            !own.name.trim().is_empty(),
-            "and a name, so the pattern row says something"
-        );
-        assert_eq!(
-            starts_for(&s, vec![69, 72, 76]).len(),
-            1,
-            "and the arrangement plays it"
-        );
-    }
-
-    #[test]
     fn moving_the_selection_shows_the_other_chords_rhythm() {
         let mut s = sinko_state();
         assign(&mut s, 2, "Quarters");
@@ -15231,14 +15814,14 @@ mod tests {
 
         s.sinko_row = SINKO_ROW_HITS;
         sync_working(&mut s);
-        assert_eq!(s.working.name, "Quarters");
+        assert_eq!(s.working_name, "Quarters");
         s.sinko_cell = 3;
 
         // Moving the progression cursor is what pulls up another chord's own
         // settings, grid and cursor included.
         s.progression_row = 3;
         sync_working(&mut s);
-        assert_eq!(s.working.name, "Offbeat Eighths");
+        assert_eq!(s.working_name, "Offbeat Eighths");
         assert_eq!(s.working.steps_per_bar(), 8);
         assert_eq!(s.sinko_cell, 0, "the cursor belongs to the grid it was on");
 
@@ -15279,7 +15862,7 @@ mod tests {
     fn the_sinko_panel_has_a_fixed_number_of_rows() {
         let s = sinko_state();
         let text = render_sinko(&s);
-        assert_eq!(text.lines().count(), SINKO_ROWS + 1, "rendered:\n{}", text);
+        assert_eq!(text.lines().count(), SINKO_LINES, "rendered:\n{}", text);
     }
 
     #[test]
@@ -15545,9 +16128,493 @@ mod tests {
 
     #[test]
     fn one_tab_reaches_the_synth_and_one_tab_leaves_it() {
-        assert_eq!(Focus::Sinko.next(), Focus::Synth);
+        // The looper is a view of the Synth slot, not a panel of its own, so it
+        // sits between the Sinko panel and the table it borrows.
+        assert_eq!(Focus::Sinko.next(), Focus::Loops);
+        assert_eq!(Focus::Loops.next(), Focus::Synth);
         assert_eq!(Focus::Synth.next(), Focus::SynthEnsembles);
-        assert_eq!(Focus::Synth.prev(), Focus::Sinko);
+        assert_eq!(Focus::Synth.prev(), Focus::Loops);
+        assert_eq!(Focus::Loops.prev(), Focus::Sinko);
+    }
+
+    // ---- the looper ----
+
+    /// A state on the looper panel, with the progression seeded.
+    fn loops_state() -> AppState {
+        let mut s = state(Focus::Loops);
+        seed(
+            &mut s,
+            &[
+                ScaleDegree::I,
+                ScaleDegree::V,
+                ScaleDegree::VI,
+                ScaleDegree::IV,
+            ],
+        );
+        s
+    }
+
+    #[test]
+    fn one_chord_loads_four_times_and_four_chords_load_in_order() {
+        let log = logger();
+        let mut s = loops_state();
+        s.looper.source = LooperSource::OneChord;
+        s.looper.chord = 1;
+        looper_arm(&mut s, &log);
+        let bed = s.transport.bed().expect("a bed");
+        assert_eq!(bed.bars.len(), arrangement::BED_BARS);
+        assert!(
+            bed.bars.iter().all(|bar| bar.notes == bed.bars[0].notes),
+            "one chord means the same chord four times"
+        );
+        assert_eq!(bed.bars[0].notes, {
+            let prog = s.progression.lock().unwrap();
+            match &prog.slots[1] {
+                Slot::Chord(entry) => entry.notes(&s.transport.key()),
+                other => panic!("expected a chord, got {:?}", other),
+            }
+        });
+        looper_unload(&mut s, &log);
+
+        // And "the first four" takes them in order.
+        s.looper.source = LooperSource::FirstFour;
+        looper_arm(&mut s, &log);
+        let bed = s.transport.bed().expect("a bed");
+        let wanted: Vec<Vec<u8>> = {
+            let prog = s.progression.lock().unwrap();
+            (0..4)
+                .map(|row| match &prog.slots[row] {
+                    Slot::Chord(entry) => entry.notes(&s.transport.key()),
+                    other => panic!("expected a chord, got {:?}", other),
+                })
+                .collect()
+        };
+        assert_eq!(
+            bed.bars.iter().map(|b| b.notes.clone()).collect::<Vec<_>>(),
+            wanted
+        );
+    }
+
+    #[test]
+    fn arming_the_looper_starts_the_click_and_the_loop() {
+        let log = logger();
+        let mut s = loops_state();
+        assert!(!s.recording, "nothing is armed to start with");
+        looper_arm(&mut s, &log);
+        assert!(s.recording, "a take is armed");
+        assert!(
+            s.transport.metronome.load(Ordering::Relaxed),
+            "the click is the only way to feel the beat"
+        );
+        assert!(
+            s.transport.playing.load(Ordering::Relaxed),
+            "and the four bars have to be moving to tap against"
+        );
+    }
+
+    #[test]
+    fn the_click_goes_back_when_the_looper_stops() {
+        // The same promise the Sinko record row made: a metronome you turned on
+        // yourself is still on, one the recording borrowed is given back.
+        let log = logger();
+        let mut s = loops_state();
+        looper_arm(&mut s, &log);
+        looper_stop(&mut s, &log);
+        assert!(!s.transport.metronome.load(Ordering::Relaxed));
+        assert!(s.transport.bed_loaded(), "and the bars are still there");
+
+        s.metronome_on = true;
+        looper_arm(&mut s, &log);
+        looper_stop(&mut s, &log);
+        assert!(
+            s.transport.metronome.load(Ordering::Relaxed),
+            "one you asked for survives"
+        );
+    }
+
+    /// Put the clock `ticks` into bed bar `bar`.
+    ///
+    /// The recording reads the wall clock, so a test drives it by back-dating
+    /// the bar line rather than by sleeping.
+    fn clock_at(s: &AppState, bar: usize, ticks: u64) {
+        s.transport.bed_bar.store(bar, Ordering::Relaxed);
+        let total = s.transport.bar_duration();
+        let back = total.mul_f64(ticks as f64 / BAR_TICKS as f64);
+        let start = Instant::now()
+            .checked_sub(back)
+            .unwrap_or_else(Instant::now);
+        s.transport.publish_bar(start, bar);
+    }
+
+    /// Enough time for the debounce, so the next press is a *second* tap rather
+    /// than a repeating key.
+    fn time_passes(s: &mut AppState) {
+        s.last_tap_at = Some(Instant::now() - Duration::from_millis(TAP_REPEAT_MS as u64 + 1));
+    }
+
+    #[test]
+    fn a_tap_lands_in_the_bar_the_scheduler_is_on() {
+        // The whole of "the tap plays the chord for its position": which bar the
+        // clock is on decides where the hit goes, and which chord comes back.
+        let log = logger();
+        let mut s = loops_state();
+        s.looper.source = LooperSource::FirstFour;
+        looper_arm(&mut s, &log);
+        let third_chord = s.transport.bed().unwrap().bars[2].notes.clone();
+
+        clock_at(&s, 2, 0);
+        let sounded = looper_tap_press(&mut s, &log).expect("the bar's chord");
+        clock_at(&s, 2, 0);
+        looper_tap_release(&mut s, &log);
+
+        let bed = s.transport.bed().unwrap();
+        assert_eq!(bed.bars[2].rhythm.hit_count(), 1, "bar 3 took the hit");
+        for other in [0, 1, 3] {
+            assert_eq!(bed.bars[other].rhythm.hit_count(), 0, "bar {other} did not");
+        }
+        assert_eq!(sounded, third_chord, "and the third chord is what sounds");
+    }
+
+    #[test]
+    fn a_tap_is_ignored_when_nothing_is_armed() {
+        let log = logger();
+        let mut s = loops_state();
+        assert!(looper_tap_press(&mut s, &log).is_none());
+        assert!(s.is_flashing(), "a refused key says so");
+    }
+
+    #[test]
+    fn a_held_key_records_the_length_it_was_held_for() {
+        // The point of recording the button's state rather than a click: the
+        // note keeps sounding while the key is down, and what it records is the
+        // distance between the two edges.
+        let log = logger();
+        let mut s = loops_state();
+        looper_arm(&mut s, &log);
+        assert!(s.looper.open.is_none());
+
+        // Down on the downbeat, up three cells later on a 16-step grid.
+        clock_at(&s, 0, 0);
+        looper_tap_press(&mut s, &log).expect("the chord");
+        assert!(
+            s.looper.open.is_some(),
+            "the note is open while the key is down"
+        );
+        clock_at(&s, 0, 720);
+        assert!(
+            looper_tap_release(&mut s, &log),
+            "the key-up closes the note"
+        );
+        assert!(s.looper.open.is_none());
+
+        let bed = s.transport.bed().unwrap();
+        let bar = &bed.bars[0].rhythm;
+        assert!(bar.hit(0), "the onset is where the key went down");
+        assert!(bar.has_hold_override(0), "and it carries its own length");
+        assert_eq!(bar.cell_hold(0), 720, "three cells of a sixteenth grid");
+        assert_eq!(bar.hit_count(), 1, "one note, not a dot per cell");
+    }
+
+    #[test]
+    fn a_quick_tap_is_a_hit_and_keeps_the_bar_default() {
+        // A tap that begins and ends inside one cell is a hit, not a whole-bar
+        // note: that is what every hit sounded like before lengths existed.
+        let log = logger();
+        let mut s = loops_state();
+        looper_arm(&mut s, &log);
+        let default = s.transport.bed().unwrap().bars[0].rhythm.hold;
+
+        clock_at(&s, 0, 240);
+        looper_tap_press(&mut s, &log).expect("the chord");
+        clock_at(&s, 0, 300);
+        looper_tap_release(&mut s, &log);
+
+        let bar = &s.transport.bed().unwrap().bars[0].rhythm;
+        assert!(bar.hit(1));
+        assert!(!bar.has_hold_override(1));
+        assert_eq!(bar.cell_hold(1), default);
+    }
+
+    #[test]
+    fn a_held_note_clears_the_cells_it_covers() {
+        // The key was down through those cells, so the note replaces them rather
+        // than layering a retrigger under itself.
+        let log = logger();
+        let mut s = loops_state();
+        looper_arm(&mut s, &log);
+
+        clock_at(&s, 0, 0);
+        looper_tap_press(&mut s, &log);
+        clock_at(&s, 0, 0);
+        looper_tap_release(&mut s, &log);
+        time_passes(&mut s);
+        clock_at(&s, 0, 480);
+        looper_tap_press(&mut s, &log);
+        clock_at(&s, 0, 480);
+        looper_tap_release(&mut s, &log);
+        assert_eq!(s.transport.bed().unwrap().bars[0].rhythm.hit_count(), 2);
+
+        // Now hold over both of them.
+        time_passes(&mut s);
+        clock_at(&s, 0, 0);
+        looper_tap_press(&mut s, &log);
+        clock_at(&s, 0, 960);
+        looper_tap_release(&mut s, &log);
+
+        let bar = &s.transport.bed().unwrap().bars[0].rhythm;
+        assert_eq!(bar.hit_count(), 1, "one held note");
+        assert!(bar.hit(0));
+        assert!(!bar.hit(2), "the cell it swallowed is gone");
+        assert_eq!(bar.cell_hold(0), 960);
+    }
+
+    #[test]
+    fn a_note_held_over_the_bar_line_is_still_one_note() {
+        // Measured from the top of the *bed*, so a hold across a bar line is a
+        // subtraction rather than a special case.
+        let log = logger();
+        let mut s = loops_state();
+        looper_arm(&mut s, &log);
+
+        clock_at(&s, 1, 3360);
+        looper_tap_press(&mut s, &log);
+        clock_at(&s, 2, 480);
+        looper_tap_release(&mut s, &log);
+
+        let bar = &s.transport.bed().unwrap().bars[1].rhythm;
+        assert_eq!(bar.hit_count(), 1, "the onset is in bar 2");
+        // Down four cells before the bar line and up two cells after it: four
+        // cells of hold, which is 960 ticks, measured across the boundary.
+        assert_eq!(bar.cell_hold(14), 960, "the hold ignored the bar line");
+    }
+
+    #[test]
+    fn a_lost_key_up_is_closed_by_the_next_press() {
+        // A terminal that does not report releases must not leave a note open
+        // for ever: the next press measures the previous note and starts its own.
+        let log = logger();
+        let mut s = loops_state();
+        looper_arm(&mut s, &log);
+
+        clock_at(&s, 0, 0);
+        looper_tap_press(&mut s, &log);
+        time_passes(&mut s);
+        clock_at(&s, 0, 1440);
+        looper_tap_press(&mut s, &log);
+
+        let bar = &s.transport.bed().unwrap().bars[0].rhythm;
+        assert_eq!(bar.cell_hold(0), 1440, "the first note got its length");
+        assert_eq!(bar.hit_count(), 2, "and the second note started");
+        assert!(s.looper.open.is_some(), "which is the one still open");
+    }
+
+    #[test]
+    fn a_repeating_key_is_not_a_second_note() {
+        // Some terminals report auto-repeat as another press. Held down, that
+        // must stay one note rather than becoming a buzz of retriggers.
+        let log = logger();
+        let mut s = loops_state();
+        looper_arm(&mut s, &log);
+        clock_at(&s, 0, 0);
+        looper_tap_press(&mut s, &log).expect("the first press");
+
+        clock_at(&s, 0, 480);
+        assert!(
+            looper_tap_press(&mut s, &log).is_none(),
+            "inside the debounce it is the same key, still down"
+        );
+        assert_eq!(s.transport.bed().unwrap().bars[0].rhythm.hit_count(), 1);
+    }
+
+    #[test]
+    fn stopping_the_recording_gives_the_tap_voice_back() {
+        // The stuck-chord bug: the tap sounds on the audition voice, so a key-up
+        // that never arrives — or a stop while the key is down — has to hand it
+        // back rather than leaving it ringing. `pump_looper` itself needs a
+        // `Synth` and so needs an audio device; this is the guard it runs, and
+        // the hit the press wrote must survive the note ending.
+        let log = logger();
+        let mut s = loops_state();
+        looper_arm(&mut s, &log);
+        clock_at(&s, 0, 0);
+        looper_tap_press(&mut s, &log);
+        assert!(s.looper.open.is_some());
+        assert!(
+            !looper_tap_should_close(&s),
+            "while the take is running the key is still down"
+        );
+
+        looper_stop(&mut s, &log);
+        assert!(!s.recording, "the take is over");
+        assert!(
+            looper_tap_should_close(&s),
+            "so the voice behind the open note goes back"
+        );
+        assert_eq!(
+            s.transport.bed().unwrap().bars[0].rhythm.hit_count(),
+            1,
+            "and the hit the press wrote stays"
+        );
+    }
+
+    #[test]
+    fn the_looper_panel_shows_the_whole_loop() {
+        // Four bars, always: one at a time hid the shape of the thing being
+        // made, and the panel has the rows to spare.
+        let log = logger();
+        let mut s = loops_state();
+        looper_arm(&mut s, &log);
+        clock_at(&s, 0, 0);
+        looper_tap_press(&mut s, &log);
+        time_passes(&mut s);
+        clock_at(&s, 2, 0);
+        looper_tap_press(&mut s, &log);
+
+        let text = render_loops(&s);
+        let grids: Vec<&str> = text.lines().filter(|line| line.contains('|')).collect();
+        assert_eq!(grids.len(), arrangement::BED_BARS, "one line per bar");
+        // Each line is numbered, so the bar a hit is in is readable.
+        for (index, line) in grids.iter().enumerate() {
+            assert!(
+                line.contains(&format!(" {}  ", index + 1)),
+                "bar {} is numbered: {line:?}",
+                index + 1
+            );
+        }
+        assert!(
+            grids[0].contains('x'),
+            "bar 1 carries its own hit: {:?}",
+            grids[0]
+        );
+        assert!(
+            grids[2].contains('X'),
+            "bar 3 carries one too — uppercase, because the clock is on it: {:?}",
+            grids[2]
+        );
+        assert!(
+            !grids[0].contains('X'),
+            "and the playhead is only on the clock's bar: {:?}",
+            grids[0]
+        );
+        assert!(grids[1].contains('·'), "bar 2 is empty: {:?}", grids[1]);
+    }
+
+    #[test]
+    fn a_held_note_is_drawn_as_a_line_not_a_dot() {
+        // The grid has to say how long a note lasts, or the four-bar view is a
+        // picture of where the notes start and nothing about how they sound.
+        let log = logger();
+        let mut s = loops_state();
+        looper_arm(&mut s, &log);
+        clock_at(&s, 0, 0);
+        looper_tap_press(&mut s, &log);
+        clock_at(&s, 0, 960);
+        looper_tap_release(&mut s, &log);
+
+        let text = render_loops(&s);
+        let first = text
+            .lines()
+            .find(|line| line.contains('|'))
+            .expect("bar 1's grid");
+        assert!(first.contains('x'), "the onset is a hit: {first:?}");
+        assert!(
+            first.contains("x="),
+            "and the cells it holds through are drawn, starting at the onset: {first:?}"
+        );
+        assert!(
+            first.contains("===="),
+            "for a whole cell at least, so a long note is a line: {first:?}"
+        );
+    }
+
+    #[test]
+    fn the_looper_saves_four_bars_as_one_pattern() {
+        let log = logger();
+        let mut s = loops_state();
+        s.rhythm_user_path = unique_export_dir("loop-save").join("rhythms.toml");
+        looper_arm(&mut s, &log);
+        clock_at(&s, 0, 0);
+        looper_tap_press(&mut s, &log).expect("a hit to save");
+        clock_at(&s, 0, 0);
+        looper_tap_release(&mut s, &log);
+
+        save_loop_pattern(&mut s, "My Loop", &log);
+        let saved = s
+            .rhythm_store
+            .lock()
+            .unwrap()
+            .find("My Loop")
+            .cloned()
+            .expect("the loop is in the library");
+        assert_eq!(
+            saved.bars.len(),
+            arrangement::BED_BARS,
+            "four bars, one entry"
+        );
+        assert_eq!(saved.bars[0].hit_count(), 1);
+        assert!(saved.bars[1].hit_count() == 0);
+    }
+
+    #[test]
+    fn saving_an_empty_loop_is_refused() {
+        let log = logger();
+        let mut s = loops_state();
+        s.rhythm_user_path = unique_export_dir("loop-empty").join("rhythms.toml");
+        looper_arm(&mut s, &log);
+        save_loop_pattern(&mut s, "Empty", &log);
+        assert!(
+            s.rhythm_store.lock().unwrap().find("Empty").is_none(),
+            "a silent loop is not a pattern"
+        );
+    }
+
+    #[test]
+    fn the_record_row_loads_stops_and_unloads_in_three_presses() {
+        let log = logger();
+        let mut s = loops_state();
+        let press = |s: &mut AppState| {
+            s.looper_row = LOOP_ROW_RECORD;
+            loops_action(s, &log);
+        };
+        assert!(!s.transport.bed_loaded());
+        press(&mut s);
+        assert!(s.recording && s.transport.bed_loaded(), "the first loads");
+        press(&mut s);
+        assert!(!s.recording && s.transport.bed_loaded(), "the second stops");
+        press(&mut s);
+        assert!(!s.transport.bed_loaded(), "the third unloads");
+    }
+
+    #[test]
+    fn the_looper_grid_edits_the_bar_it_is_showing() {
+        let log = logger();
+        let mut s = loops_state();
+        looper_arm(&mut s, &log);
+        s.looper_row = LOOP_ROW_BAR;
+        adjust_loops(&mut s, 1, &log);
+        assert_eq!(s.looper.bar, 1, "the bar cursor moved");
+
+        s.looper_row = LOOP_ROW_HITS;
+        s.looper.cell = 3;
+        loops_action(&mut s, &log);
+        let bed = s.transport.bed().unwrap();
+        assert!(bed.bars[1].rhythm.hit(3), "bar 2 got the hit");
+        assert_eq!(bed.bars[0].rhythm.hit_count(), 0, "bar 1 did not");
+
+        // And clearing takes the whole bar, not the whole loop.
+        loops_action(&mut s, &log);
+        s.looper_row = LOOP_ROW_CLEAR;
+        loops_action(&mut s, &log);
+        assert_eq!(s.transport.bed().unwrap().bars[1].rhythm.hit_count(), 0);
+    }
+
+    #[test]
+    fn the_looper_panel_draws_a_row_per_row() {
+        let s = loops_state();
+        let text = render_loops(&s);
+        assert_eq!(text.lines().count(), LOOP_LINES, "rendered:\n{}", text);
+        assert!(text.contains("source"), "rendered:\n{}", text);
+        assert!(text.contains("[Save Loop As...]"), "rendered:\n{}", text);
     }
 
     // ---- the FX panel ----
@@ -15569,6 +16636,38 @@ mod tests {
             ev.modifiers = KeyModifiers::SHIFT;
         }
         handle_panel_arrow(s, p, &ev, log);
+    }
+
+    #[test]
+    fn editing_one_registers_rack_leaves_the_other_two_alone() {
+        // The panel half of "are the racks per register". `adjust_fx` addresses
+        // its slot through `channel_at(state.fx_col)`, which is the same mapping
+        // the instrument row uses — and a column that resolved to the wrong
+        // register would be the most direct way for a change on the high rack to
+        // move the low part.
+        let log = logger();
+        let p = SynthParams::defaults();
+        for col in 0..CHANNEL_COUNT {
+            let before: Vec<[Fx; CHAIN_SLOTS]> = (0..CHANNEL_COUNT)
+                .map(|other| channel_at(&p, other).chain.chain())
+                .collect();
+
+            let mut s = fx_state(col, 0);
+            s.fx_row = FX_ROW_TYPE;
+            adjust_fx(&mut s, &p, 1, false, &log);
+
+            for (other, original) in before.iter().enumerate() {
+                let now = channel_at(&p, other).chain.chain();
+                if other == col {
+                    assert_ne!(now, *original, "column {col} did not change its own rack");
+                } else {
+                    assert_eq!(
+                        now, *original,
+                        "editing column {col} moved column {other}'s rack"
+                    );
+                }
+            }
+        }
     }
 
     /// A rack with something in every slot, so a move has something to displace.
@@ -16007,7 +17106,8 @@ mod tests {
         // `Shift+Tab` are inverses of each other, and the cycle closes.
         assert_eq!(Focus::Progression.next(), Focus::Transport);
         assert_eq!(Focus::Transport.next(), Focus::Sinko);
-        assert_eq!(Focus::Sinko.next(), Focus::Synth);
+        assert_eq!(Focus::Sinko.next(), Focus::Loops);
+        assert_eq!(Focus::Loops.next(), Focus::Synth);
         assert_eq!(Focus::Synth.next(), Focus::SynthEnsembles);
         assert_eq!(Focus::SynthEnsembles.next(), Focus::Eq);
         assert_eq!(Focus::Eq.next(), Focus::Spectrum);
@@ -16018,6 +17118,7 @@ mod tests {
             Focus::Progression,
             Focus::Transport,
             Focus::Sinko,
+            Focus::Loops,
             Focus::Synth,
             Focus::SynthEnsembles,
             Focus::Eq,
@@ -16040,7 +17141,7 @@ mod tests {
             seen.push(focus);
             focus = focus.next();
         }
-        assert_eq!(seen.len(), 8, "panels: {:?}", seen);
+        assert_eq!(seen.len(), 9, "panels: {:?}", seen);
         assert_eq!(focus, Focus::Transport, "the cycle must close");
         assert_eq!(Focus::Transport.prev(), Focus::Progression);
     }
@@ -18158,17 +19259,19 @@ mod tests {
         // `l` away, and then they work again.
         let log = logger();
         let mut s = history_state();
-        s.sinko_row = SINKO_ROW_SMOOTH;
-        let before = s.sinko_smooth;
+        // The `offset` row, because it edits the progression rather than the
+        // working draft and so needs nothing assigned to act on.
+        s.sinko_row = SINKO_ROW_OFFSET;
+        let before = sinko_offset(&s);
 
         s.history_view = HistoryView::Log;
         adjust_current_with(&mut s, &SynthParams::defaults(), 1, false, &log);
         primary_action_without_synth(&mut s, &log);
-        assert_eq!(s.sinko_smooth, before, "not while it is covered");
+        assert_eq!(sinko_offset(&s), before, "not while it is covered");
 
         s.history_view = HistoryView::Off;
         adjust_current_with(&mut s, &SynthParams::defaults(), 1, false, &log);
-        assert_ne!(s.sinko_smooth, before, "and again once it is back");
+        assert_ne!(sinko_offset(&s), before, "and again once it is back");
     }
 
     /// `primary_action` needs a `Synth`, which no test can build. The Sinko branch

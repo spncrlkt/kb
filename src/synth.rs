@@ -2423,6 +2423,26 @@ fn mix_reverb(dry_l: f32, dry_r: f32, wet: f32, level: f32) -> (f32, f32) {
 // Allocation
 // -----------------------------------------------------------------------------
 
+/// Voice a chord across the three registers: a bass, the chord, and a descant.
+///
+/// This is where the three registers become three *parts* rather than three
+/// copies of the same notes. The block sizes say what the shape is meant to be —
+/// [`LOW_NOTES`] is 1, [`MID_NOTES`] is 4 and [`HIGH_NOTES`] is 1 — so the low
+/// register takes the root an octave below the chord, the mid takes the chord
+/// itself, and the high takes the top note an octave above it.
+///
+/// It used to hand the registers the chord's *tones* at their written pitch: low
+/// took the bottom note, high the top and mid whatever was left, with an octave
+/// offset only in the single-note case. A triad therefore came out as C4, E4 and
+/// G4 — three patches inside a major third, which the ear fuses into one
+/// instrument no matter how different the three patches are. The register names
+/// were a lie for every chord.
+///
+/// **Past four notes the top of the chord is left to the descant** and the rest
+/// goes in as it did before. Splitting it that way rather than truncating means
+/// no pitch class is ever dropped: the mid block holds four notes, and a fifth or
+/// sixth chord tone that did not fit would otherwise be silent everywhere, since
+/// the low and the high are already doubling the ends.
 fn allocate(notes: &[u8]) -> (Vec<u8>, Vec<u8>, Vec<u8>) {
     if notes.is_empty() {
         return (vec![], vec![], vec![]);
@@ -2431,25 +2451,25 @@ fn allocate(notes: &[u8]) -> (Vec<u8>, Vec<u8>, Vec<u8>) {
     sorted.sort_unstable();
     sorted.dedup();
 
+    /// A note an octave down, clamped to the keyboard.
+    fn bass(n: u8) -> u8 {
+        (n as i16 - 12).clamp(0, 127) as u8
+    }
+    /// A note an octave up, clamped to the keyboard.
+    fn descant(n: u8) -> u8 {
+        (n as i16 + 12).clamp(0, 127) as u8
+    }
+
     match sorted.len() {
         0 => (vec![], vec![], vec![]),
-        1 => {
-            let n = sorted[0] as i16;
-            let low = (n - 12).clamp(0, 127) as u8;
-            let high = (n + 12).clamp(0, 127) as u8;
-            (vec![low], vec![sorted[0]], vec![high])
-        }
-        2 => {
-            let low = sorted[0];
-            let top = sorted[1] as i16;
-            let high = (top + 12).clamp(0, 127) as u8;
-            (vec![low], vec![sorted[1]], vec![high])
-        }
         _ => {
-            let low = sorted[0];
-            let high = sorted[sorted.len() - 1];
-            let mid = sorted[1..sorted.len() - 1].to_vec();
-            (vec![low], mid, vec![high])
+            let top = sorted[sorted.len() - 1];
+            let mid = if sorted.len() <= MID_NOTES {
+                sorted.clone()
+            } else {
+                sorted[1..sorted.len() - 1].to_vec()
+            };
+            (vec![bass(sorted[0])], mid, vec![descant(top)])
         }
     }
 }
@@ -3229,37 +3249,27 @@ pub(crate) fn capture_mixer(src: &SynthParams, note_length: f32) -> MixerSetting
     }
 }
 
+/// Write a whole composed channel: what the sound is, and where it sits.
+///
+/// The voice half is delegated rather than written out again, and that is
+/// load-bearing rather than tidy. It *was* written out field by field here, and
+/// when the second oscillator, the drive, the wavetable position and the string
+/// model were added to a voice they were added to [`apply_voice`] — the function
+/// the instrument picker calls — and not to this one, which is the function that
+/// loads an ensemble. Every register then loaded half-applied, and the registers
+/// the picker had touched were the only fully-alive ones, so changing one
+/// register audibly changed how the other two sat against it.
+///
+/// There is one list of what a sound *is*, and this is not it.
 pub(crate) fn apply_channel(dst: &ChannelParams, src: &ComposedChannel) {
-    let v = &src.voice;
-    dst.delay_send.set(src.delay_send);
-    dst.chain.set(&src.chain);
+    apply_voice(dst, &src.voice);
     dst.volume.set(src.volume);
-    dst.waveform.set(v.waveform as i32 as f32);
-    dst.noise_level.set(v.noise_level);
-    dst.pulse_width.set(v.pulse_width);
-    dst.attack.set(v.attack);
-    dst.decay.set(v.decay);
-    dst.sustain.set(v.sustain);
-    dst.release.set(v.release);
-    dst.env_curve.set(v.env_curve);
-    dst.glide.set(v.glide);
-    dst.cutoff.set(v.cutoff);
-    dst.resonance.set(v.resonance);
-    dst.filter_type.set(v.filter_type as i32 as f32);
-    dst.filter_env.set(v.filter_env);
-    dst.filter_attack.set(v.filter_attack);
-    dst.filter_decay.set(v.filter_decay);
-    dst.key_track.set(v.key_track);
-    dst.lfo_pitch.set(v.lfo_pitch);
-    dst.lfo_cutoff.set(v.lfo_cutoff);
-    dst.lfo_amp.set(v.lfo_amp);
-    dst.lfo_pwm.set(v.lfo_pwm);
-    dst.unison.set(v.unison);
-    dst.detune.set(v.detune);
     dst.transpose.set(src.transpose);
     dst.reverb_send.set(src.reverb_send);
+    dst.delay_send.set(src.delay_send);
     dst.pan.set(src.pan);
     dst.eq.set(&src.eq);
+    dst.chain.set(&src.chain);
 }
 
 /// Write only what a sound *is*, leaving where it sits alone.
@@ -3404,6 +3414,95 @@ mod tests {
         assert!(!params.low.chain.any(), "the other registers are untouched");
         assert_eq!(params.mid.delay_send.get(), 0.35);
         assert_eq!(params.low.delay_send.get(), 0.0);
+    }
+
+    #[test]
+    fn loading_a_channel_writes_the_whole_voice() {
+        // The bug this replaced: `apply_channel` wrote the two dozen parameters
+        // the panel had always had and silently skipped the fifteen that arrived
+        // later — the drive, the second oscillator, the wavetable position, the
+        // string model. Loading an ensemble therefore left every register
+        // half-applied, and only a register you subsequently touched with the
+        // instrument picker — which *does* write all thirty-seven — came fully
+        // alive. Touching one register changed how the other two sounded next to
+        // it, which is exactly what "bleeding between registers" sounds like.
+        //
+        // It is asserted over the whole shipped palette rather than as a list of
+        // field names, so the next parameter added to a voice is covered on the
+        // day it exists rather than the day somebody remembers this test.
+        let store = crate::instrument::InstrumentStore::with_builtins();
+        for ensemble in crate::ensemble::builtin_ensembles() {
+            let (channels, _) = ensemble.resolve(|name| store.voice_of(name));
+            let params = SynthParams::defaults();
+            apply_channels(
+                &params,
+                [&channels[0], &channels[1], &channels[2]],
+                &ensemble.mixer,
+            );
+            for (register, expected) in crate::ensemble::Ensemble::REGISTERS.iter().zip(channels) {
+                let live = match *register {
+                    "low" => capture_channel(&params.low),
+                    "mid" => capture_channel(&params.mid),
+                    _ => capture_channel(&params.high),
+                };
+                assert_eq!(
+                    live, expected,
+                    "{} {register} did not survive the load",
+                    ensemble.name
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn changing_one_registers_instrument_leaves_the_others_alone() {
+        // The guard on the question "I changed the high instrument and the low
+        // voice sounds different". The plumbing is three independent
+        // `ChannelParams`, each owning its own atomics, and neither
+        // `apply_channel` nor `apply_voice` can reach past the one it was handed —
+        // so this asserts the thing that makes that true rather than trusting the
+        // shape of the types. It is a real bug class, not a hypothetical: the
+        // symptom is a mix that shifts under you, and there is no crash and no
+        // failing assertion anywhere else to notice it.
+        let params = SynthParams::defaults();
+        let store = crate::instrument::InstrumentStore::with_builtins();
+        let ensemble = crate::ensemble::builtin_ensembles()
+            .into_iter()
+            .find(|ensemble| ensemble.name == "Twin Drawbars")
+            .expect("the showcase ships Twin Drawbars");
+        let (channels, _) = ensemble.resolve(|name| store.voice_of(name));
+        apply_channels(
+            &params,
+            [&channels[0], &channels[1], &channels[2]],
+            &ensemble.mixer,
+        );
+
+        let before = [
+            capture_channel(&params.low),
+            capture_channel(&params.mid),
+            capture_channel(&params.high),
+        ];
+
+        // What the picker does when the high row is stepped to another
+        // instrument: one register's voice, and nothing else.
+        let replacement = store.voice_of("Bell").expect("Bell ships");
+        apply_voice(&params.high, &replacement);
+
+        assert_eq!(
+            capture_channel(&params.low),
+            before[0],
+            "the low register moved when the high one was edited"
+        );
+        assert_eq!(
+            capture_channel(&params.mid),
+            before[1],
+            "the mid register moved when the high one was edited"
+        );
+        assert_ne!(
+            capture_channel(&params.high),
+            before[2],
+            "the high register did not move at all"
+        );
     }
 
     #[test]
@@ -6519,6 +6618,8 @@ impl LegacyVoice {
 
     #[test]
     fn allocate_one_note() {
+        // Unchanged by the rework, and the case the old code got right: one note
+        // is a bass, itself and a descant.
         let (l, m, h) = allocate(&[60]);
         assert_eq!(l, vec![48]);
         assert_eq!(m, vec![60]);
@@ -6528,24 +6629,81 @@ impl LegacyVoice {
     #[test]
     fn allocate_two_notes() {
         let (l, m, h) = allocate(&[60, 64]);
-        assert_eq!(l, vec![60]);
-        assert_eq!(m, vec![64]);
-        assert_eq!(h, vec![76]);
+        assert_eq!(l, vec![48], "the root an octave down");
+        assert_eq!(m, vec![60, 64], "the whole chord in the middle");
+        assert_eq!(h, vec![76], "the top an octave up");
     }
 
     #[test]
-    fn allocate_five_notes() {
+    fn allocate_a_triad_is_a_bass_a_chord_and_a_descant() {
+        // The case the whole rework was for. It used to come out as C4, E4, G4 —
+        // three patches inside a major third.
+        let (l, m, h) = allocate(&[60, 64, 67]);
+        assert_eq!(l, vec![48]);
+        assert_eq!(m, vec![60, 64, 67]);
+        assert_eq!(h, vec![79]);
+    }
+
+    #[test]
+    fn allocate_four_notes_still_fit_in_the_middle() {
+        // `MID_NOTES` is four, so a seventh is the widest chord that goes in
+        // whole.
+        let (l, m, h) = allocate(&[60, 64, 67, 71]);
+        assert_eq!(l, vec![48]);
+        assert_eq!(m, vec![60, 64, 67, 71]);
+        assert_eq!(h, vec![83]);
+    }
+
+    #[test]
+    fn allocate_five_notes_keeps_every_pitch_class() {
+        // Past four the top is left to the descant, which is what stops a chord
+        // tone from being dropped: the mid block holds four notes, and with the
+        // low and the high already doubling the ends, a fifth tone that did not
+        // fit would be silent everywhere. C, E, G, B and D all sound.
         let (l, m, h) = allocate(&[60, 64, 67, 71, 74]);
-        assert_eq!(l, vec![60]);
+        assert_eq!(l, vec![48]);
         assert_eq!(m, vec![64, 67, 71]);
-        assert_eq!(h, vec![74]);
+        assert_eq!(h, vec![86]);
+    }
+
+    #[test]
+    fn allocate_six_notes_keeps_every_pitch_class_too() {
+        let (l, m, h) = allocate(&[60, 64, 67, 71, 74, 77]);
+        assert_eq!(l, vec![48]);
+        assert_eq!(m, vec![64, 67, 71, 74]);
+        assert_eq!(h, vec![89]);
     }
 
     #[test]
     fn allocate_sorts_and_dedupes() {
         let (l, m, h) = allocate(&[67, 60, 64, 60]);
-        assert_eq!(l, vec![60]);
-        assert_eq!(m, vec![64]);
-        assert_eq!(h, vec![67]);
+        assert_eq!(l, vec![48]);
+        assert_eq!(m, vec![60, 64, 67]);
+        assert_eq!(h, vec![79]);
+    }
+
+    #[test]
+    fn allocate_never_overfills_a_block() {
+        // The pool is `LOW_NOTES` / `MID_NOTES` / `HIGH_NOTES` notes wide and the
+        // allocation has to respect it, because `trigger_block` silently skips a
+        // note past the end of its block rather than resizing it. Widest chord
+        // this tool produces is six notes.
+        for size in 1..=6usize {
+            let notes: Vec<u8> = (0..size).map(|i| 60 + i as u8 * 3).collect();
+            let (l, m, h) = allocate(&notes);
+            assert!(l.len() <= LOW_NOTES, "{size} notes gave low {}", l.len());
+            assert!(m.len() <= MID_NOTES, "{size} notes gave mid {}", m.len());
+            assert!(h.len() <= HIGH_NOTES, "{size} notes gave high {}", h.len());
+        }
+    }
+
+    #[test]
+    fn allocate_keeps_the_extremes_an_octave_apart_at_the_edges_of_the_keyboard() {
+        // A bass below the keyboard or a descant above it clamps rather than
+        // wrapping, and the two must not collapse onto each other.
+        let (l, m, h) = allocate(&[0, 127]);
+        assert_eq!(l, vec![0], "the root cannot go below the keyboard");
+        assert_eq!(h, vec![127], "nor the top above it");
+        assert_eq!(m, vec![0, 127]);
     }
 }

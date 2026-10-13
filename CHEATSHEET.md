@@ -65,7 +65,7 @@ key**, never a new key.
 <!-- cheatsheet-hotkeys:begin -->
 | Keycap | You type | What it does |
 | --- | --- | --- |
-| `` ` `` | `$` | tap one beat of the rhythm being recorded |
+| `` ` `` | `$` | tap or hold a note into the four-bar loop being recorded |
 | `1` | `&` | metronome click on / off |
 | `3` | `{` | tap the transport: play/pause, restart, seek to the middle |
 | `4` | `}` | the same — the key next door, so a miss still taps |
@@ -75,6 +75,7 @@ key**, never a new key.
 | `x` | `q` | copy the selection |
 | `c` | `j` | paste the clipboard after the block, or into the gap before position 1 |
 | `v` | `k` | delete the selection |
+| `n` | `b` | set the selected slot to the chord being held, keeping its rhythm and offset |
 | `b` | `x` | undo the last progression edit |
 | `b` + Shift | `X` | redo the last undone progression edit |
 | `x` + Shift | `Q` | copy one rhythm per selected chord to the sinko clipboard |
@@ -109,9 +110,10 @@ only two keys that do the same thing, so a fumbled transport tap still taps.
 EQ `gain` (±3 dB). Everywhere else it is the plain step, because a toggle is a
 toggle.
 
-## The seven panels
+## The nine panels
 
-`Tab` cycles in this order, and **the last four share one slot on screen** — you
+`Tab` cycles in this order. Progression and Transport are side by side at the
+top; Sinko is full width below them; and **the last six share one slot** — you
 never see the synth table and the equaliser at once.
 
 | Panel | What it is | Its own keys |
@@ -119,19 +121,30 @@ never see the synth table and the equaliser at once.
 | **Progression** | the chord list and the selection every edit works on | `Enter` commits here; the block hotkeys above |
 | **Transport** | tempo, loop, metronome, playing, track key, master volume, `[MIDI]` | `Enter` on `metronome` opens its panel, on `[MIDI]` opens the chooser |
 | **Sinko** | the rhythm editor for the chord Progression has selected | see below |
+| **Loops** | the four-bar tap recorder | see below |
 | **Synth** | the three channels side by side, in seven pages | `PageDown` / `PageUp` change page |
 | **Ensembles** | one row per ensemble; `Enter` loads it | `Enter` on `[Save As...]` writes to `ensembles.user.toml` |
 | **EQ** | thirteen bands, one curve at a time | `↑`/`↓` walk `target`, `preset`, `band`, `gain` |
 | **Spectrum** | the live level readout; a display, nothing editable | shares the EQ's `target` cursor |
+| **FX** | the six insert slots and the two aux units | see §FX in `REFERENCE.md` |
 
-On **Synth** and **EQ**, `←`/`→` pick the *column* (or target) and
-`Shift+←`/`→` change the value — the opposite of every other panel.
+On **Synth**, **EQ**, **Spectrum** and **FX**, `←`/`→` pick the *column* (or
+target) and `Shift+←`/`→` change the value — the opposite of every other panel.
 
 **Sinko** rows, in order: `chord`, `pattern`, `offset`, `quant`, `swing`, `hits`,
-`length`, `accent`, `hold`, `mute`, `smooth`, `record`, four take lines,
-`[New Pattern]`, `[Save Pattern As...]`, `[Copy Sinko]`, `[Paste Sinko]`. On
-`hits`, `Enter` toggles the cell under the cursor — **off clears that cell in
-every take**.
+`length`, `accent`, `hold`, `mute`, `loop`, `[New Pattern]`,
+`[Save Pattern As...]`, `[Copy Sinko]`, `[Paste Sinko]`. The hit grid draws under
+the `hits` row rather than as a row of its own, and on `hits` `Enter` toggles the
+cell under the cursor. `Enter` on `loop` opens the **Loops** panel on this chord.
+
+**Loops** rows, in order: `source`, `chord`, `bar`, `quant`, `hits`, `length`,
+`accent`, `hold`, `[Clear Bar]`, `[Record]`, `[Save Loop As...]`. **All four bars
+are drawn**, one grid per line under `hits` (`x` a hit, `=` a cell still ringing,
+`·` a rest); `bar` picks which one the cursor and the edit rows act on. `` ` `` is the tap key and it records a *note*: press for the
+start, release for the end, so holding it down records a length. `[Record]` cycles
+load-and-loop → stop-recording → unload, and `Esc` stops without discarding the
+four bars. `[Save Loop As...]` writes all four bars into the pattern palette as one
+pattern.
 
 **Metronome**, opened from the Transport: `click`, `sound`, `volume`,
 `subdivision`, `swing`. While it is open it takes every key, including `Esc`,

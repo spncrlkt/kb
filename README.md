@@ -211,8 +211,8 @@ another is coming, and a slow second press just stops again.
 Stopping is not pausing: a pause lets the bar you are in finish, so a chord can
 ring for up to a bar, whereas `Esc` abandons the bar and releases every voice. It
 leaves the *position* alone, so the next play resumes where you were. It also
-leaves the metronome and an armed rhythm take alone — those have their own
-switches (`&`, and `Enter` on `record`).
+leaves the metronome and the Looper's recording alone — those have their own
+switches (`&`, and `Enter` on `[Record]`).
 
 Prompts and editors take `Esc` first, where it means "cancel": an open value
 editor reverts and closes, and a prompt closes, before the stop gesture sees the
@@ -245,8 +245,8 @@ The **metronome** is a plain click, the downbeat stronger. `&` — the key next 
 the same with `←`/`→`. It runs whether or not the transport is playing, so it
 doubles as something to practise against with the progression stopped; it sits on
 a voice of its own, so it neither retriggers the progression nor follows its mute.
-Arming a rhythm take needs the click too, so the row reads `on (recording)` when a
-take is forcing it, and your own switch is remembered across the take.
+The Looper's recording needs the click too, so the row reads `on (recording)`
+while it is forcing it on, and your own switch is remembered afterwards.
 
 `Enter` on that row opens the **metronome panel**, which covers the Transport slot
 and closes on `Esc`:
@@ -372,36 +372,88 @@ number beside a chord in the top list is how many times you picked it up, not ho
 many frames it sounded. There is no persistence — the log is the run, and closing
 the app ends it.
 
-### Rhythm patterns (sinko)
+### Rhythm patterns (sinko) and the four-bar looper
 
-A progression entry can play a **one-bar rhythm pattern** instead of one
-whole-bar chord, and can be **offset** across the bar line. The **Sinko** panel
-is where both are set.
+A progression entry can play a **rhythm pattern** instead of one whole-bar chord,
+and can be **offset** across the bar line. Two panels are involved: the **Sinko**
+panel edits the rhythm on the chord the Progression panel has selected, and the
+**Looper** records four bars at once.
 
-Press `$` — the top-left key — to tap a beat. The key is a *physical position*,
-not a character, and like the below-home-row row it never joins the held set, so
-you can hold a two-handed chord and tap with the left pinky without breaking the
+A pattern is **one bar or four**. A one-bar pattern assigned to a chord is that
+chord's rhythm; a four-bar pattern is a *phrase*, and assigning it spreads its
+bars across that chord and the three after it. The libary holds phrases whole —
+`Jazz Chorus` is one four-bar entry rather than four entries whose names have to
+stay in step.
+
+Press `$` — the top-left key — to tap. The key is a *physical position*, not a
+character, and like the below-home-row row it never joins the held set, so you
+can hold a two-handed chord and tap with the left pinky without breaking the
 shape. Tapping works from any panel: the point is to watch the progression while
 you play.
 
 ```
-── Sinko  [recording] ─────────────────────────────────────────────
+── Loops [bar 2 of 4] ─────────────────────────────────────────────
+  ▸ source   the first four chords
+    chord    #3  Am
+    bar      2 of 4
+    quant    1/16
+    hits     3 of 16
+     1  |····|····|····|····|
+   ▸ 2  |··X·|····|····|····|
+     3  |····|····|····|····|
+     4  |····|····|····|····|
+    length   1/4  —  960 ticks
+    accent   55%
+    hold     1/16  —  240 ticks
+   [Clear Bar]
+   [● recording — enter to stop]
+   [Save Loop As...]
+```
+
+- **The looper** loads a bed of four bars — `one chord, four times` or `the first
+  four chords` of the progression — starts the transport looping it, runs the
+  click, and records `$` into it. A press lands in **the bar the clock is on** and
+  sounds *that* bar's chord as you place it, so you are always playing along with
+  the right chord. On each pass the recorded hits play back with their own bar's
+  chord.
+- **`$` records a note, not a dot.** The press is the note's start and the key-up
+  is its end, so the distance between them becomes the hit's **length**: a stab is
+  a tap inside one cell, and holding the key down for two beats records a note two
+  beats long. A note held over a bar line carries into the next bar, up to a bar;
+  the cells it was held through are cleared, because the key was down through
+  them. Holding the key is *one* note — a terminal's auto-repeat is absorbed
+  rather than read as a burst of new hits.
+- **All four bars are on screen**, one grid per line under `hits`: the loop is what
+  you are making, and a bar at a time hides its shape. `x` is a hit, `=` a cell a
+  hit is still sounding through — the recorded length, drawn — and `·` a rest, so a
+  held note reads as a line rather than a dot. **`bar`** (`←`/`→`) picks
+  which one the cursor, the length and accent rows and `[Clear Bar]` act on; the
+  bar the clock is on carries the playhead.
+- **`[Record]`** has three states and is cyclic: press it with nothing loaded to
+  load and loop, press it again to **stop recording** while keeping the loop
+  playing, and press it a third time to unload and hand the progression back.
+  `Esc` stops the transport and the recording but never throws the four bars
+  away — losing work is not something a panic key should do — and the tap's voice
+  is handed back either way, so a note cannot be left ringing.
+- **`[Save Loop As...]`** writes all four bars into the pattern library as **one
+  four-bar pattern**, which then appears in Sinko's `pattern` row like any other.
+  That is the whole hand-off: the looper needs no export path and no place in the
+  session document, because what it produces is a pattern.
+
+```
+── Sinko ──────────────────────────────────────────────────────────
   ▸ chord    #3  Am
-    pattern  Offbeat Eighths  (edited)   [9/23]
+    pattern  Offbeat Eighths  (edited)   [9/19]
     offset   -1/8   (-480 ticks)
     quant    1/8  —  8 steps per bar, 4 hits
     swing    follow transport  (35%, light)
     hits     on        3 of 8
-    length   default  (1/4  —  960 ticks)
+       grid  |······|X·X·X·|······|X·X·X·|
+    length   1/4  —  960 ticks
     accent   100%  (full)
     hold     1/4  —  960 ticks
     mute     1/8  —  480 ticks
-    smooth   1 take per layer
-    record   [● recording]
-     1.00  |xxxxxx|······|xxxxxx|······|
-     0.70  |······|xxxxxx|······|xxxxxx|
-     live  |······|······|······|xxxxxx|
-    ·     |······|······|······|······|
+    loop     [tap 4 bars]
    [New Pattern]
    [Save Pattern As...]
    [Copy Sinko]
@@ -411,27 +463,19 @@ you play.
 - **The grid** is the bar, drawn at whatever resolution the pattern uses: 2, 4,
   8, 16, 32 or 64 steps per bar, which is half notes through sixty-fourths, plus
   the two **triplet** grids, 12 and 24 steps per bar — eighth- and sixteenth-note
-  triplets, which is what a shuffle, a swing line or a 12/8 blues needs. One
-  line per *layer*, so the stack is visible; the `live` line is the take being
-  tapped, snapped to the grid as you go. The cell the bar clock is in is marked
-  `X` on a hit and `+` on a rest.
-- **`hits`** edits the grid cell by cell, so a take you almost like does not have
+  triplets, which is what a shuffle, a swing line or a 12/8 blues needs. It is
+  drawn under the `hits` row rather than as a row of its own: it is a picture of
+  that row's value, and a cursor that could sit on the picture would be a cursor
+  with nothing to do. The cell the bar clock is in is marked `X` on a hit and `+`
+  on a rest.
+- **`hits`** edits the grid cell by cell, so a bar you almost like does not have
   to be tapped again. `←`/`→` walks the cell cursor — the cell it is on is
   *inverted* in the grid rather than given another character, so the bar still
-  reads as hits and rests — and `Enter` toggles. Turning a hit **off** clears that
-  cell in *every* take; turning one **on** puts it in the newest take. Like every
-  other row it writes through, so the change is heard on the next bar, and a
-  silent pattern can be built up one cell at a time. (This replaces the earlier
-  `cells` row, which cycled through every way of filling the grid: at 32 and 64
-  steps those lists run to billions, and the useful operation is taking a hit out
-  of a take you already played.)
-- **Takes stack.** Each bar you tap commits one take as a layer: the newest at
-  full level and each older one a `TAKE_DECAY` (0.7) step quieter, so the stack
-  fades as it builds. There are four layers, one per stab group in the synth, and
-  a hit on one layer never cuts another. The `smooth` row (`←`/`→`) can instead
-  average the last `N` takes into the top layer, which is how a figure tapped
-  several times converges on one clean line — but it merges *different* figures
-  too, so it starts at `1 take per layer`.
+  reads as hits and rests — and `Enter` toggles. Like every other row it writes
+  through, so the change is heard on the next bar, and a silent pattern can be
+  built up one cell at a time. A bar is **one grid**: patterns used to stack
+  several *takes*, each quieter than the last, and that overlapping-takes sound is
+  now the looper's job, one bar at a time.
 - **`hold`** is the *default* length a hit rings, in **ticks**, from a 32nd up to
   the whole bar. `←`/`→` walks the note ladder — a 32nd, a 16th, an 8th, a 3/16, a
   quarter, a 3/8, a half, a 3/4, a whole — so a press lands on a note length
@@ -442,11 +486,10 @@ you play.
   and then walks the same ladder, so a Charleston is a dotted quarter *and* an
   eighth rather than two of whichever one the pattern was assigned with. Setting
   a hit back to the default drops the override rather than storing a copy of it.
-- **`accent`** is how hard that one hit plays, 20% to 100%, multiplied by the
-  take's own level. It is how a metre gets a backbeat that is quieter than its
-  downbeat without a second layer — `Accented Eighths` in the palette is one
-  layer and three accents. Both rows refuse a cell with no hit on it rather than
-  changing a number you cannot hear.
+- **`accent`** is how hard that one hit plays, 20% to 100%. It is how a metre gets
+  a backbeat quieter than its downbeat, and it is the only way to say "quieter" —
+  `Accented Eighths` in the palette is one grid with three accents. Both rows
+  refuse a cell with no hit on it rather than changing a number you cannot hear.
 - **`swing`** is this pattern's own groove: `follow transport`, then straight
   (0%) through to the triplet feel (100%) in tenths. A pattern that names its own
   swing ignores the transport's; one that follows it moves with the metronome
@@ -469,18 +512,13 @@ you play.
   and nothing written to disk. Two chords can both have been given `Quarters` and
   then drift apart, because assigning takes a copy rather than pointing at a
   shared library entry.
-- **A take closes when the bar does**, and its taps are quantized to the nearest
-  cell of the chosen grid. Taps closer together than 30 ms are treated as key
-  repeat, not a second tap.
-- **`Enter` on `record`** arms or disarms. Armed, the click runs (see the
-  metronome above) and each tap sounds the selected chord so you hear the rhythm
-  in context.
+- **A tap is quantized** to the nearest cell of the chosen grid, and taps closer
+  together than 30 ms are treated as key repeat rather than a second tap.
+- **`Enter` on `loop`** opens the Looper panel on the selected chord.
 - **`[New Pattern]`** gives the selected chord a blank rhythm of its own — named,
-  editable and audible from the first tap, with the library left alone. There is
+  editable and audible from the first hit, with the library left alone. There is
   no hidden draft: a chord with no rhythm of its own cannot be edited, and the
-  shape rows say so rather than changing numbers you cannot hear. Recording does
-  the same thing implicitly: tapping a take on a chord that has no rhythm gives
-  it one, built from the take.
+  shape rows say so rather than changing numbers you cannot hear.
 - **`[Copy Sinko]`** / **`[Paste Sinko]`** (`Shift+Q` / `Shift+J`, see the key
   table) move a rhythm between chords. Copy
   takes the selected chord's rhythm — grid, hits, hold and muted tail — to a
@@ -508,7 +546,7 @@ you play.
   library, so assigning and clearing are the same gesture — and assigning takes a
   copy. It shows the chord's own rhythm, with `(edited)` when that rhythm no
   longer matches the library pattern it is named after, and its place in the
-  palette as `[8/23]` so a long walk says how far it has to go. `Shift+←/→` jumps
+  palette as `[8/19]` so a long walk says how far it has to go. `Shift+←/→` jumps
   five at a time; the count is what tells you whether the jump overshot.
 - **The `offset` row** (`←`/`→`, or `←`/`→` in the Progression panel) moves the
   chord along the same note ladder, up to a whole note either way. It is
@@ -551,22 +589,27 @@ on the patterns that need them.
 
 ### Multi-bar phrases
 
-A pattern is always **one bar**. A figure that spans two or four bars is
-therefore a *set* of one-bar patterns whose names carry their place in it:
-`Jazz Chorus 1/4`, `2/4`, `3/4`, `4/4`, or `Son Clave 1/2` and `2/2`. Assign
-them to consecutive chords and the phrase is the progression; the numbering is
-the whole contract, so each set is kept together as one run in the palette.
+A pattern holds **one to four bars**, so a figure that spans the bar line is one
+entry rather than a set of entries whose names have to stay in step.
 
-- **`Jazz Chorus 1/4`–`4/4`** is a four-bar comp on the sixteenth grid, short
-  holds throughout: state the pulse on 1 and 3, answer it with a Charleston, add
-  the "&" of 3, then tighten the same figure into a turnaround fill.
-- **`Son Clave 1/2`, `2/2`** is the 3-2 son clave: the three-side (1, the "&" of
-  2, beat 4) and then the two-side (beats 2 and 3), on the eighth grid.
+- **`Jazz Chorus`** is a four-bar comp on the sixteenth grid, short holds
+  throughout: state the pulse on 1 and 3, answer it with a Charleston, add the
+  "&" of 3, then tighten the same figure into a turnaround fill.
+- **`Son Clave`** is the 3-2 son clave over two bars: the three-side (1, the "&"
+  of 2, beat 4) and then the two-side (beats 2 and 3), on the eighth grid.
 
-This is what the one-bar model buys: a phrase is data, not a mode, and any bar of
-it can be swapped, offset or muted on the chord it lands on. The cost is that the
-bars have to be lined up by hand — assign `1/4` to the first chord, `2/4` to the
-second, and so on — and a set used out of order is just four unrelated bars.
+Assigning one spreads its bars across consecutive chords in a **single undoable
+edit** — one `Ctrl+Z` takes all four bars back. It used to be four separate
+one-bar patterns named `Jazz Chorus 1/4` … `4/4`, which is the same musical idea
+with the contract living in a string: rename one, or assign them out of order,
+and the phrase quietly stops being a phrase.
+
+What the one-bar model bought was that a phrase is data, not a mode — and that is
+kept: `AssignedRhythm` records which bar of the phrase a chord holds, so any bar
+of it can still be edited, offset, or muted on the chord it lands on, and it is
+what lets the looper save four recorded bars as one entry. The four-bar ceiling
+is a choice, not a limit of the format: a phrase longer than the transport's
+four-bar bed has no gesture that would record it yet.
 
 That palette lives in the **tracked** `rhythms.toml`, and your own patterns live
 in `rhythms.user.toml`, which is gitignored and created empty the first time the
@@ -583,7 +626,7 @@ the binary, which are also what stands in if the file goes missing.
 `Tab` / `Shift+Tab` cycles focus:
 
 ```
-Progression → Transport → Sinko → Synth → Ensembles → EQ → Spectrum → FX → (wrap)
+Progression → Transport → Sinko → Loops → Synth → Ensembles → EQ → Spectrum → FX → (wrap)
 ```
 
 Within a panel: `↑`/`↓` move the row and `←`/`→` adjust the selected value.
@@ -598,11 +641,12 @@ with `Shift+←/→` as the value nudge: the **Synth** table, and the **Progress
 panel while a run of chords is selected (its menu column appears then — see
 below).
 
-Four views share one slot on the screen — **Synth**, **Ensembles**, **EQ** and
-**Spectrum** — and a fifth, **FX**, is the effect rack opened out. They are
-separate stops on `Tab` rather than sub-tabs of one panel because each is a page
-of its own height: a thirteen-band curve and a six-slot rack would cost the whole
-layout on every panel that had to leave room for them.
+Six views share one slot on the screen — **Synth**, **Ensembles**, **Loops**,
+**EQ**, **Spectrum** and **FX**. They are separate stops on `Tab` rather than
+sub-tabs of one panel because each is a page of its own height: a thirteen-band
+curve and a six-slot rack would cost the whole layout on every panel that had to
+leave room for them. **Sinko** is the other borrowed slot: the chord log takes
+its place when the log is up.
 
 The **Synth** panel is three channels side by side as columns with the master
 block underneath, **paged** because two dozen settings per channel do not fit on
@@ -653,9 +697,10 @@ are auditioning in.
 
 **Three levels, not two.** An *instrument* is a register-neutral voice. A
 *placement* is a named instrument plus where it sits. An *ensemble* is three
-placements and the mixer, which is what the palette ships forty-two of. The split
-is what lets `Celesta` — Marimba's top register, an octave up — be dropped into
-the bass and still be a celesta.
+placements and the mixer, which is what the palette ships seventy-four of. The
+split is what lets one instrument be dropped into any of the three registers and
+still be itself: `X-Mod Clang` is the middle of the showcase, `Ring Bell` its top,
+and neither stops being what it is for having been moved.
 
 Saving the **orchestra** is the existing `[Save As...]` on the Ensembles panel:
 an ensemble is three placements plus the mixer, so the whole thing travels
@@ -1053,9 +1098,9 @@ What goes in the file:
 - **The chord tones you played**, not the synth's voicing. The audio path
   doubles sparse chords an octave out for timbre; that is sound design, not
   musical content, so it stays out of the file.
-- **Velocities from the take gains.** The synth has no velocity, so a quieter
-  layer is only audible as a quieter layer; writing `gain × 100` is where the
-  rhythm's dynamics reach the file.
+- **Velocities from the hit accents.** The synth has no velocity — an accent is
+  a gain, so it is only audible as a quieter note; writing `accent × 100` is
+  where the rhythm's dynamics reach the file.
 - **Timings from the plan the scheduler plays.** `arrangement.rs` is the single
   source of truth for when a note starts, so an export cannot disagree with what
   you heard — which was the one place this could have drifted.
@@ -1124,7 +1169,7 @@ The code is split so it can grow:
 | ---- | ---- |
 | `midi.rs` | Pure model — a progression becomes a `Score` of timed notes tagged Low/Mid/High. No audio, no terminal, no filesystem. |
 | `arrangement.rs` | The timing seam. A progression — each entry carrying its own rhythm — becomes timed stabs; the scheduler takes a per-bar slice and the exporter renders the whole thing, so the two cannot disagree. Pure, and it needs nothing but the slots. |
-| `rhythm.rs` | Rhythm patterns: the step grid, its layers, quantization and the tap maths. Pure. |
+| `rhythm.rs` | Rhythm patterns: the bar grid, multi-bar phrases, quantization and the tap maths. Pure. |
 | `rhythm_store.rs` | The pattern *palette*: the tracked `rhythms.toml` plus the user's `rhythms.user.toml`, which is what `[Save Pattern As...]` writes and what the `pattern` row offers. The only filesystem code in the rhythm feature. |
 | `smf.rs` | Pure byte writer and reader. `TrackLayout::Single` writes the current one-track file; `TrackLayout::PerLayer` is already implemented for routing Low/Mid/High to separate channels. Framing of the embedded event lives here. |
 | `project.rs` | The session document itself: versioned TOML, and the domain conversions. |
@@ -1202,16 +1247,17 @@ A wider window puts the extra columns into the bar grid rather than into a wider
 margin, since the grid is the one thing on screen that is a drawing.
 
 `Tab` walks the panels **in that layout order** — along the first row (the chord
-list, then the transport), then down through the rhythm panel to the synth slot —
-so `Shift+Tab` retraces it and the cursor always moves the way the eye does. The
-focused panel is the one wearing the heavy rule and the cyan band. The Sinko panel
-and the Synth slot expand when focused; the chord list, the transport and the
-metronome are always open, which is what keeps the default view 15 rows.
+list, then the transport), then down through the rhythm panel and the four-bar
+looper to the synth slot — so `Shift+Tab` retraces it and the cursor always moves
+the way the eye does. The focused panel is the one wearing the heavy rule and the
+cyan band. The Sinko panel and the Synth slot expand when focused; the chord
+list, the transport and the metronome are always open, which is what keeps the
+default view 15 rows.
 
-Four `Tab` stops share that last slot — **Synth**, **Ensembles**, **EQ** and
-**Spectrum** — and it draws whichever one has focus. That is why a page of
-thirteen EQ bands and a twelve-row spectrum cost the other views nothing: they
-are four faces of one panel, not four panels.
+Six `Tab` stops share that last slot — **Synth**, **Ensembles**, **Loops**,
+**EQ**, **Spectrum** and **FX** — and it draws whichever one has focus. That is
+why a page of thirteen EQ bands and a twelve-row spectrum cost the other views
+nothing: they are six faces of one panel, not six panels.
 
 A held key is a green block, a hotkey position is cyan in brackets, a chord key
 is dark grey in brackets; an unlatched register reads `—`, one explicitly
@@ -1520,7 +1566,7 @@ keyboard; they alias less badly there than the naive saw always does.
 
 | File          | Notes                                                                  |
 | ------------- | ---------------------------------------------------------------------- |
-| `ensembles.toml` | **Tracked.** The forty-two shipped ensembles. Compiled in with `include_str!`, so editing it is how the palette is changed. |
+| `ensembles.toml` | **Tracked.** The seventy-four shipped ensembles. Compiled in with `include_str!`, so editing it is how the palette is changed. |
 | `ensembles.user.toml` | **Gitignored**, created empty when missing. What `[Save As...]` writes; layered over the defaults by name at start-up. |
 | `instruments.toml` | **Tracked.** The shipped instrument library — 155 voices. Also compiled in with `include_str!`. |
 | `instruments.user.toml` | **Gitignored**, created empty when missing. What saving an instrument writes; layered over the defaults by name. |
@@ -1528,7 +1574,7 @@ keyboard; they alias less badly there than the naive saw always does.
 | `eq_presets.user.toml` | **Gitignored**, created empty when missing. What `[Save Curve As...]` writes; layered over the defaults by name. |
 | `fx_presets.toml` | **Tracked.** The shipped effect preset library (72 presets, one or two per kind and variant). Compiled in with `include_str!`, like the others. |
 | `fx_presets.user.toml` | **Gitignored**, created empty when missing. What the FX panel's `[Save Effect As...]` writes; layered over the defaults by name. |
-| `rhythms.toml` | **Tracked.** The shipped pattern palette (23 patterns). Never written. A test keeps it equal to the built-ins; rewrite it with `cargo test regenerate_the_tracked_patterns -- --ignored`. |
+| `rhythms.toml` | **Tracked.** The shipped pattern palette (19 patterns, some of them four bars long). Never written. A test keeps it equal to the built-ins; rewrite it with `cargo test regenerate_the_tracked_patterns -- --ignored`. |
 | `rhythms.user.toml` | **Gitignored**, created empty when missing. What `[Save Pattern As...]` writes; layered over the palette by name. A chord's own rhythm is *not* here — it lives in the session document, so export to keep it. |
 | `progressions/` | Where MIDI exports are written and imported from, created on first launch. **Gitignored** — these are session data, not source. |
 | `settings.toml` | **Gitignored.** The key, tempo and master volume of the last run, written once they settle and read back at start-up. Not created until one of them changes; a missing file simply means the defaults. |
@@ -1547,9 +1593,9 @@ keyboard; they alias less badly there than the naive saw always does.
   Sinko panel needs 35 rows, the Synth and EQ panels 34 and the Spectrum 33,
   mostly because the panels around them are all still there. The FX panel is 25.
   The default view is 15; on a short terminal the panels go from the bottom up,
-  since the synth slot is drawn last — and the ensemble list is as long as the
-  library, so it is the one view that scrolls off the bottom of any terminal
-  rather than being clipped.
+  since the synth slot is drawn last. The ensemble list is the one view that is a
+  *window* rather than a fixed row list, because it is as long as the library:
+  it draws twenty rows and scrolls with the cursor.
 - **Clear-all is two presses.** `Cmd+A` then delete. The model has one delete —
   a range — so there is nothing a dedicated key could do that this does not.
 - **The audition's release is a constant, not a setting.** `preview fade`

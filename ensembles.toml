@@ -2,19 +2,31 @@
 #
 # This file is the source, compiled in with `include_str!`. Each placement
 # names an instrument from `instruments.toml` and says where it sits — its
-# level, its transpose, its pan and how much reverb it sends. `low` and
-# `high` each play one note of the chord and `mid` plays the rest, which is
-# why a bass belongs low and a chord-voicing instrument belongs in the middle.
+# level, its transpose, its pan and how much reverb it sends.
+#
+# The three registers are three parts, and the chord is voiced across them:
+# `low` takes the root an octave below, `mid` takes the chord itself and
+# `high` takes the top note an octave above. So a bass belongs in `low`, a
+# chord-voicing instrument in the middle and something that sparkles on top —
+# and `transpose` is a colour on top of that, not the thing that makes a
+# register the register.
+
+# The first screen: the everyday palette, one per role, most-used first.
+# This is what a player sees when they open the picker, so it is deliberately
+# varied — a piano, an electric piano, a Wurli, an organ, a pad, a string, a
+# pluck, a guitar, mallets, a bell, a clav, two basses, brass, a wind and a
+# choir. `Default` stays first because it is the reference point the whole
+# palette is described against, not because it is the best sound here.
 
 [[ensembles]]
 name = "Default"
 
 [ensembles.low]
-instrument = "Default low"
-volume = 4.0
+instrument = "Deep Sine"
+volume = 4.6
 transpose = 0.0
-reverb_send = 0.0
-pan = 0.0
+reverb_send = 0.1
+pan = -0.15
 
 [ensembles.mid]
 instrument = "Default low"
@@ -24,11 +36,11 @@ reverb_send = 0.0
 pan = 0.0
 
 [ensembles.high]
-instrument = "Default low"
-volume = 4.0
+instrument = "Bell"
+volume = 2.4
 transpose = 0.0
-reverb_send = 0.0
-pan = 0.0
+reverb_send = 0.32
+pan = 0.15
 
 [ensembles.mixer]
 reverb_mix = 0.0
@@ -40,509 +52,14 @@ lfo_wave = "sine"
 note_length = 1.0
 
 [[ensembles]]
-name = "Warm Pad"
-
-[ensembles.low]
-instrument = "Warm Pad low"
-volume = 3.5
-transpose = 0.0
-reverb_send = 0.10000000149011612
-pan = -0.20000000298023224
-
-[ensembles.mid]
-instrument = "Warm Pad"
-volume = 3.0
-transpose = 0.0
-reverb_send = 0.4000000059604645
-pan = 0.0
-
-[ensembles.high]
-instrument = "Warm Pad high"
-volume = 3.0
-transpose = 0.0
-reverb_send = 0.5
-pan = 0.20000000298023224
-
-[ensembles.mixer]
-reverb_mix = 0.5
-reverb_size = 0.800000011920929
-master_volume = 5.0
-master_mute = false
-lfo_rate = 5.0
-lfo_wave = "sine"
-note_length = 1.0
-
-[[ensembles]]
-name = "Plucky"
-
-[ensembles.low]
-instrument = "Plucky low"
-volume = 4.0
-transpose = 0.0
-reverb_send = 0.0
-pan = 0.0
-
-[ensembles.mid]
-instrument = "Pluck"
-volume = 3.4000000953674316
-transpose = 0.0
-reverb_send = 0.11999999731779099
-pan = 0.0
-
-[ensembles.high]
-instrument = "Plucky high"
-volume = 2.5999999046325684
-transpose = 12.0
-reverb_send = 0.20000000298023224
-pan = 0.0
-
-[ensembles.mixer]
-reverb_mix = 0.2199999988079071
-reverb_size = 0.44999998807907104
-master_volume = 5.0
-master_mute = false
-lfo_rate = 5.0
-lfo_wave = "sine"
-note_length = 0.25
-
-[[ensembles]]
-name = "Bassy"
-
-[ensembles.low]
-instrument = "Deep Sine"
-volume = 6.0
-transpose = 0.0
-reverb_send = 0.0
-pan = 0.0
-
-[ensembles.mid]
-instrument = "Bassy mid"
-volume = 2.4000000953674316
-transpose = 0.0
-reverb_send = 0.0
-pan = 0.0
-
-[ensembles.high]
-instrument = "Bassy high"
-volume = 1.399999976158142
-transpose = 0.0
-reverb_send = 0.0
-pan = 0.0
-
-[ensembles.mixer]
-reverb_mix = 0.0
-reverb_size = 0.30000001192092896
-master_volume = 5.0
-master_mute = false
-lfo_rate = 5.0
-lfo_wave = "sine"
-note_length = 0.5
-
-[[ensembles]]
-name = "Glass"
-
-[ensembles.low]
-instrument = "Glass low"
-volume = 3.0
-transpose = 0.0
-reverb_send = 0.30000001192092896
-pan = -0.4000000059604645
-
-[ensembles.mid]
-instrument = "Glass Bell"
-volume = 3.0
-transpose = 0.0
-reverb_send = 0.5
-pan = 0.0
-
-[ensembles.high]
-instrument = "Glass high"
-volume = 3.0
-transpose = 0.0
-reverb_send = 0.699999988079071
-pan = 0.4000000059604645
-
-[ensembles.mixer]
-reverb_mix = 0.6000000238418579
-reverb_size = 0.8500000238418579
-master_volume = 5.0
-master_mute = false
-lfo_rate = 5.0
-lfo_wave = "sine"
-note_length = 1.0
-
-[[ensembles]]
-name = "Drawbar Organ"
-
-[ensembles.low]
-instrument = "Drawbar Organ low"
-volume = 4.400000095367432
-transpose = 0.0
-reverb_send = 0.0
-pan = 0.0
-
-[ensembles.mid]
-instrument = "Drawbar Organ"
-volume = 3.4000000953674316
-transpose = 0.0
-reverb_send = 0.0
-pan = 0.0
-
-[ensembles.high]
-instrument = "Drawbar Organ high"
-volume = 2.799999952316284
-transpose = 0.0
-reverb_send = 0.0
-pan = 0.0
-
-[ensembles.mixer]
-reverb_mix = 0.0
-reverb_size = 0.30000001192092896
-master_volume = 5.0
-master_mute = false
-lfo_rate = 6.199999809265137
-lfo_wave = "sine"
-note_length = 1.0
-
-[[ensembles]]
-name = "Rock Organ"
-
-[ensembles.low]
-instrument = "Rock Organ low"
-volume = 4.199999809265137
-transpose = 0.0
-reverb_send = 0.05000000074505806
-pan = -0.20000000298023224
-
-[ensembles.mid]
-instrument = "Rock Organ"
-volume = 3.200000047683716
-transpose = 0.0
-reverb_send = 0.15000000596046448
-pan = 0.20000000298023224
-
-[ensembles.high]
-instrument = "Rock Organ high"
-volume = 2.4000000953674316
-transpose = 0.0
-reverb_send = 0.20000000298023224
-pan = 0.0
-
-[ensembles.mixer]
-reverb_mix = 0.20000000298023224
-reverb_size = 0.44999998807907104
-master_volume = 5.0
-master_mute = false
-lfo_rate = 7.0
-lfo_wave = "triangle"
-note_length = 1.0
-
-[[ensembles]]
-name = "Pipe Organ"
-
-[ensembles.low]
-instrument = "Pipe Organ low"
-volume = 4.199999809265137
-transpose = 0.0
-reverb_send = 0.4000000059604645
-pan = -0.25
-
-[ensembles.mid]
-instrument = "Pipe Organ"
-volume = 3.4000000953674316
-transpose = 0.0
-reverb_send = 0.550000011920929
-pan = 0.0
-
-[ensembles.high]
-instrument = "Pipe Organ high"
-volume = 2.799999952316284
-transpose = 12.0
-reverb_send = 0.699999988079071
-pan = 0.25
-
-[ensembles.mixer]
-reverb_mix = 0.6200000047683716
-reverb_size = 0.9200000166893005
-master_volume = 5.0
-master_mute = false
-lfo_rate = 5.0
-lfo_wave = "sine"
-note_length = 1.0
-
-[[ensembles]]
-name = "Gospel Organ"
-
-[ensembles.low]
-instrument = "Gospel Organ low"
-volume = 4.400000095367432
-transpose = 0.0
-reverb_send = 0.0
-pan = 0.0
-
-[ensembles.mid]
-instrument = "Gospel Organ"
-volume = 3.4000000953674316
-transpose = 0.0
-reverb_send = 0.0
-pan = 0.0
-
-[ensembles.high]
-instrument = "Gospel Organ high"
-volume = 3.200000047683716
-transpose = 0.0
-reverb_send = 0.10000000149011612
-pan = 0.0
-
-[ensembles.mixer]
-reverb_mix = 0.11999999731779099
-reverb_size = 0.4000000059604645
-master_volume = 5.0
-master_mute = false
-lfo_rate = 7.400000095367432
-lfo_wave = "sine"
-note_length = 0.5
-
-[[ensembles]]
-name = "Gedeckt"
-
-[ensembles.low]
-instrument = "Gedeckt low"
-volume = 3.5999999046325684
-transpose = 0.0
-reverb_send = 0.30000001192092896
-pan = -0.20000000298023224
-
-[ensembles.mid]
-instrument = "Gedeckt"
-volume = 3.200000047683716
-transpose = 0.0
-reverb_send = 0.4000000059604645
-pan = 0.0
-
-[ensembles.high]
-instrument = "Gedeckt high"
-volume = 2.5999999046325684
-transpose = 0.0
-reverb_send = 0.5
-pan = 0.20000000298023224
-
-[ensembles.mixer]
-reverb_mix = 0.3499999940395355
-reverb_size = 0.699999988079071
-master_volume = 5.0
-master_mute = false
-lfo_rate = 5.0
-lfo_wave = "sine"
-note_length = 1.0
-
-[[ensembles]]
-name = "Electric Piano"
-
-[ensembles.low]
-instrument = "Electric Piano low"
-volume = 4.199999809265137
-transpose = 0.0
-reverb_send = 0.05000000074505806
-pan = -0.15000000596046448
-
-[ensembles.mid]
-instrument = "Rhodes"
-volume = 3.4000000953674316
-transpose = 0.0
-reverb_send = 0.15000000596046448
-pan = 0.0
-
-[ensembles.high]
-instrument = "Electric Piano high"
-volume = 2.200000047683716
-transpose = 12.0
-reverb_send = 0.20000000298023224
-pan = 0.0
-
-[ensembles.mixer]
-reverb_mix = 0.18000000715255737
-reverb_size = 0.44999998807907104
-master_volume = 5.0
-master_mute = false
-lfo_rate = 5.0
-lfo_wave = "sine"
-note_length = 0.5
-
-[[ensembles]]
-name = "Rhodes Bright"
-
-[ensembles.low]
-instrument = "Rhodes Bright low"
-volume = 4.199999809265137
-transpose = 0.0
-reverb_send = 0.05000000074505806
-pan = -0.15000000596046448
-
-[ensembles.mid]
-instrument = "Rhodes Bright"
-volume = 3.5999999046325684
-transpose = 0.0
-reverb_send = 0.11999999731779099
-pan = 0.0
-
-[ensembles.high]
-instrument = "Rhodes Bright high"
-volume = 2.799999952316284
-transpose = 12.0
-reverb_send = 0.18000000715255737
-pan = 0.0
-
-[ensembles.mixer]
-reverb_mix = 0.1599999964237213
-reverb_size = 0.41999998688697815
-master_volume = 5.0
-master_mute = false
-lfo_rate = 5.0
-lfo_wave = "sine"
-note_length = 0.5
-
-[[ensembles]]
-name = "Rhodes Dark"
-
-[ensembles.low]
-instrument = "Rhodes Dark low"
-volume = 4.400000095367432
-transpose = 0.0
-reverb_send = 0.10000000149011612
-pan = -0.20000000298023224
-
-[ensembles.mid]
-instrument = "Rhodes Dark"
-volume = 3.200000047683716
-transpose = 0.0
-reverb_send = 0.20000000298023224
-pan = 0.0
-
-[ensembles.high]
-instrument = "Rhodes Dark high"
-volume = 2.0
-transpose = 0.0
-reverb_send = 0.2800000011920929
-pan = 0.0
-
-[ensembles.mixer]
-reverb_mix = 0.30000001192092896
-reverb_size = 0.6000000238418579
-master_volume = 5.0
-master_mute = false
-lfo_rate = 5.0
-lfo_wave = "sine"
-note_length = 0.5
-
-[[ensembles]]
-name = "Wurli"
-
-[ensembles.low]
-instrument = "Wurli low"
-volume = 4.400000095367432
-transpose = 0.0
-reverb_send = 0.05000000074505806
-pan = -0.10000000149011612
-
-[ensembles.mid]
-instrument = "Wurli"
-volume = 3.200000047683716
-transpose = 0.0
-reverb_send = 0.11999999731779099
-pan = 0.0
-
-[ensembles.high]
-instrument = "Wurli high"
-volume = 2.0
-transpose = 12.0
-reverb_send = 0.15000000596046448
-pan = 0.0
-
-[ensembles.mixer]
-reverb_mix = 0.11999999731779099
-reverb_size = 0.4000000059604645
-master_volume = 5.0
-master_mute = false
-lfo_rate = 5.0
-lfo_wave = "sine"
-note_length = 0.5
-
-[[ensembles]]
-name = "Wurli Bark"
-
-[ensembles.low]
-instrument = "Wurli Bark low"
-volume = 4.599999904632568
-transpose = 0.0
-reverb_send = 0.0
-pan = 0.0
-
-[ensembles.mid]
-instrument = "Wurli Bark"
-volume = 3.5999999046325684
-transpose = 0.0
-reverb_send = 0.10000000149011612
-pan = 0.0
-
-[ensembles.high]
-instrument = "Wurli Bark high"
-volume = 2.4000000953674316
-transpose = 12.0
-reverb_send = 0.11999999731779099
-pan = 0.0
-
-[ensembles.mixer]
-reverb_mix = 0.14000000059604645
-reverb_size = 0.3799999952316284
-master_volume = 5.0
-master_mute = false
-lfo_rate = 5.0
-lfo_wave = "sine"
-note_length = 0.5
-
-[[ensembles]]
-name = "Clav"
-
-[ensembles.low]
-instrument = "Clav low"
-volume = 4.599999904632568
-transpose = 0.0
-reverb_send = 0.0
-pan = 0.0
-
-[ensembles.mid]
-instrument = "Clav"
-volume = 3.4000000953674316
-transpose = 0.0
-reverb_send = 0.05000000074505806
-pan = 0.10000000149011612
-
-[ensembles.high]
-instrument = "Clav high"
-volume = 2.4000000953674316
-transpose = 12.0
-reverb_send = 0.10000000149011612
-pan = 0.0
-
-[ensembles.mixer]
-reverb_mix = 0.05000000074505806
-reverb_size = 0.30000001192092896
-master_volume = 5.0
-master_mute = false
-lfo_rate = 5.0
-lfo_wave = "sine"
-note_length = 0.25
-
-[[ensembles]]
 name = "Grand Piano"
 
 [ensembles.low]
-instrument = "Grand Piano low"
-volume = 4.400000095367432
+instrument = "Upright Bass"
+volume = 4.6
 transpose = 0.0
-reverb_send = 0.18000000715255737
-pan = -0.30000001192092896
+reverb_send = 0.1
+pan = -0.15
 
 [ensembles.mid]
 instrument = "Grand Piano"
@@ -552,11 +69,11 @@ reverb_send = 0.25999999046325684
 pan = 0.0
 
 [ensembles.high]
-instrument = "Honky Tonk Tine"
-volume = 2.5999999046325684
-transpose = 12.0
-reverb_send = 0.3400000035762787
-pan = 0.30000001192092896
+instrument = "Celesta"
+volume = 2.4
+transpose = 0.0
+reverb_send = 0.32
+pan = 0.15
 
 [ensembles.mixer]
 reverb_mix = 0.2800000011920929
@@ -568,32 +85,197 @@ lfo_wave = "sine"
 note_length = 0.5
 
 [[ensembles]]
-name = "Bell"
+name = "Electric Piano"
 
 [ensembles.low]
-instrument = "Bell low"
-volume = 3.200000047683716
+instrument = "Electric Bass"
+volume = 4.6
 transpose = 0.0
-reverb_send = 0.3499999940395355
-pan = -0.25
+reverb_send = 0.1
+pan = -0.15
 
 [ensembles.mid]
-instrument = "Bell"
-volume = 2.799999952316284
-transpose = 12.0
-reverb_send = 0.44999998807907104
-pan = 0.25
-
-[ensembles.high]
-instrument = "Bell high"
-volume = 2.200000047683716
-transpose = 19.0
-reverb_send = 0.550000011920929
+instrument = "Rhodes"
+volume = 3.4000000953674316
+transpose = 0.0
+reverb_send = 0.15000000596046448
 pan = 0.0
 
+[ensembles.high]
+instrument = "Glass Bell"
+volume = 2.4
+transpose = 0.0
+reverb_send = 0.32
+pan = 0.15
+
 [ensembles.mixer]
-reverb_mix = 0.550000011920929
+reverb_mix = 0.18000000715255737
+reverb_size = 0.44999998807907104
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.0
+lfo_wave = "sine"
+note_length = 0.5
+
+[[ensembles]]
+name = "Wurli"
+
+[ensembles.low]
+instrument = "Electric Bass"
+volume = 4.6
+transpose = 0.0
+reverb_send = 0.1
+pan = -0.15
+
+[ensembles.mid]
+instrument = "Wurli"
+volume = 3.200000047683716
+transpose = 0.0
+reverb_send = 0.11999999731779099
+pan = 0.0
+
+[ensembles.high]
+instrument = "Vibraphone"
+volume = 2.4
+transpose = 0.0
+reverb_send = 0.32
+pan = 0.15
+
+[ensembles.mixer]
+reverb_mix = 0.11999999731779099
+reverb_size = 0.4000000059604645
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.0
+lfo_wave = "sine"
+note_length = 0.5
+
+[[ensembles]]
+name = "Drawbar Organ"
+
+[ensembles.low]
+instrument = "Sub Bass mid"
+volume = 4.6
+transpose = 0.0
+reverb_send = 0.1
+pan = -0.15
+
+[ensembles.mid]
+instrument = "Drawbar Organ"
+volume = 3.4000000953674316
+transpose = 0.0
+reverb_send = 0.0
+pan = 0.0
+
+[ensembles.high]
+instrument = "X-Mod Organ"
+volume = 2.4
+transpose = 0.0
+reverb_send = 0.32
+pan = 0.15
+
+[ensembles.mixer]
+reverb_mix = 0.0
+reverb_size = 0.30000001192092896
+master_volume = 5.0
+master_mute = false
+lfo_rate = 6.199999809265137
+lfo_wave = "sine"
+note_length = 1.0
+
+[[ensembles]]
+name = "Warm Pad"
+
+[ensembles.low]
+instrument = "Sub Bass mid"
+volume = 4.6
+transpose = 0.0
+reverb_send = 0.1
+pan = -0.15
+
+[ensembles.mid]
+instrument = "Warm Pad"
+volume = 3.0
+transpose = 0.0
+reverb_send = 0.4000000059604645
+pan = 0.0
+
+[ensembles.high]
+instrument = "Glass Bell"
+volume = 2.4
+transpose = 0.0
+reverb_send = 0.32
+pan = 0.15
+
+[ensembles.mixer]
+reverb_mix = 0.5
 reverb_size = 0.800000011920929
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.0
+lfo_wave = "sine"
+note_length = 1.0
+
+[[ensembles]]
+name = "String Pad"
+
+[ensembles.low]
+instrument = "Sub Bass mid"
+volume = 4.6
+transpose = 0.0
+reverb_send = 0.1
+pan = -0.15
+
+[ensembles.mid]
+instrument = "String Ensemble"
+volume = 3.0
+transpose = 0.0
+reverb_send = 0.5
+pan = 0.0
+
+[ensembles.high]
+instrument = "Celesta"
+volume = 2.4
+transpose = 0.0
+reverb_send = 0.32
+pan = 0.15
+
+[ensembles.mixer]
+reverb_mix = 0.44999998807907104
+reverb_size = 0.800000011920929
+master_volume = 5.0
+master_mute = false
+lfo_rate = 4.599999904632568
+lfo_wave = "sine"
+note_length = 1.0
+
+[[ensembles]]
+name = "Plucky"
+
+[ensembles.low]
+instrument = "Upright Bass"
+volume = 4.6
+transpose = 0.0
+reverb_send = 0.1
+pan = -0.15
+
+[ensembles.mid]
+instrument = "Pluck"
+volume = 3.4000000953674316
+transpose = 0.0
+reverb_send = 0.11999999731779099
+pan = 0.0
+
+[ensembles.high]
+instrument = "Celesta"
+volume = 2.4
+transpose = 0.0
+reverb_send = 0.32
+pan = 0.15
+
+[ensembles.mixer]
+reverb_mix = 0.2199999988079071
+reverb_size = 0.44999998807907104
 master_volume = 5.0
 master_mute = false
 lfo_rate = 5.0
@@ -601,14 +283,47 @@ lfo_wave = "sine"
 note_length = 0.25
 
 [[ensembles]]
+name = "Nylon Guitar"
+
+[ensembles.low]
+instrument = "Upright Bass"
+volume = 4.6
+transpose = 0.0
+reverb_send = 0.1
+pan = -0.15
+
+[ensembles.mid]
+instrument = "Nylon Guitar"
+volume = 3.4000000953674316
+transpose = 0.0
+reverb_send = 0.20000000298023224
+pan = 0.30000001192092896
+
+[ensembles.high]
+instrument = "Kalimba"
+volume = 2.4
+transpose = 0.0
+reverb_send = 0.32
+pan = 0.15
+
+[ensembles.mixer]
+reverb_mix = 0.2199999988079071
+reverb_size = 0.5
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.0
+lfo_wave = "sine"
+note_length = 0.5
+
+[[ensembles]]
 name = "Marimba"
 
 [ensembles.low]
-instrument = "Marimba low"
-volume = 4.400000095367432
+instrument = "Upright Bass"
+volume = 4.6
 transpose = 0.0
-reverb_send = 0.05000000074505806
-pan = -0.10000000149011612
+reverb_send = 0.1
+pan = -0.15
 
 [ensembles.mid]
 instrument = "Marimba"
@@ -619,10 +334,10 @@ pan = 0.10000000149011612
 
 [ensembles.high]
 instrument = "Celesta"
-volume = 2.0
-transpose = 12.0
-reverb_send = 0.20000000298023224
-pan = 0.0
+volume = 2.4
+transpose = 0.0
+reverb_send = 0.32
+pan = 0.15
 
 [ensembles.mixer]
 reverb_mix = 0.15000000596046448
@@ -637,11 +352,11 @@ note_length = 0.25
 name = "Vibraphone"
 
 [ensembles.low]
-instrument = "Vibraphone low"
-volume = 4.0
+instrument = "Upright Bass"
+volume = 4.6
 transpose = 0.0
-reverb_send = 0.25
-pan = -0.3499999940395355
+reverb_send = 0.1
+pan = -0.15
 
 [ensembles.mid]
 instrument = "Vibraphone"
@@ -651,11 +366,11 @@ reverb_send = 0.3499999940395355
 pan = 0.0
 
 [ensembles.high]
-instrument = "Vibraphone high"
-volume = 2.799999952316284
-transpose = 12.0
-reverb_send = 0.44999998807907104
-pan = 0.3499999940395355
+instrument = "Glass Bell"
+volume = 2.4
+transpose = 0.0
+reverb_send = 0.32
+pan = 0.15
 
 [ensembles.mixer]
 reverb_mix = 0.4000000059604645
@@ -667,14 +382,1663 @@ lfo_wave = "sine"
 note_length = 0.5
 
 [[ensembles]]
+name = "Bell"
+
+[ensembles.low]
+instrument = "Sub Bass mid"
+volume = 4.6
+transpose = 0.0
+reverb_send = 0.1
+pan = -0.15
+
+[ensembles.mid]
+instrument = "Bell"
+volume = 2.799999952316284
+transpose = 12.0
+reverb_send = 0.44999998807907104
+pan = 0.25
+
+[ensembles.high]
+instrument = "Celesta"
+volume = 2.4
+transpose = 0.0
+reverb_send = 0.32
+pan = 0.15
+
+[ensembles.mixer]
+reverb_mix = 0.550000011920929
+reverb_size = 0.800000011920929
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.0
+lfo_wave = "sine"
+note_length = 0.25
+
+[[ensembles]]
+name = "Clav"
+
+[ensembles.low]
+instrument = "Electric Bass"
+volume = 4.6
+transpose = 0.0
+reverb_send = 0.1
+pan = -0.15
+
+[ensembles.mid]
+instrument = "Clav"
+volume = 3.4000000953674316
+transpose = 0.0
+reverb_send = 0.05000000074505806
+pan = 0.10000000149011612
+
+[ensembles.high]
+instrument = "Accent Clav"
+volume = 2.4
+transpose = 0.0
+reverb_send = 0.32
+pan = 0.15
+
+[ensembles.mixer]
+reverb_mix = 0.05000000074505806
+reverb_size = 0.30000001192092896
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.0
+lfo_wave = "sine"
+note_length = 0.25
+
+[[ensembles]]
+name = "Upright Bass"
+
+[ensembles.low]
+instrument = "Deep Sine"
+volume = 4.6
+transpose = 0.0
+reverb_send = 0.1
+pan = -0.15
+
+[ensembles.mid]
+instrument = "Upright Bass mid"
+volume = 3.0
+transpose = 0.0
+reverb_send = 0.0
+pan = 0.0
+
+[ensembles.high]
+instrument = "Bell"
+volume = 2.4
+transpose = 0.0
+reverb_send = 0.32
+pan = 0.15
+
+[ensembles.mixer]
+reverb_mix = 0.10000000149011612
+reverb_size = 0.4000000059604645
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.0
+lfo_wave = "sine"
+note_length = 0.5
+
+[[ensembles]]
+name = "Sub Bass"
+
+[ensembles.low]
+instrument = "Deep Sine"
+volume = 4.6
+transpose = 0.0
+reverb_send = 0.1
+pan = -0.15
+
+[ensembles.mid]
+instrument = "Sub Bass mid"
+volume = 2.200000047683716
+transpose = 0.0
+reverb_send = 0.0
+pan = 0.0
+
+[ensembles.high]
+instrument = "Buzz Lead"
+volume = 2.4
+transpose = 0.0
+reverb_send = 0.32
+pan = 0.15
+
+[ensembles.mixer]
+reverb_mix = 0.0
+reverb_size = 0.30000001192092896
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.0
+lfo_wave = "sine"
+note_length = 0.5
+
+[[ensembles]]
+name = "Trumpet"
+
+[ensembles.low]
+instrument = "Upright Bass"
+volume = 4.6
+transpose = 0.0
+reverb_send = 0.1
+pan = -0.15
+
+[ensembles.mid]
+instrument = "Trumpet"
+volume = 3.5999999046325684
+transpose = 0.0
+reverb_send = 0.14000000059604645
+pan = 0.0
+
+[ensembles.high]
+instrument = "Bell"
+volume = 2.4
+transpose = 0.0
+reverb_send = 0.32
+pan = 0.15
+
+[ensembles.mixer]
+reverb_mix = 0.15000000596046448
+reverb_size = 0.41999998688697815
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.400000095367432
+lfo_wave = "sine"
+note_length = 0.5
+
+[[ensembles]]
+name = "Flute"
+
+[ensembles.low]
+instrument = "Sub Bass mid"
+volume = 4.6
+transpose = 0.0
+reverb_send = 0.1
+pan = -0.15
+
+[ensembles.mid]
+instrument = "Flute"
+volume = 3.200000047683716
+transpose = 0.0
+reverb_send = 0.3199999928474426
+pan = 0.0
+
+[ensembles.high]
+instrument = "Glass Bell"
+volume = 2.4
+transpose = 0.0
+reverb_send = 0.32
+pan = 0.15
+
+[ensembles.mixer]
+reverb_mix = 0.30000001192092896
+reverb_size = 0.6000000238418579
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.0
+lfo_wave = "sine"
+note_length = 0.5
+
+[[ensembles]]
+name = "Choir Aah"
+
+[ensembles.low]
+instrument = "Sub Bass mid"
+volume = 4.6
+transpose = 0.0
+reverb_send = 0.1
+pan = -0.15
+
+[ensembles.mid]
+instrument = "Choir Aah"
+volume = 3.0
+transpose = 0.0
+reverb_send = 0.550000011920929
+pan = 0.0
+
+[ensembles.high]
+instrument = "Morph Choir"
+volume = 2.4
+transpose = 0.0
+reverb_send = 0.32
+pan = 0.15
+
+[ensembles.mixer]
+reverb_mix = 0.550000011920929
+reverb_size = 0.8500000238418579
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.0
+lfo_wave = "sine"
+note_length = 1.0
+
+[[ensembles]]
+name = "Wide Strings"
+
+[ensembles.low]
+instrument = "Sub Bass mid"
+volume = 4.6
+transpose = 0.0
+reverb_send = 0.1
+pan = -0.15
+
+[ensembles.mid]
+instrument = "String Pad low"
+volume = 3.0
+transpose = 0.0
+reverb_send = 0.5
+pan = 0.0
+
+[[ensembles.mid.chain]]
+kind = "chorus"
+subtype = "ensemble"
+params = [0.35, 0.75, 0.95, 0.6, 0.0, 0.0]
+
+[ensembles.high]
+instrument = "Glass Bell"
+volume = 2.4
+transpose = 0.0
+reverb_send = 0.32
+pan = 0.15
+
+[ensembles.mixer]
+reverb_mix = 0.3
+reverb_size = 0.7
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.0
+lfo_wave = "sine"
+note_length = 0.5
+
+[[ensembles]]
+name = "FM Tines"
+
+[ensembles.low]
+instrument = "FM Bass"
+volume = 4.6
+transpose = 0.0
+reverb_send = 0.1
+pan = -0.15
+
+[ensembles.mid]
+instrument = "FM Tine Piano"
+volume = 3.4
+transpose = 0.0
+reverb_send = 0.28
+pan = 0.0
+
+[[ensembles.mid.chain]]
+kind = "chorus"
+subtype = "chorus"
+params = [0.8, 0.45, 0.5, 0.5, 0.0, 0.0]
+
+[ensembles.high]
+instrument = "FM Bell"
+volume = 2.4
+transpose = 0.0
+reverb_send = 0.32
+pan = 0.15
+
+[ensembles.mixer]
+reverb_mix = 0.25
+reverb_size = 0.6
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.0
+lfo_wave = "sine"
+note_length = 0.5
+
+# Showcase: the broadly usable ones. Three different instruments stacked —
+# a bass, a chord and a descant — where the middle is a design no other
+# ensemble uses.
+
+[[ensembles]]
+name = "Supersaw Lead"
+
+[ensembles.low]
+instrument = "Electric Bass"
+volume = 4.6
+transpose = 0.0
+reverb_send = 0.1
+pan = -0.15
+
+[ensembles.mid]
+instrument = "Talking Lead"
+volume = 3.4
+transpose = 0.0
+reverb_send = 0.12
+pan = 0.0
+
+[[ensembles.mid.chain]]
+kind = "chorus"
+subtype = "ensemble"
+params = [0.5, 0.6, 0.8, 0.5, 0.0, 0.0]
+
+[ensembles.high]
+instrument = "Folded Saw"
+volume = 2.4
+transpose = 0.0
+reverb_send = 0.32
+pan = 0.15
+
+[ensembles.mixer]
+reverb_mix = 0.2
+reverb_size = 0.6
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.0
+lfo_wave = "sine"
+note_length = 0.5
+
+[[ensembles]]
+name = "Funk Clav"
+
+[ensembles.low]
+instrument = "Bass Guitar"
+volume = 4.6
+transpose = 0.0
+reverb_send = 0.1
+pan = -0.15
+
+[ensembles.mid]
+instrument = "Accent Clav"
+volume = 3.4
+transpose = 0.0
+reverb_send = 0.12
+pan = 0.0
+
+[[ensembles.mid.chain]]
+kind = "wah"
+subtype = "auto"
+params = [0.85, 0.8, 0.85, 1.0, 0.75, 0.0]
+
+[[ensembles.mid.chain]]
+kind = "distortion"
+subtype = "overdrive"
+params = [28.0, 0.7, -2.0, 1.0, 0.0, 0.0]
+
+[ensembles.high]
+instrument = "Ring Clav"
+volume = 2.4
+transpose = 0.0
+reverb_send = 0.32
+pan = 0.15
+
+[ensembles.mixer]
+reverb_mix = 0.2
+reverb_size = 0.6
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.0
+lfo_wave = "sine"
+note_length = 0.5
+
+[[ensembles]]
+name = "Steel And Sitar"
+
+[ensembles.low]
+instrument = "Upright Bass"
+volume = 4.6
+transpose = 0.0
+reverb_send = 0.1
+pan = -0.15
+
+[ensembles.mid]
+instrument = "Sitar"
+volume = 3.4
+transpose = 0.0
+reverb_send = 0.2
+pan = 0.0
+
+[[ensembles.mid.chain]]
+kind = "wah"
+subtype = "auto"
+params = [0.6, 0.65, 0.7, 1.0, 0.7, 0.0]
+
+[ensembles.high]
+instrument = "Steel Guitar"
+volume = 2.4
+transpose = 0.0
+reverb_send = 0.32
+pan = 0.15
+
+[ensembles.mixer]
+reverb_mix = 0.22
+reverb_size = 0.6
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.0
+lfo_wave = "sine"
+note_length = 0.5
+
+[[ensembles]]
+name = "Phase Pad"
+
+[ensembles.low]
+instrument = "Sub Bass mid"
+volume = 4.6
+transpose = 0.0
+reverb_send = 0.1
+pan = -0.15
+
+[ensembles.mid]
+instrument = "Phase Pad"
+volume = 3.0
+transpose = 0.0
+reverb_send = 0.5
+pan = 0.0
+
+[[ensembles.mid.chain]]
+kind = "phaser"
+subtype = "phaser"
+params = [0.25, 0.85, 0.6, 0.55, 0.0, 0.0]
+
+[ensembles.high]
+instrument = "Glass Bell"
+volume = 2.4
+transpose = 0.0
+reverb_send = 0.32
+pan = 0.15
+
+[ensembles.mixer]
+reverb_mix = 0.3
+reverb_size = 0.7
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.0
+lfo_wave = "sine"
+note_length = 0.5
+
+[[ensembles]]
+name = "Breath Choir"
+
+[ensembles.low]
+instrument = "Sub Bass mid"
+volume = 4.6
+transpose = 0.0
+reverb_send = 0.1
+pan = -0.15
+
+[ensembles.mid]
+instrument = "Breath Pad"
+volume = 3.0
+transpose = 0.0
+reverb_send = 0.5
+pan = 0.0
+
+[ensembles.high]
+instrument = "Morph Choir"
+volume = 2.4
+transpose = 0.0
+reverb_send = 0.32
+pan = 0.15
+
+[ensembles.mixer]
+reverb_mix = 0.3
+reverb_size = 0.7
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.0
+lfo_wave = "sine"
+note_length = 0.5
+
+[[ensembles]]
+name = "Morph Choir"
+
+[ensembles.low]
+instrument = "Sub Bass mid"
+volume = 4.6
+transpose = 0.0
+reverb_send = 0.1
+pan = -0.15
+
+[ensembles.mid]
+instrument = "Morph Choir"
+volume = 3.0
+transpose = 0.0
+reverb_send = 0.5
+pan = 0.0
+
+[[ensembles.mid.chain]]
+kind = "phaser"
+subtype = "vibe"
+params = [0.9, 0.55, 0.1, 0.5, 0.0, 0.0]
+
+[ensembles.high]
+instrument = "Breath Pad"
+volume = 2.4
+transpose = 0.0
+reverb_send = 0.32
+pan = 0.15
+
+[ensembles.mixer]
+reverb_mix = 0.3
+reverb_size = 0.7
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.0
+lfo_wave = "sine"
+note_length = 0.5
+
+[[ensembles]]
+name = "Celesta Bells"
+
+[ensembles.low]
+instrument = "Sub Bass mid"
+volume = 4.6
+transpose = 0.0
+reverb_send = 0.1
+pan = -0.15
+
+[ensembles.mid]
+instrument = "Celesta"
+volume = 3.4
+transpose = 0.0
+reverb_send = 0.28
+pan = 0.0
+
+[[ensembles.mid.chain]]
+kind = "chorus"
+subtype = "chorus"
+params = [0.55, 0.65, 0.7, 0.55, 0.0, 0.0]
+
+[ensembles.high]
+instrument = "Glass Bell"
+volume = 2.4
+transpose = 0.0
+reverb_send = 0.32
+pan = 0.15
+
+[ensembles.mixer]
+reverb_mix = 0.25
+reverb_size = 0.6
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.0
+lfo_wave = "sine"
+note_length = 0.5
+
+[[ensembles]]
+name = "Honky Tonk"
+
+[ensembles.low]
+instrument = "Upright Bass"
+volume = 4.6
+transpose = 0.0
+reverb_send = 0.1
+pan = -0.15
+
+[ensembles.mid]
+instrument = "Honky Tonk Tine"
+volume = 3.4
+transpose = 0.0
+reverb_send = 0.28
+pan = 0.0
+
+[ensembles.high]
+instrument = "Bell"
+volume = 2.4
+transpose = 0.0
+reverb_send = 0.32
+pan = 0.15
+
+[ensembles.mixer]
+reverb_mix = 0.25
+reverb_size = 0.6
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.0
+lfo_wave = "sine"
+note_length = 0.5
+
+[[ensembles]]
+name = "Dirty Tine"
+
+[ensembles.low]
+instrument = "Electric Bass"
+volume = 4.6
+transpose = 0.0
+reverb_send = 0.1
+pan = -0.15
+
+[ensembles.mid]
+instrument = "Dirty Tine"
+volume = 3.4
+transpose = 0.0
+reverb_send = 0.28
+pan = 0.0
+
+[[ensembles.mid.chain]]
+kind = "chorus"
+subtype = "dimension"
+params = [1.2, 0.3, 0.6, 0.5, 0.0, 0.0]
+
+[ensembles.high]
+instrument = "Celesta"
+volume = 2.4
+transpose = 0.0
+reverb_send = 0.32
+pan = 0.15
+
+[ensembles.mixer]
+reverb_mix = 0.25
+reverb_size = 0.6
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.0
+lfo_wave = "sine"
+note_length = 0.5
+
+[[ensembles]]
+name = "Jazz Guitar"
+
+[ensembles.low]
+instrument = "Upright Bass"
+volume = 4.6
+transpose = 0.0
+reverb_send = 0.1
+pan = -0.15
+
+[ensembles.mid]
+instrument = "Muted Guitar"
+volume = 3.4
+transpose = 0.0
+reverb_send = 0.2
+pan = 0.0
+
+[ensembles.high]
+instrument = "Vibraphone"
+volume = 2.4
+transpose = 0.0
+reverb_send = 0.32
+pan = 0.15
+
+[ensembles.mixer]
+reverb_mix = 0.22
+reverb_size = 0.6
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.0
+lfo_wave = "sine"
+note_length = 0.5
+
+[[ensembles]]
+name = "Harpsichord"
+
+[ensembles.low]
+instrument = "Upright Bass"
+volume = 4.6
+transpose = 0.0
+reverb_send = 0.1
+pan = -0.15
+
+[ensembles.mid]
+instrument = "Harpsichord"
+volume = 3.4
+transpose = 0.0
+reverb_send = 0.28
+pan = 0.0
+
+[ensembles.high]
+instrument = "Celesta"
+volume = 2.4
+transpose = 0.0
+reverb_send = 0.32
+pan = 0.15
+
+[ensembles.mixer]
+reverb_mix = 0.25
+reverb_size = 0.6
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.0
+lfo_wave = "sine"
+note_length = 0.5
+
+[[ensembles]]
+name = "Glass Morph"
+
+[ensembles.low]
+instrument = "Sub Bass mid"
+volume = 4.6
+transpose = 0.0
+reverb_send = 0.1
+pan = -0.15
+
+[ensembles.mid]
+instrument = "Glass Morph Pad"
+volume = 3.0
+transpose = 0.0
+reverb_send = 0.5
+pan = 0.0
+
+[[ensembles.mid.chain]]
+kind = "filter"
+subtype = "bandpass"
+params = [1400.0, 0.6, 0.0, 1.0, 0.0, 0.0]
+
+[ensembles.high]
+instrument = "Glass Bell"
+volume = 2.4
+transpose = 0.0
+reverb_send = 0.32
+pan = 0.15
+
+[ensembles.mixer]
+reverb_mix = 0.3
+reverb_size = 0.7
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.0
+lfo_wave = "sine"
+note_length = 0.5
+
+# Showcase: the synth at its edges. Cross-modulation, ring modulation, phase
+# distortion, wavefolding and the drum kit, where the point is the method
+# rather than the melody.
+
+[[ensembles]]
+name = "CZ Lead"
+
+[ensembles.low]
+instrument = "Electric Bass"
+volume = 4.6
+transpose = 0.0
+reverb_send = 0.1
+pan = -0.15
+
+[ensembles.mid]
+instrument = "CZ Lead"
+volume = 3.4
+transpose = 0.0
+reverb_send = 0.12
+pan = 0.0
+
+[[ensembles.mid.chain]]
+kind = "flanger"
+subtype = "jet"
+params = [0.15, 0.85, 0.8, 0.5, 0.0, 0.0]
+
+[ensembles.high]
+instrument = "Bell"
+volume = 2.4
+transpose = 0.0
+reverb_send = 0.32
+pan = 0.15
+
+[ensembles.mixer]
+reverb_mix = 0.2
+reverb_size = 0.6
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.0
+lfo_wave = "sine"
+note_length = 0.5
+
+[[ensembles]]
+name = "CZ Organ"
+
+[ensembles.low]
+instrument = "Sub Bass mid"
+volume = 4.6
+transpose = 0.0
+reverb_send = 0.1
+pan = -0.15
+
+[ensembles.mid]
+instrument = "CZ Organ"
+volume = 3.4
+transpose = 0.0
+reverb_send = 0.15
+pan = 0.0
+
+[[ensembles.mid.chain]]
+kind = "chorus"
+subtype = "rotary"
+params = [0.8, 0.6, 0.8, 0.75, 0.0, 0.0]
+
+[ensembles.high]
+instrument = "X-Mod Organ"
+volume = 2.4
+transpose = 0.0
+reverb_send = 0.32
+pan = 0.15
+
+[ensembles.mixer]
+reverb_mix = 0.2
+reverb_size = 0.6
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.0
+lfo_wave = "sine"
+note_length = 0.5
+
+[[ensembles]]
+name = "Overdriven Organ"
+
+[ensembles.low]
+instrument = "Sub Bass mid"
+volume = 4.6
+transpose = 0.0
+reverb_send = 0.1
+pan = -0.15
+
+[ensembles.mid]
+instrument = "Overdriven Organ"
+volume = 3.4
+transpose = 0.0
+reverb_send = 0.15
+pan = 0.0
+
+[[ensembles.mid.chain]]
+kind = "distortion"
+subtype = "overdrive"
+params = [14.0, 0.6, 0.0, 1.0, 0.0, 0.0]
+
+[ensembles.high]
+instrument = "Rock Organ"
+volume = 2.4
+transpose = 0.0
+reverb_send = 0.32
+pan = 0.15
+
+[ensembles.mixer]
+reverb_mix = 0.2
+reverb_size = 0.6
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.0
+lfo_wave = "sine"
+note_length = 0.5
+
+[[ensembles]]
+name = "Twin Drawbars"
+
+[ensembles.low]
+instrument = "Sub Bass mid"
+volume = 4.6
+transpose = 0.0
+reverb_send = 0.1
+pan = -0.15
+
+[ensembles.mid]
+instrument = "Twin Registration Organ"
+volume = 3.4
+transpose = 0.0
+reverb_send = 0.15
+pan = 0.0
+
+[[ensembles.mid.chain]]
+kind = "chorus"
+subtype = "rotary"
+params = [5.5, 0.55, 0.7, 0.7, 0.0, 0.0]
+
+[ensembles.high]
+instrument = "X-Mod Organ"
+volume = 2.4
+transpose = 0.0
+reverb_send = 0.32
+pan = 0.15
+
+[ensembles.mixer]
+reverb_mix = 0.2
+reverb_size = 0.6
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.0
+lfo_wave = "sine"
+note_length = 0.5
+
+[[ensembles]]
+name = "FM Brass"
+
+[ensembles.low]
+instrument = "Upright Bass"
+volume = 4.6
+transpose = 0.0
+reverb_send = 0.1
+pan = -0.15
+
+[ensembles.mid]
+instrument = "FM Brass"
+volume = 3.4
+transpose = 0.0
+reverb_send = 0.12
+pan = 0.0
+
+[ensembles.high]
+instrument = "Trumpet"
+volume = 2.4
+transpose = 0.0
+reverb_send = 0.32
+pan = 0.15
+
+[ensembles.mixer]
+reverb_mix = 0.2
+reverb_size = 0.6
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.0
+lfo_wave = "sine"
+note_length = 0.5
+
+[[ensembles]]
+name = "FM Marimba"
+
+[ensembles.low]
+instrument = "Upright Bass"
+volume = 4.6
+transpose = 0.0
+reverb_send = 0.1
+pan = -0.15
+
+[ensembles.mid]
+instrument = "FM Marimba"
+volume = 3.4
+transpose = 0.0
+reverb_send = 0.28
+pan = 0.0
+
+[ensembles.high]
+instrument = "Celesta"
+volume = 2.4
+transpose = 0.0
+reverb_send = 0.32
+pan = 0.15
+
+[ensembles.mixer]
+reverb_mix = 0.25
+reverb_size = 0.6
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.0
+lfo_wave = "sine"
+note_length = 0.5
+
+[[ensembles]]
+name = "Bell Choir"
+
+[ensembles.low]
+instrument = "Sub Bass mid"
+volume = 4.6
+transpose = 0.0
+reverb_send = 0.1
+pan = -0.15
+
+[ensembles.mid]
+instrument = "FM Bell"
+volume = 3.0
+transpose = 0.0
+reverb_send = 0.45
+pan = 0.0
+
+[ensembles.high]
+instrument = "Ring Bell"
+volume = 2.4
+transpose = 0.0
+reverb_send = 0.32
+pan = 0.15
+
+[[ensembles.high.chain]]
+kind = "ringmod"
+subtype = "bell"
+params = [440.0, 0.6, 1.0, 0.0, 0.0, 0.0]
+
+[ensembles.mixer]
+reverb_mix = 0.3
+reverb_size = 0.75
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.0
+lfo_wave = "sine"
+note_length = 0.5
+
+[[ensembles]]
+name = "FM Bass"
+
+[ensembles.low]
+instrument = "Deep Sine"
+volume = 4.6
+transpose = 0.0
+reverb_send = 0.1
+pan = -0.15
+
+[ensembles.mid]
+instrument = "FM Bass"
+volume = 3.0
+transpose = 0.0
+reverb_send = 0.0
+pan = 0.0
+
+[ensembles.high]
+instrument = "Bell"
+volume = 2.4
+transpose = 0.0
+reverb_send = 0.32
+pan = 0.15
+
+[ensembles.mixer]
+reverb_mix = 0.0
+reverb_size = 0.5
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.0
+lfo_wave = "sine"
+note_length = 0.5
+
+[[ensembles]]
+name = "Electric Bass"
+
+[ensembles.low]
+instrument = "Deep Sine"
+volume = 4.6
+transpose = 0.0
+reverb_send = 0.1
+pan = -0.15
+
+[ensembles.mid]
+instrument = "Electric Bass"
+volume = 3.0
+transpose = 0.0
+reverb_send = 0.0
+pan = 0.0
+
+[[ensembles.mid.chain]]
+kind = "compressor"
+subtype = "comp"
+params = [-18.0, 3.0, 12.0, 180.0, 4.0, 0.0]
+
+[ensembles.high]
+instrument = "Accent Clav"
+volume = 2.4
+transpose = 0.0
+reverb_send = 0.32
+pan = 0.15
+
+[ensembles.mixer]
+reverb_mix = 0.0
+reverb_size = 0.5
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.0
+lfo_wave = "sine"
+note_length = 0.5
+
+[[ensembles]]
+name = "X-Mod Bell"
+
+[ensembles.low]
+instrument = "Sub Bass mid"
+volume = 4.6
+transpose = 0.0
+reverb_send = 0.1
+pan = -0.15
+
+[ensembles.mid]
+instrument = "X-Mod Clang"
+volume = 3.0
+transpose = 0.0
+reverb_send = 0.45
+pan = 0.0
+
+[ensembles.high]
+instrument = "Ring Bell"
+volume = 2.4
+transpose = 0.0
+reverb_send = 0.32
+pan = 0.15
+
+[ensembles.mixer]
+reverb_mix = 0.3
+reverb_size = 0.75
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.0
+lfo_wave = "sine"
+note_length = 0.5
+
+[[ensembles]]
+name = "Ring Bells"
+
+[ensembles.low]
+instrument = "Sub Bass mid"
+volume = 4.6
+transpose = 0.0
+reverb_send = 0.1
+pan = -0.15
+
+[ensembles.mid]
+instrument = "Ring Bell"
+volume = 3.0
+transpose = 0.0
+reverb_send = 0.45
+pan = 0.0
+
+[ensembles.high]
+instrument = "Glass Bell"
+volume = 2.4
+transpose = 0.0
+reverb_send = 0.32
+pan = 0.15
+
+[[ensembles.high.chain]]
+kind = "tremolo"
+subtype = "sine"
+params = [5.0, 0.6, 1.0, 0.0, 0.0, 0.0]
+
+[ensembles.mixer]
+reverb_mix = 0.3
+reverb_size = 0.75
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.0
+lfo_wave = "sine"
+note_length = 0.5
+
+[[ensembles]]
+name = "Ring Clav"
+
+[ensembles.low]
+instrument = "Electric Bass"
+volume = 4.6
+transpose = 0.0
+reverb_send = 0.1
+pan = -0.15
+
+[ensembles.mid]
+instrument = "Ring Clav"
+volume = 3.4
+transpose = 0.0
+reverb_send = 0.2
+pan = 0.0
+
+[ensembles.high]
+instrument = "Hollow Clav"
+volume = 2.4
+transpose = 0.0
+reverb_send = 0.32
+pan = 0.15
+
+[ensembles.mixer]
+reverb_mix = 0.22
+reverb_size = 0.6
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.0
+lfo_wave = "sine"
+note_length = 0.5
+
+[[ensembles]]
+name = "Glass Cathedral"
+
+[ensembles.low]
+instrument = "Through-Zero Bass"
+volume = 4.6
+transpose = 0.0
+reverb_send = 0.1
+pan = -0.15
+
+[ensembles.mid]
+instrument = "Glass low"
+volume = 3.0
+transpose = 0.0
+reverb_send = 0.5
+pan = 0.0
+
+[ensembles.high]
+instrument = "FM Bell"
+volume = 2.4
+transpose = 0.0
+reverb_send = 0.32
+pan = 0.15
+
+[ensembles.mixer]
+reverb_mix = 0.3
+reverb_size = 0.7
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.0
+lfo_wave = "sine"
+note_length = 0.5
+
+[[ensembles]]
+name = "Through Zero"
+
+[ensembles.low]
+instrument = "Deep Sine"
+volume = 4.6
+transpose = 0.0
+reverb_send = 0.1
+pan = -0.15
+
+[ensembles.mid]
+instrument = "Through-Zero Bass"
+volume = 3.0
+transpose = 0.0
+reverb_send = 0.0
+pan = 0.0
+
+[ensembles.high]
+instrument = "X-Mod Clang"
+volume = 2.4
+transpose = 0.0
+reverb_send = 0.32
+pan = 0.15
+
+[ensembles.mixer]
+reverb_mix = 0.0
+reverb_size = 0.5
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.0
+lfo_wave = "sine"
+note_length = 0.5
+
+[[ensembles]]
+name = "Growl Stack"
+
+[ensembles.low]
+instrument = "Electric Bass"
+volume = 4.6
+transpose = 0.0
+reverb_send = 0.1
+pan = -0.15
+
+[ensembles.mid]
+instrument = "Growl Bass"
+volume = 3.4
+transpose = 0.0
+reverb_send = 0.12
+pan = 0.0
+
+[[ensembles.mid.chain]]
+kind = "distortion"
+subtype = "tube"
+params = [20.0, 0.65, 0.0, 1.0, 0.0, 0.0]
+
+[ensembles.high]
+instrument = "Folded Saw"
+volume = 2.4
+transpose = 0.0
+reverb_send = 0.32
+pan = 0.15
+
+[ensembles.mixer]
+reverb_mix = 0.2
+reverb_size = 0.6
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.0
+lfo_wave = "sine"
+note_length = 0.5
+
+[[ensembles]]
+name = "Folded Lead"
+
+[ensembles.low]
+instrument = "Electric Bass"
+volume = 4.6
+transpose = 0.0
+reverb_send = 0.1
+pan = -0.15
+
+[ensembles.mid]
+instrument = "Folded Saw"
+volume = 3.4
+transpose = 0.0
+reverb_send = 0.12
+pan = 0.0
+
+[[ensembles.mid.chain]]
+kind = "distortion"
+subtype = "fold"
+params = [6.0, 0.8, -6.0, 1.0, 0.0, 0.0]
+
+[[ensembles.mid.chain]]
+kind = "filter"
+subtype = "peak"
+params = [1500.0, 0.7, 4.0, 1.0, 0.0, 0.0]
+
+[ensembles.high]
+instrument = "Buzz Lead"
+volume = 2.4
+transpose = 0.0
+reverb_send = 0.32
+pan = 0.15
+
+[ensembles.mixer]
+reverb_mix = 0.2
+reverb_size = 0.6
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.0
+lfo_wave = "sine"
+note_length = 0.5
+
+[[ensembles]]
+name = "Sine Pad"
+
+[ensembles.low]
+instrument = "Sub Bass mid"
+volume = 4.6
+transpose = 0.0
+reverb_send = 0.1
+pan = -0.15
+
+[ensembles.mid]
+instrument = "Deep Sine"
+volume = 3.0
+transpose = 0.0
+reverb_send = 0.5
+pan = 0.0
+
+[[ensembles.mid.chain]]
+kind = "chorus"
+subtype = "ensemble"
+params = [0.5, 0.6, 0.8, 0.5, 0.0, 0.0]
+
+[ensembles.high]
+instrument = "Glass Bell"
+volume = 2.4
+transpose = 0.0
+reverb_send = 0.32
+pan = 0.15
+
+[ensembles.mixer]
+reverb_mix = 0.3
+reverb_size = 0.7
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.0
+lfo_wave = "sine"
+note_length = 0.5
+
+[[ensembles]]
+name = "Chaos Kit"
+
+[ensembles.low]
+instrument = "Kick"
+volume = 4.6
+transpose = 0.0
+reverb_send = 0.1
+pan = -0.15
+
+[ensembles.mid]
+instrument = "Chaos Perc"
+volume = 4.0
+transpose = 0.0
+reverb_send = 0.05
+pan = 0.0
+
+[[ensembles.mid.chain]]
+kind = "bitcrusher"
+subtype = "crush"
+params = [8.0, 0.35, 1.0, 0.0, 0.0, 0.0]
+
+[ensembles.high]
+instrument = "Hi-Hat"
+volume = 2.4
+transpose = 0.0
+reverb_send = 0.32
+pan = 0.15
+
+[ensembles.mixer]
+reverb_mix = 0.05
+reverb_size = 0.5
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.0
+lfo_wave = "sine"
+note_length = 0.5
+
+# The rest of the original palette, grouped so neighbours are the same family.
+# Every ensemble in the file is three *different* designs — a bass under, the
+# named instrument in the middle, a descant on top — because reusing one design
+# in all three registers is what made the first pass sound like one instrument
+# played three ways. The middle is the ensemble's identity, so no two ensembles
+# share one, and the drum kits are the only exception: a drum has no register,
+# so all three of theirs are percussion.
+
+[[ensembles]]
+name = "Rhodes Bright"
+
+[ensembles.low]
+instrument = "Electric Bass"
+volume = 4.6
+transpose = 0.0
+reverb_send = 0.1
+pan = -0.15
+
+[ensembles.mid]
+instrument = "Rhodes Bright"
+volume = 3.5999999046325684
+transpose = 0.0
+reverb_send = 0.11999999731779099
+pan = 0.0
+
+[ensembles.high]
+instrument = "Glass Bell"
+volume = 2.4
+transpose = 0.0
+reverb_send = 0.32
+pan = 0.15
+
+[ensembles.mixer]
+reverb_mix = 0.1599999964237213
+reverb_size = 0.41999998688697815
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.0
+lfo_wave = "sine"
+note_length = 0.5
+
+[[ensembles]]
+name = "Rhodes Dark"
+
+[ensembles.low]
+instrument = "Upright Bass"
+volume = 4.6
+transpose = 0.0
+reverb_send = 0.1
+pan = -0.15
+
+[ensembles.mid]
+instrument = "Rhodes Dark"
+volume = 3.200000047683716
+transpose = 0.0
+reverb_send = 0.20000000298023224
+pan = 0.0
+
+[ensembles.high]
+instrument = "Celesta"
+volume = 2.4
+transpose = 0.0
+reverb_send = 0.32
+pan = 0.15
+
+[ensembles.mixer]
+reverb_mix = 0.30000001192092896
+reverb_size = 0.6000000238418579
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.0
+lfo_wave = "sine"
+note_length = 0.5
+
+[[ensembles]]
+name = "Wurli Bark"
+
+[ensembles.low]
+instrument = "Electric Bass"
+volume = 4.6
+transpose = 0.0
+reverb_send = 0.1
+pan = -0.15
+
+[ensembles.mid]
+instrument = "Wurli Bark"
+volume = 3.5999999046325684
+transpose = 0.0
+reverb_send = 0.10000000149011612
+pan = 0.0
+
+[ensembles.high]
+instrument = "Bell"
+volume = 2.4
+transpose = 0.0
+reverb_send = 0.32
+pan = 0.15
+
+[ensembles.mixer]
+reverb_mix = 0.14000000059604645
+reverb_size = 0.3799999952316284
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.0
+lfo_wave = "sine"
+note_length = 0.5
+
+[[ensembles]]
+name = "Rock Organ"
+
+[ensembles.low]
+instrument = "Sub Bass mid"
+volume = 4.6
+transpose = 0.0
+reverb_send = 0.1
+pan = -0.15
+
+[ensembles.mid]
+instrument = "Rock Organ"
+volume = 3.200000047683716
+transpose = 0.0
+reverb_send = 0.15000000596046448
+pan = 0.20000000298023224
+
+[ensembles.high]
+instrument = "X-Mod Organ"
+volume = 2.4
+transpose = 0.0
+reverb_send = 0.32
+pan = 0.15
+
+[ensembles.mixer]
+reverb_mix = 0.20000000298023224
+reverb_size = 0.44999998807907104
+master_volume = 5.0
+master_mute = false
+lfo_rate = 7.0
+lfo_wave = "triangle"
+note_length = 1.0
+
+[[ensembles]]
+name = "Gospel Organ"
+
+[ensembles.low]
+instrument = "Sub Bass mid"
+volume = 4.6
+transpose = 0.0
+reverb_send = 0.1
+pan = -0.15
+
+[ensembles.mid]
+instrument = "Gospel Organ"
+volume = 3.4000000953674316
+transpose = 0.0
+reverb_send = 0.0
+pan = 0.0
+
+[ensembles.high]
+instrument = "Bell"
+volume = 2.4
+transpose = 0.0
+reverb_send = 0.32
+pan = 0.15
+
+[ensembles.mixer]
+reverb_mix = 0.11999999731779099
+reverb_size = 0.4000000059604645
+master_volume = 5.0
+master_mute = false
+lfo_rate = 7.400000095367432
+lfo_wave = "sine"
+note_length = 0.5
+
+[[ensembles]]
+name = "Pipe Organ"
+
+[ensembles.low]
+instrument = "Sub Bass mid"
+volume = 4.6
+transpose = 0.0
+reverb_send = 0.1
+pan = -0.15
+
+[ensembles.mid]
+instrument = "Pipe Organ"
+volume = 3.4000000953674316
+transpose = 0.0
+reverb_send = 0.550000011920929
+pan = 0.0
+
+[ensembles.high]
+instrument = "Celesta"
+volume = 2.4
+transpose = 0.0
+reverb_send = 0.32
+pan = 0.15
+
+[ensembles.mixer]
+reverb_mix = 0.6200000047683716
+reverb_size = 0.9200000166893005
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.0
+lfo_wave = "sine"
+note_length = 1.0
+
+[[ensembles]]
+name = "Gedeckt"
+
+[ensembles.low]
+instrument = "Sub Bass mid"
+volume = 4.6
+transpose = 0.0
+reverb_send = 0.1
+pan = -0.15
+
+[ensembles.mid]
+instrument = "Gedeckt"
+volume = 3.200000047683716
+transpose = 0.0
+reverb_send = 0.4000000059604645
+pan = 0.0
+
+[ensembles.high]
+instrument = "Glass Bell"
+volume = 2.4
+transpose = 0.0
+reverb_send = 0.32
+pan = 0.15
+
+[ensembles.mixer]
+reverb_mix = 0.3499999940395355
+reverb_size = 0.699999988079071
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.0
+lfo_wave = "sine"
+note_length = 1.0
+
+[[ensembles]]
 name = "Kalimba"
 
 [ensembles.low]
-instrument = "Kalimba low"
-volume = 4.599999904632568
+instrument = "Upright Bass"
+volume = 4.6
 transpose = 0.0
-reverb_send = 0.2199999988079071
-pan = -0.20000000298023224
+reverb_send = 0.1
+pan = -0.15
 
 [ensembles.mid]
 instrument = "Kalimba"
@@ -684,11 +2048,11 @@ reverb_send = 0.2800000011920929
 pan = 0.0
 
 [ensembles.high]
-instrument = "Kalimba high"
-volume = 2.4000000953674316
-transpose = 12.0
-reverb_send = 0.3400000035762787
-pan = 0.0
+instrument = "Celesta"
+volume = 2.4
+transpose = 0.0
+reverb_send = 0.32
+pan = 0.15
 
 [ensembles.mixer]
 reverb_mix = 0.23999999463558197
@@ -703,11 +2067,11 @@ note_length = 0.25
 name = "Harp"
 
 [ensembles.low]
-instrument = "Harp low"
-volume = 3.799999952316284
+instrument = "Upright Bass"
+volume = 4.6
 transpose = 0.0
-reverb_send = 0.20000000298023224
-pan = -0.30000001192092896
+reverb_send = 0.1
+pan = -0.15
 
 [ensembles.mid]
 instrument = "Harp"
@@ -717,11 +2081,11 @@ reverb_send = 0.30000001192092896
 pan = 0.30000001192092896
 
 [ensembles.high]
-instrument = "Harp high"
-volume = 2.200000047683716
-transpose = 12.0
-reverb_send = 0.4000000059604645
-pan = 0.0
+instrument = "Glass Bell"
+volume = 2.4
+transpose = 0.0
+reverb_send = 0.32
+pan = 0.15
 
 [ensembles.mixer]
 reverb_mix = 0.3499999940395355
@@ -733,47 +2097,14 @@ lfo_wave = "sine"
 note_length = 0.5
 
 [[ensembles]]
-name = "Nylon Guitar"
-
-[ensembles.low]
-instrument = "Nylon Guitar low"
-volume = 4.199999809265137
-transpose = 0.0
-reverb_send = 0.15000000596046448
-pan = -0.30000001192092896
-
-[ensembles.mid]
-instrument = "Nylon Guitar"
-volume = 3.4000000953674316
-transpose = 0.0
-reverb_send = 0.20000000298023224
-pan = 0.30000001192092896
-
-[ensembles.high]
-instrument = "Nylon Guitar high"
-volume = 2.4000000953674316
-transpose = 12.0
-reverb_send = 0.25999999046325684
-pan = 0.0
-
-[ensembles.mixer]
-reverb_mix = 0.2199999988079071
-reverb_size = 0.5
-master_volume = 5.0
-master_mute = false
-lfo_rate = 5.0
-lfo_wave = "sine"
-note_length = 0.5
-
-[[ensembles]]
 name = "Pizzicato"
 
 [ensembles.low]
-instrument = "Pizzicato low"
-volume = 4.400000095367432
+instrument = "Upright Bass"
+volume = 4.6
 transpose = 0.0
-reverb_send = 0.20000000298023224
-pan = -0.25
+reverb_send = 0.1
+pan = -0.15
 
 [ensembles.mid]
 instrument = "Pizzicato"
@@ -783,11 +2114,11 @@ reverb_send = 0.2800000011920929
 pan = 0.0
 
 [ensembles.high]
-instrument = "Pizzicato high"
-volume = 2.5999999046325684
-transpose = 12.0
-reverb_send = 0.3400000035762787
-pan = 0.0
+instrument = "Vibraphone"
+volume = 2.4
+transpose = 0.0
+reverb_send = 0.32
+pan = 0.15
 
 [ensembles.mixer]
 reverb_mix = 0.25999999046325684
@@ -799,47 +2130,14 @@ lfo_wave = "sine"
 note_length = 0.25
 
 [[ensembles]]
-name = "String Pad"
-
-[ensembles.low]
-instrument = "String Pad low"
-volume = 3.4000000953674316
-transpose = 0.0
-reverb_send = 0.4000000059604645
-pan = -0.3499999940395355
-
-[ensembles.mid]
-instrument = "String Ensemble"
-volume = 3.0
-transpose = 0.0
-reverb_send = 0.5
-pan = 0.0
-
-[ensembles.high]
-instrument = "String Pad high"
-volume = 2.5999999046325684
-transpose = 12.0
-reverb_send = 0.6000000238418579
-pan = 0.3499999940395355
-
-[ensembles.mixer]
-reverb_mix = 0.44999998807907104
-reverb_size = 0.800000011920929
-master_volume = 5.0
-master_mute = false
-lfo_rate = 4.599999904632568
-lfo_wave = "sine"
-note_length = 1.0
-
-[[ensembles]]
 name = "PWM Pad"
 
 [ensembles.low]
-instrument = "PWM Pad low"
-volume = 3.4000000953674316
+instrument = "Sub Bass mid"
+volume = 4.6
 transpose = 0.0
-reverb_send = 0.3499999940395355
-pan = -0.4000000059604645
+reverb_send = 0.1
+pan = -0.15
 
 [ensembles.mid]
 instrument = "PWM Pad"
@@ -849,11 +2147,11 @@ reverb_send = 0.44999998807907104
 pan = 0.0
 
 [ensembles.high]
-instrument = "PWM Pad high"
-volume = 2.5999999046325684
-transpose = 12.0
-reverb_send = 0.550000011920929
-pan = 0.4000000059604645
+instrument = "Glass Bell"
+volume = 2.4
+transpose = 0.0
+reverb_send = 0.32
+pan = 0.15
 
 [ensembles.mixer]
 reverb_mix = 0.44999998807907104
@@ -868,11 +2166,11 @@ note_length = 1.0
 name = "Vox Pad"
 
 [ensembles.low]
-instrument = "Vox Pad low"
-volume = 3.200000047683716
+instrument = "Sub Bass mid"
+volume = 4.6
 transpose = 0.0
-reverb_send = 0.44999998807907104
-pan = -0.3499999940395355
+reverb_send = 0.1
+pan = -0.15
 
 [ensembles.mid]
 instrument = "Vox Pad"
@@ -882,11 +2180,11 @@ reverb_send = 0.550000011920929
 pan = 0.0
 
 [ensembles.high]
-instrument = "Vox Pad high"
-volume = 2.5999999046325684
+instrument = "Morph Choir"
+volume = 2.4
 transpose = 0.0
-reverb_send = 0.6499999761581421
-pan = 0.3499999940395355
+reverb_send = 0.32
+pan = 0.15
 
 [ensembles.mixer]
 reverb_mix = 0.5
@@ -898,47 +2196,14 @@ lfo_wave = "sine"
 note_length = 1.0
 
 [[ensembles]]
-name = "Choir Aah"
-
-[ensembles.low]
-instrument = "Choir Aah low"
-volume = 3.200000047683716
-transpose = 0.0
-reverb_send = 0.44999998807907104
-pan = -0.4000000059604645
-
-[ensembles.mid]
-instrument = "Choir Aah"
-volume = 3.0
-transpose = 0.0
-reverb_send = 0.550000011920929
-pan = 0.0
-
-[ensembles.high]
-instrument = "Choir Aah high"
-volume = 2.5999999046325684
-transpose = 0.0
-reverb_send = 0.6499999761581421
-pan = 0.4000000059604645
-
-[ensembles.mixer]
-reverb_mix = 0.550000011920929
-reverb_size = 0.8500000238418579
-master_volume = 5.0
-master_mute = false
-lfo_rate = 5.0
-lfo_wave = "sine"
-note_length = 1.0
-
-[[ensembles]]
 name = "Choir Ooh"
 
 [ensembles.low]
-instrument = "Choir Ooh low"
-volume = 3.4000000953674316
+instrument = "Sub Bass mid"
+volume = 4.6
 transpose = 0.0
-reverb_send = 0.44999998807907104
-pan = -0.4000000059604645
+reverb_send = 0.1
+pan = -0.15
 
 [ensembles.mid]
 instrument = "Choir Ooh"
@@ -948,11 +2213,11 @@ reverb_send = 0.550000011920929
 pan = 0.0
 
 [ensembles.high]
-instrument = "Choir Ooh high"
-volume = 2.799999952316284
+instrument = "Glass Bell"
+volume = 2.4
 transpose = 0.0
-reverb_send = 0.6499999761581421
-pan = 0.4000000059604645
+reverb_send = 0.32
+pan = 0.15
 
 [ensembles.mixer]
 reverb_mix = 0.5
@@ -967,11 +2232,11 @@ note_length = 1.0
 name = "Buzz Lead"
 
 [ensembles.low]
-instrument = "Buzz Lead low"
-volume = 4.400000095367432
+instrument = "Electric Bass"
+volume = 4.6
 transpose = 0.0
-reverb_send = 0.0
-pan = 0.0
+reverb_send = 0.1
+pan = -0.15
 
 [ensembles.mid]
 instrument = "Buzz Lead"
@@ -981,11 +2246,11 @@ reverb_send = 0.10000000149011612
 pan = 0.0
 
 [ensembles.high]
-instrument = "Buzz Lead high"
-volume = 2.200000047683716
-transpose = 12.0
-reverb_send = 0.18000000715255737
-pan = 0.0
+instrument = "Bell"
+volume = 2.4
+transpose = 0.0
+reverb_send = 0.32
+pan = 0.15
 
 [ensembles.mixer]
 reverb_mix = 0.15000000596046448
@@ -1000,11 +2265,11 @@ note_length = 0.25
 name = "Soft Horn"
 
 [ensembles.low]
-instrument = "Soft Horn low"
-volume = 4.199999809265137
+instrument = "Upright Bass"
+volume = 4.6
 transpose = 0.0
-reverb_send = 0.05000000074505806
-pan = -0.10000000149011612
+reverb_send = 0.1
+pan = -0.15
 
 [ensembles.mid]
 instrument = "Soft Horn"
@@ -1014,11 +2279,11 @@ reverb_send = 0.10000000149011612
 pan = 0.10000000149011612
 
 [ensembles.high]
-instrument = "Soft Horn high"
-volume = 2.4000000953674316
-transpose = 12.0
-reverb_send = 0.11999999731779099
-pan = 0.0
+instrument = "Celesta"
+volume = 2.4
+transpose = 0.0
+reverb_send = 0.32
+pan = 0.15
 
 [ensembles.mixer]
 reverb_mix = 0.10000000149011612
@@ -1030,47 +2295,14 @@ lfo_wave = "sine"
 note_length = 0.5
 
 [[ensembles]]
-name = "Trumpet"
-
-[ensembles.low]
-instrument = "Trumpet low"
-volume = 4.400000095367432
-transpose = 0.0
-reverb_send = 0.10000000149011612
-pan = -0.15000000596046448
-
-[ensembles.mid]
-instrument = "Trumpet"
-volume = 3.5999999046325684
-transpose = 0.0
-reverb_send = 0.14000000059604645
-pan = 0.0
-
-[ensembles.high]
-instrument = "Trumpet high"
-volume = 2.5999999046325684
-transpose = 12.0
-reverb_send = 0.18000000715255737
-pan = 0.0
-
-[ensembles.mixer]
-reverb_mix = 0.15000000596046448
-reverb_size = 0.41999998688697815
-master_volume = 5.0
-master_mute = false
-lfo_rate = 5.400000095367432
-lfo_wave = "sine"
-note_length = 0.5
-
-[[ensembles]]
 name = "Clarinet"
 
 [ensembles.low]
-instrument = "Clarinet low"
-volume = 4.0
+instrument = "Upright Bass"
+volume = 4.6
 transpose = 0.0
-reverb_send = 0.15000000596046448
-pan = -0.15000000596046448
+reverb_send = 0.1
+pan = -0.15
 
 [ensembles.mid]
 instrument = "Clarinet"
@@ -1080,11 +2312,11 @@ reverb_send = 0.20000000298023224
 pan = 0.0
 
 [ensembles.high]
-instrument = "Clarinet high"
-volume = 2.4000000953674316
-transpose = 12.0
-reverb_send = 0.25999999046325684
-pan = 0.15000000596046448
+instrument = "Glass Bell"
+volume = 2.4
+transpose = 0.0
+reverb_send = 0.32
+pan = 0.15
 
 [ensembles.mixer]
 reverb_mix = 0.20000000298023224
@@ -1099,11 +2331,11 @@ note_length = 0.5
 name = "Oboe"
 
 [ensembles.low]
-instrument = "Oboe low"
-volume = 4.0
+instrument = "Upright Bass"
+volume = 4.6
 transpose = 0.0
-reverb_send = 0.15000000596046448
-pan = -0.10000000149011612
+reverb_send = 0.1
+pan = -0.15
 
 [ensembles.mid]
 instrument = "Oboe"
@@ -1113,11 +2345,11 @@ reverb_send = 0.20000000298023224
 pan = 0.0
 
 [ensembles.high]
-instrument = "Oboe high"
-volume = 2.200000047683716
-transpose = 12.0
-reverb_send = 0.25999999046325684
-pan = 0.10000000149011612
+instrument = "Bell"
+volume = 2.4
+transpose = 0.0
+reverb_send = 0.32
+pan = 0.15
 
 [ensembles.mixer]
 reverb_mix = 0.18000000715255737
@@ -1129,61 +2361,28 @@ lfo_wave = "sine"
 note_length = 0.5
 
 [[ensembles]]
-name = "Flute"
+name = "Bassy"
 
 [ensembles.low]
-instrument = "Flute low"
-volume = 3.799999952316284
+instrument = "Deep Sine"
+volume = 4.6
 transpose = 0.0
-reverb_send = 0.25
-pan = -0.15000000596046448
+reverb_send = 0.1
+pan = -0.15
 
 [ensembles.mid]
-instrument = "Flute"
-volume = 3.200000047683716
-transpose = 0.0
-reverb_send = 0.3199999928474426
-pan = 0.0
-
-[ensembles.high]
-instrument = "Flute high"
-volume = 2.5999999046325684
-transpose = 12.0
-reverb_send = 0.4000000059604645
-pan = 0.15000000596046448
-
-[ensembles.mixer]
-reverb_mix = 0.30000001192092896
-reverb_size = 0.6000000238418579
-master_volume = 5.0
-master_mute = false
-lfo_rate = 5.0
-lfo_wave = "sine"
-note_length = 0.5
-
-[[ensembles]]
-name = "Sub Bass"
-
-[ensembles.low]
-instrument = "Electric Bass"
-volume = 6.5
-transpose = 0.0
-reverb_send = 0.0
-pan = 0.0
-
-[ensembles.mid]
-instrument = "Sub Bass mid"
-volume = 2.200000047683716
+instrument = "Bassy mid"
+volume = 2.4000000953674316
 transpose = 0.0
 reverb_send = 0.0
 pan = 0.0
 
 [ensembles.high]
-instrument = "Sub Bass high"
-volume = 1.2000000476837158
+instrument = "Bell"
+volume = 2.4
 transpose = 0.0
-reverb_send = 0.0
-pan = 0.0
+reverb_send = 0.32
+pan = 0.15
 
 [ensembles.mixer]
 reverb_mix = 0.0
@@ -1198,11 +2397,11 @@ note_length = 0.5
 name = "Acid Bass"
 
 [ensembles.low]
-instrument = "Acid Bass"
-volume = 5.0
+instrument = "Sub Bass mid"
+volume = 4.6
 transpose = 0.0
-reverb_send = 0.0
-pan = 0.0
+reverb_send = 0.1
+pan = -0.15
 
 [ensembles.mid]
 instrument = "Acid Bass mid"
@@ -1212,11 +2411,11 @@ reverb_send = 0.0
 pan = 0.0
 
 [ensembles.high]
-instrument = "Acid Bass high"
-volume = 1.600000023841858
+instrument = "Buzz Lead"
+volume = 2.4
 transpose = 0.0
-reverb_send = 0.0
-pan = 0.0
+reverb_send = 0.32
+pan = 0.15
 
 [ensembles.mixer]
 reverb_mix = 0.0
@@ -1228,47 +2427,14 @@ lfo_wave = "sine"
 note_length = 0.25
 
 [[ensembles]]
-name = "Upright Bass"
-
-[ensembles.low]
-instrument = "Upright Bass"
-volume = 6.199999809265137
-transpose = 0.0
-reverb_send = 0.0
-pan = 0.0
-
-[ensembles.mid]
-instrument = "Upright Bass mid"
-volume = 3.0
-transpose = 0.0
-reverb_send = 0.0
-pan = 0.0
-
-[ensembles.high]
-instrument = "Upright Bass high"
-volume = 1.600000023841858
-transpose = 0.0
-reverb_send = 0.0
-pan = 0.0
-
-[ensembles.mixer]
-reverb_mix = 0.10000000149011612
-reverb_size = 0.4000000059604645
-master_volume = 5.0
-master_mute = false
-lfo_rate = 5.0
-lfo_wave = "sine"
-note_length = 0.5
-
-[[ensembles]]
 name = "Kick"
 
 [ensembles.low]
-instrument = "Kick low"
-volume = 6.5
-transpose = -12.0
-reverb_send = 0.0
-pan = 0.0
+instrument = "Kick"
+volume = 4.6
+transpose = 0.0
+reverb_send = 0.1
+pan = -0.15
 
 [ensembles.mid]
 instrument = "Kick"
@@ -1278,11 +2444,11 @@ reverb_send = 0.0
 pan = 0.0
 
 [ensembles.high]
-instrument = "Kick high"
-volume = 2.5999999046325684
-transpose = -5.0
-reverb_send = 0.0
-pan = 0.0
+instrument = "Kick"
+volume = 2.4
+transpose = 0.0
+reverb_send = 0.32
+pan = 0.15
 
 [ensembles.mixer]
 reverb_mix = 0.05000000074505806
@@ -1297,11 +2463,11 @@ note_length = 0.25
 name = "Hi-Hat"
 
 [ensembles.low]
-instrument = "Hi-Hat low"
-volume = 2.0
+instrument = "Hi-Hat"
+volume = 4.6
 transpose = 0.0
-reverb_send = 0.0
-pan = 0.0
+reverb_send = 0.1
+pan = -0.15
 
 [ensembles.mid]
 instrument = "Hi-Hat"
@@ -1311,11 +2477,11 @@ reverb_send = 0.0
 pan = 0.0
 
 [ensembles.high]
-instrument = "Hi-Hat high"
-volume = 3.5
+instrument = "Hi-Hat"
+volume = 2.4
 transpose = 0.0
-reverb_send = 0.0
-pan = 0.0
+reverb_send = 0.32
+pan = 0.15
 
 [ensembles.mixer]
 reverb_mix = 0.05000000074505806
@@ -1330,11 +2496,11 @@ note_length = 0.25
 name = "Snare"
 
 [ensembles.low]
-instrument = "Snare low"
-volume = 3.0
-transpose = -12.0
-reverb_send = 0.0
-pan = 0.0
+instrument = "Snare"
+volume = 4.6
+transpose = 0.0
+reverb_send = 0.1
+pan = -0.15
 
 [ensembles.mid]
 instrument = "Snare"
@@ -1344,11 +2510,11 @@ reverb_send = 0.11999999731779099
 pan = 0.0
 
 [ensembles.high]
-instrument = "Snare high"
-volume = 2.4000000953674316
+instrument = "Snare"
+volume = 2.4
 transpose = 0.0
-reverb_send = 0.15000000596046448
-pan = 0.0
+reverb_send = 0.32
+pan = 0.15
 
 [ensembles.mixer]
 reverb_mix = 0.11999999731779099
@@ -1363,11 +2529,11 @@ note_length = 0.25
 name = "Wind"
 
 [ensembles.low]
-instrument = "Wind low"
-volume = 2.4000000953674316
+instrument = "Sub Bass mid"
+volume = 4.6
 transpose = 0.0
-reverb_send = 0.44999998807907104
-pan = -0.44999998807907104
+reverb_send = 0.1
+pan = -0.15
 
 [ensembles.mid]
 instrument = "Wind"
@@ -1377,11 +2543,11 @@ reverb_send = 0.550000011920929
 pan = 0.0
 
 [ensembles.high]
-instrument = "Wind high"
-volume = 2.0
+instrument = "Glass Bell"
+volume = 2.4
 transpose = 0.0
-reverb_send = 0.6499999761581421
-pan = 0.44999998807907104
+reverb_send = 0.32
+pan = 0.15
 
 [ensembles.mixer]
 reverb_mix = 0.6000000238418579
@@ -1390,4 +2556,37 @@ master_volume = 5.0
 master_mute = false
 lfo_rate = 0.2800000011920929
 lfo_wave = "triangle"
+note_length = 1.0
+
+[[ensembles]]
+name = "Glass"
+
+[ensembles.low]
+instrument = "Sub Bass mid"
+volume = 4.6
+transpose = 0.0
+reverb_send = 0.1
+pan = -0.15
+
+[ensembles.mid]
+instrument = "Glass Bell"
+volume = 3.0
+transpose = 0.0
+reverb_send = 0.5
+pan = 0.0
+
+[ensembles.high]
+instrument = "Glass high"
+volume = 2.4
+transpose = 0.0
+reverb_send = 0.32
+pan = 0.15
+
+[ensembles.mixer]
+reverb_mix = 0.6000000238418579
+reverb_size = 0.8500000238418579
+master_volume = 5.0
+master_mute = false
+lfo_rate = 5.0
+lfo_wave = "sine"
 note_length = 1.0

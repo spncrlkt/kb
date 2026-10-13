@@ -13,8 +13,8 @@ matrix (2) is worth having even if the profiling (3, 4) never finds anything.
 
 | | |
 | --- | --- |
-| Correctness | 985 unit tests, `cargo test`, no audio device needed |
-| Audio regression | 23 render tests in `tests/render.rs` |
+| Correctness | 1011 unit tests, `cargo test`, no audio device needed |
+| Audio regression | 28 render tests in `tests/render.rs` |
 | Stress | 10 load tests in `tests/stress.rs`, 3 more under `--ignored` |
 | Allocation checking | 4 tests in `tests/allocation.rs` — the callback makes zero passes |
 | Benchmarks | 37 criterion benchmarks on the real path, in seven groups |
@@ -117,13 +117,17 @@ block-size comparison a comparison of the *sound*.
 
 ### What is asserted
 
-Nineteen tests, in rough order of value per line:
+The render suite, in rough order of value per line — the count itself is in the
+table above:
 
 1. **Invariants, swept over the whole shipped library.** Nothing non-finite,
-   nothing above full scale, everything audible — for all 42 shipped ensembles
+   nothing above full scale, everything audible — for all 74 shipped ensembles
    and all 155 shipped instruments, each played in all three registers.
    A shipped preset that renders silence, or a patch that only behaves in its own
-   register, is invisible in the file and obvious here.
+   register, is invisible in the file and obvious here. The same sweep is where
+   the palette's *level* is asserted: the loudness spread across all 74 is under
+   21 dB, and it was 18.9 dB both before and after the showcase ensembles were
+   added, so a preset authored at the wrong level is caught here too.
 2. **Block-size invariance**, at 16, 64, 512, 1024 and 4096, with a held chord
    and again with a parameter moving mid-render. Bit-identical, asserted on the
    samples and not only on the hash. This is the single most valuable structural
@@ -152,14 +156,33 @@ Nineteen tests, in rough order of value per line:
    time to fall 30 dB — are the portable half, compared with a 2 % tolerance, so
    a failure says *how* the sound moved rather than only that it did.
 
+   **What a golden cannot tell you.** A hash is recorded from whatever the code
+   did on the day it was recorded, so it locks in a bug as happily as it locks in
+   a sound. The five second-oscillator hashes spent a long time passing while
+   testing nothing, because the parameter bridge between the palette and the
+   engine never delivered the second oscillator's level and had been recorded
+   delivering zero. Nothing in the hash could see that; what sees it is an
+   assertion about the *contract* rather than about the samples —
+   `synth::tests::loading_a_channel_writes_the_whole_voice`, which compares what
+   the engine holds after a load against what the file says. Record the golden,
+   but assert the bridge.
+
 ### One thing the sweep found
 
-A single note is not one note. `allocate` spreads it over the registers as
-itself, an octave below and an octave above, so a "pitch" test has to silence the
-neighbours to have a pitch to measure at all. `one_note_is_voiced_as_the_note_and_its_octaves`
-is the assertion that says so, and `Config::middle_register_only` is the helper
-the pitch tests use. That is a design decision being written down where it can
-break, not a workaround.
+A single note is not one note. `allocate` voices every chord across the three
+registers as **a bass, a chord and a descant** — the root an octave below, the
+chord in the middle, the top an octave above — so a "pitch" test has to silence
+the neighbours to have a pitch to measure at all. `Config::middle_register_only`
+is the helper the pitch tests use, `one_note_is_voiced_as_the_note_and_its_octaves`
+says why, and `a_triad_is_voiced_as_a_bass_a_chord_and_a_descant` is the
+end-to-end assertion that the three registers really are three parts.
+
+That last one exists because the opposite was true for a long time and nothing
+noticed: the registers used to be handed the chord's tones at their written pitch,
+which put all three inside a major third. Every *other* pitch test passes when the
+voicing is collapsed, because every other pitch test silences two of the three
+registers to measure the third. The invariant that was missing was about the
+relationship between them, not about any one of them.
 
 ### Golden audio, and the human in the loop
 
@@ -810,7 +833,7 @@ before it plays a note went from 610 ns a frame to 147.
 
 ### The analyser gate, kept
 
-The Spectrum panel is one of seven stops on the Tab key and the levels it draws
+The Spectrum panel is one of nine stops on the Tab key and the levels it draws
 reach nothing else, so the interface now tells the callback whether that panel is
 on screen and the callback skips the banks when it is not. It clears them on the
 way back in, so the panel opens on the sound that is playing rather than the one

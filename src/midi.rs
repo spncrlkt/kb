@@ -194,7 +194,7 @@ fn velocity_for(gain: f32) -> u8 {
 mod tests {
     use super::*;
     use crate::music::{Scale, ScaleDegree, Transformation};
-    use crate::progression::{Progression, ProgressionEntry, Slot};
+    use crate::progression::{AssignedRhythm, Progression, ProgressionEntry, Slot};
 
     fn c_major() -> Key {
         Key::new(60, Scale::Major)
@@ -256,7 +256,10 @@ mod tests {
 
     #[test]
     fn split_of_nothing_is_empty() {
-        assert_eq!(split_layers(&[]), [vec![], vec![], vec![]]);
+        assert_eq!(
+            split_layers(&[]),
+            [Vec::<u8>::new(), Vec::new(), Vec::new()]
+        );
     }
 
     // ---- geometry ----
@@ -406,7 +409,9 @@ mod tests {
         offset: i32,
     ) -> Slot {
         let mut entry = ProgressionEntry::new(degree, None);
-        entry.pattern = pattern;
+        entry.pattern = pattern
+            .as_ref()
+            .and_then(|pattern| AssignedRhythm::from_pattern(pattern, 0));
         entry.offset_ticks = offset;
         Slot::Chord(entry)
     }
@@ -434,13 +439,16 @@ mod tests {
     }
 
     #[test]
-    fn a_layer_gain_becomes_a_velocity() {
-        // Two takes on the same cell: the second is the decayed one.
+    fn a_cell_accent_becomes_a_velocity() {
+        // A hit at full level and one accented down: the accent is what a
+        // velocity becomes, and it is now a per-cell shape rather than a second
+        // take.
+        // Two hits, the first accented down. The accent is what a velocity
+        // becomes, and it is a per-cell shape rather than a second take — a
+        // take's gain used to be the only way to say "quieter".
         let mut pattern =
-            crate::rhythm::RhythmPattern::from_step_string("Stack", 0.5, "x---").unwrap();
-        pattern
-            .layers
-            .push(crate::rhythm::RhythmLayer::from_step_string(0.7, "x---").unwrap());
+            crate::rhythm::RhythmPattern::from_step_string("Accented", 0.5, "xx--").unwrap();
+        pattern.bars[0].set_cell_velocity(0, 0.5);
 
         let slots = vec![patterned(ScaleDegree::I, Some(pattern), 0)];
         let score = render_progression(&slots, &c_major(), 120, 1.0);
@@ -448,7 +456,11 @@ mod tests {
         let mut velocities: Vec<u8> = score.notes.iter().map(|n| n.velocity).collect();
         velocities.sort_unstable();
         velocities.dedup();
-        assert_eq!(velocities, vec![70, DEFAULT_VELOCITY], "one per take");
+        assert_eq!(
+            velocities,
+            vec![50, DEFAULT_VELOCITY],
+            "the accented hit under the full one"
+        );
     }
 
     #[test]
@@ -504,7 +516,7 @@ mod tests {
         // the loop plays.
         let mut pattern =
             crate::rhythm::RhythmPattern::from_step_string("Damped", 4.0, "x---").unwrap();
-        pattern.mute_ticks = 480;
+        pattern.bars[0].mute_ticks = 480;
 
         let slots = vec![patterned(ScaleDegree::I, Some(pattern), 0)];
         let score = render_progression(&slots, &c_major(), 120, 1.0);

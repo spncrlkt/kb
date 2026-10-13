@@ -105,13 +105,17 @@ scheduling item.)
       `KeyPosition::TopLeft` that never enters the held set), stack takes, and
       assign the result to the chord the Progression panel has selected. The bar
       grid is drawn at the chosen resolution (4/8/16/32/64 steps per bar).
+      *(Superseded by §0b: a bar is one grid now, and the tap recorder is the
+      four-bar Loops panel.)*
 - [x] **Takes stack and decay**: each committed take is a layer, the newest at
       full level and older ones one `TAKE_DECAY` step down, capped at the four
       stab groups the synth provides. `smooth N` (`←`/`→`, defaults to 1 take per
       layer) averages the last N takes into the top layer instead, for converging
-      on one clean figure.
+      on one clean figure. *(Deleted in §0b, along with `smooth` and the take
+      lines.)*
 - [x] **Pattern library**: `rhythms.toml`, mirroring `patches.toml`, with five
       built-ins; `[Save Pattern As...]` writes it and assigns it in one step.
+      *(Nineteen built-ins now, one to four bars each; see §0b.)*
 - [x] **Chord offsets**: `←`/`→` in the Progression panel — and the Sinko
       `offset` row — moves the selected chord along a fixed note ladder (1/32 ·
       1/16 · 1/8 · 3/16 · 1/4 · 3/8 · 1/2 · 3/4 · whole), clamped to a whole note
@@ -141,9 +145,9 @@ scheduling item.)
       instead of letting it finish, so a chord cannot ring on for a bar.
 - [x] **Hit editing** (`hits` row): `←`/`→` walks a cell cursor over the grid
       (inverted in place, so the bar still reads as hits and rests) and `Enter`
-      toggles a hit — off clears the cell in every take, on puts it in the newest
-      one — through to the library, so it is heard on the next bar. Also added the
-      2-cell (half note) grid, which `VALID_STEPS` was missing.
+      toggles a hit, through to the library, so it is heard on the next bar.
+      Also added the 2-cell (half note) grid, which `VALID_STEPS` was missing.
+      *(There is one grid per bar now, so the toggle is just the cell — §0b.)*
 - [x] **Reverted: the figure cycle.** An earlier `cells` row walked every way of
       filling the grid, densest first. It was the wrong operation: at 32 and 64
       steps the list runs to billions, and what a take you almost like needs is a
@@ -171,12 +175,56 @@ scheduling item.)
       Prompts and edits now take `Esc` first.
 - [x] **Metronome**: `&` (next to `$`) toggles a click from any panel, plus a
       `metronome` row on the Transport panel. It runs with the transport stopped
-      too, and an armed take forces it on without forgetting your own switch.
+      too, and the Looper's recording forces it on without forgetting your own
+      switch.
 - [x] **Space is the both-hands chord latch** (`Registers::lock_both`), and the
       transport moved to `{`: once plays/pauses, twice restarts from bar 1,
       three times seeks to the middle. `Enter`/`←`/`→` on the `playing` row do
       the same. The lock hint line now prints the keycap *and* the character the
       layout types, which retires the "lists the registers backwards" bug.
+
+## 0b. Done: multi-bar patterns, the Loops panel, and the ensemble rework
+
+- [x] **A pattern is one bar or four, and a bar is one grid.** The old model was
+      *one bar per chord, four stacked takes per bar* — a take was a layer, layers
+      decayed by ×0.7, `smooth N` averaged the newest N of them, and `MAX_TAKES`
+      was 8. All of that is deleted: `RhythmBar` is a single grid of steps, holds,
+      velocities, a default hold, a muted tail and a swing amount, and a
+      `RhythmPattern` gathers one to four of them under a name. `RhythmLayer`,
+      `decay_layer_gains`, `average_takes` and the take constants are gone, along
+      with the `LayerLengthMismatch` error. `PatternWire` still *reads* the old
+      `[[rhythms.layers]]` form and unions the layers into one grid, so an old
+      `rhythms.user.toml` still loads.
+- [x] **A phrase assigns across four chords.** `assign_phrase(start, pattern)`
+      spreads a pattern's bars over consecutive entries in one undoable edit and
+      returns how many landed, and `AssignedRhythm { name, bar, rhythm }` is what a
+      `ProgressionEntry` now owns — the same copy-per-chord guarantee as before,
+      plus a bar index so one bar of a phrase can be replaced on its own.
+      `Jazz Chorus` ships as one four-bar pattern and `Son Clave` as one two-bar
+      pattern, rather than as one-bar fragments whose names carried the position.
+- [x] **The four-bar Loops panel.** A tap recorder for a *progression*. It loads a
+      bed of four bars — one chord repeated, or the first four chords — loops it
+      with the click, and records `` ` `` taps into the bar the clock is on, each
+      sounding that bar's chord as it is placed; on the next pass the hits play
+      back with their own bar's chord. `[Record]` is three-state and
+      non-destructive (load and loop → stop recording → unload), `Esc` stops
+      without discarding the bars, `[Clear Bar]` empties one bar, and
+      `[Save Loop As...]` writes all four into the palette as one pattern for
+      Sinko to assign. It is a sixth view of the shared Synth slot, so it costs
+      the layout nothing, and the bed lives in the transport rather than the
+      panel. Replaces the Sinko `record` row, the four take lines and `smooth`.
+- [x] **Every ensemble is three different instruments.** All 74 were re-voiced:
+      a bass in `low`, the instrument the name promises in `mid`, a lead in
+      `high` — and no two ensembles share a mid design, because the middle is the
+      ensemble's identity. `every_shipped_ensemble_has_a_bass_a_mid_and_a_lead`
+      asserts it; the three drum kits are the documented exception, since a drum
+      has no register. The palette order is a curation in parts — one-per-role
+      first, then the usable showcases, then the edges, then the original palette
+      by family — and `PALETTE_FINGERPRINT` sorts by name, so re-ordering is free
+      and never re-records a golden.
+- [x] **Quiet status feedback.** The `.user.toml` writers and the looper's save
+      report through the same three-outcome status type as everything else, so a
+      refused keystroke fades and a real I/O error stays put.
 
 ## 0. Done this session
 
@@ -372,12 +420,24 @@ and voices it, scoped to the Progression panel.
 - [x] Swing / subdivision, and more than one bar per chord. Done as rhythm
       patterns: `arrangement.rs` is the timing seam, so **swing** and
       **multi-bar patterns** are now fields on `RhythmPattern` rather than new
-      machinery. Still open.
+      machinery. See §0b for the one-to-four-bar model and the Loops panel.
 - [ ] Rhythm follow-ups, in the order they are worth doing:
-  - [ ] Swing/shuffle on a pattern (delay every second grid cell).
-  - [ ] Patterns longer than one bar.
+  - [x] Swing/shuffle on a pattern (delay every second grid cell).
+  - [x] Patterns longer than one bar — one to four, assigned as a phrase.
+  - [x] Click a step on and off in the Sinko grid — the `hits` row.
   - [ ] A per-assignment gain, so one pattern can sit quieter on one chord.
-  - [ ] Click a step on and off in the Sinko grid, for fixing a mis-tap.
+  - [ ] **Loop/edit a saved phrase the way the looper edits a bed.** The Loops
+        panel can record four bars and save them; nothing can load a saved
+        four-bar pattern *back into* the looper to nudge one hit. Assigning the
+        phrase to four chords and editing them one at a time is the workaround.
+  - [ ] **Sinko edits one bar of a phrase and cannot say which.** `working_bar`
+        is set from the bar the assigned phrase put on this chord, and no row
+        moves it, so bar 3 of `Jazz Chorus` is reachable only by editing the
+        chord that holds it. The Loops panel draws all four bars; Sinko should
+        either draw the phrase's bars the same way or gain a `bar` row.
+  - [ ] More than four bars. `MAX_PATTERN_BARS` is 4 and the looper's bed is 4
+        because the recorder is four taps of the transport; a longer phrase wants
+        a different gesture rather than a bigger constant.
   - [ ] Audition a pattern from the Progression panel without assigning it.
   - [ ] Route rhythm hits to live MIDI output. `arrangement.rs` already emits
         the note boundaries a sink would consume.

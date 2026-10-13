@@ -11,7 +11,7 @@
 #
 # What is checked, and why each one is here:
 #
-#   cargo test                  the whole suite: 980 unit tests, 21 offline
+#   cargo test                  the whole suite: 1011 unit tests, 28 offline
 #                               renders of the real audio path, 10 load tests,
 #                               and the four that assert the audio callback
 #                               allocates nothing. The golden hashes inside the

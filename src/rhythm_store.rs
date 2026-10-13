@@ -182,11 +182,11 @@ mod tests {
     #[test]
     fn the_built_ins_are_the_model_built_ins() {
         let store = RhythmStore::with_builtins();
-        assert_eq!(store.patterns.len(), 23);
+        assert_eq!(store.patterns.len(), 19);
         assert!(store.find("Offbeat Eighths").is_some());
         assert!(store.find("Held Half").is_some());
         assert!(store.find("Swung Eighths").is_some());
-        assert!(store.find("Jazz Chorus 4/4").is_some());
+        assert!(store.find("Jazz Chorus").is_some());
     }
 
     #[test]
@@ -214,7 +214,7 @@ mod tests {
         let store = RhythmStore::load(&defaults, &user).unwrap();
         assert!(user.exists(), "the user's file is created to be edited");
         assert!(!defaults.exists(), "the tracked defaults are never written");
-        assert_eq!(store.patterns.len(), 23, "the built-ins stood in for them");
+        assert_eq!(store.patterns.len(), 19, "the built-ins stood in for them");
 
         let again = RhythmStore::load(&defaults, &user).unwrap();
         assert_eq!(again.patterns, store.patterns);
@@ -242,24 +242,24 @@ mod tests {
     }
 
     #[test]
-    fn save_then_load_keeps_a_multi_layer_pattern() {
+    fn save_then_load_keeps_a_multi_bar_pattern() {
         let defaults = temp_path("stack-defaults");
         let user = temp_path("stack-user");
         let _ = fs::remove_file(&defaults);
         let _ = fs::remove_file(&user);
 
         let mut store = RhythmStore::default();
-        let mut pattern = RhythmPattern::from_step_string("Stack", 0.4, "x--x--x-").unwrap();
-        pattern
-            .layers
-            .push(crate::rhythm::RhythmLayer::from_step_string(0.7, "--------").unwrap());
+        let pattern = RhythmPattern::single(
+            "Offbeat",
+            crate::rhythm::RhythmBar::from_step_string(0.4, "x--x--x-").unwrap(),
+        );
         store.add(pattern.clone());
         store.save(&user).unwrap();
 
         // The defaults supply the palette; the user's file supplies the rest.
         let back = RhythmStore::load(&defaults, &user).unwrap();
-        assert_eq!(back.find("Stack"), Some(&pattern));
-        assert_eq!(back.patterns.len(), 24, "23 built-ins plus mine");
+        assert_eq!(back.find("Offbeat"), Some(&pattern));
+        assert_eq!(back.patterns.len(), 20, "19 built-ins plus mine");
 
         let _ = fs::remove_file(&user);
     }
@@ -277,25 +277,25 @@ mod tests {
         let mut mine = RhythmStore::default();
         mine.add(RhythmPattern::from_step_string("Mine", 0.5, "xxxxxxxx").unwrap());
         let mut edited = RhythmPattern::from_step_string("Quarters", 0.9, "xx--").unwrap();
-        edited.hold = 864;
+        edited.bars[0].hold = 864;
         mine.add(edited);
         mine.save(&user).unwrap();
 
         let merged = RhythmStore::load(&defaults, &user).unwrap();
-        assert_eq!(merged.patterns.len(), 24, "23 defaults plus one of mine");
+        assert_eq!(merged.patterns.len(), 20, "19 defaults plus one of mine");
         assert!(merged.find("Mine").is_some());
         assert!(
             merged.find("Swung Eighths").is_some(),
             "the default is still there"
         );
         assert_eq!(
-            merged.find("Quarters").unwrap().hold,
+            merged.find("Quarters").unwrap().bars[0].hold,
             864,
             "my Quarters wins over the shipped one"
         );
         // And the shipped order survives: mine is appended, not interleaved.
         assert_eq!(merged.patterns[0].name, "Held Whole");
-        assert_eq!(merged.patterns[23].name, "Mine");
+        assert_eq!(merged.patterns[19].name, "Mine");
 
         let _ = fs::remove_file(&user);
         let _ = fs::remove_file(&defaults);
@@ -331,16 +331,16 @@ mod tests {
         let mut store = store();
         let before = store.patterns.len();
         let mut updated = store.find("Offbeat Eighths").unwrap().clone();
-        updated.hold = 864;
+        updated.bars[0].hold = 864;
         store.add(updated);
         assert_eq!(store.patterns.len(), before, "no new pattern");
-        assert_eq!(store.find("Offbeat Eighths").unwrap().hold, 864);
+        assert_eq!(store.find("Offbeat Eighths").unwrap().bars[0].hold, 864);
     }
 
     #[test]
     fn the_built_ins_are_written_in_playing_order() {
-        // Sustained, straight, sixteenths, triplets, texture — then the phrase
-        // sets, each numbered set kept together so the run reads as one figure.
+        // Sustained, straight, sixteenths, triplets, texture — then the two
+        // phrases, each one pattern holding all of its bars.
         let store = store();
         let names: Vec<&str> = store.patterns.iter().map(|p| p.name.as_str()).collect();
         assert_eq!(
@@ -363,12 +363,8 @@ mod tests {
                 "Damped Quarters",
                 "Accented Eighths",
                 "32nd Roll",
-                "Jazz Chorus 1/4",
-                "Jazz Chorus 2/4",
-                "Jazz Chorus 3/4",
-                "Jazz Chorus 4/4",
-                "Son Clave 1/2",
-                "Son Clave 2/2",
+                "Jazz Chorus",
+                "Son Clave",
             ]
         );
     }
@@ -377,7 +373,7 @@ mod tests {
     fn find_reaches_a_pattern_by_name() {
         let store = store();
         assert!(store.find("Not Here").is_none());
-        assert_eq!(store.find("Quarters").unwrap().steps_per_bar(), 4);
+        assert_eq!(store.find("Quarters").unwrap().bars[0].steps_per_bar(), 4);
     }
 
     #[test]

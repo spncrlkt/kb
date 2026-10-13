@@ -5,7 +5,7 @@ use crate::music::{
     chord_label, diatonic_triad, diatonic_triad_label, ChordSpec, Key, ScaleDegree,
     Transformation, BAR_TICKS,
 };
-use crate::rhythm::RhythmPattern;
+use crate::rhythm::{RhythmBar, RhythmPattern};
 
 /// The furthest a chord may be moved off its own downbeat.
 ///
@@ -78,6 +78,46 @@ impl Registers {
 // Entries
 // -----------------------------------------------------------------------------
 
+/// The rhythm a progression entry owns: one bar of a named pattern, copied.
+///
+/// An entry is one bar of the loop, and a pattern may hold up to
+/// [`MAX_PATTERN_BARS`](crate::rhythm::MAX_PATTERN_BARS) bars, so assigning a
+/// pattern of four to a chord gives bar 0 to that chord and bars 1..3 to the three
+/// after it. This is what one of those bars remembers: which pattern it came from
+/// and which bar of it, so the `pattern` row can name it and say whether it has
+/// been edited since.
+///
+/// A **copy**, like everything else about an entry's rhythm: editing the hits on
+/// one chord cannot reach the library or another chord.
+#[derive(Clone, Debug, PartialEq)]
+pub struct AssignedRhythm {
+    /// The pattern in the library this came from.
+    pub name: String,
+    /// Which bar of it this entry got, from zero.
+    pub bar: usize,
+    /// The bar itself.
+    pub rhythm: RhythmBar,
+}
+
+impl AssignedRhythm {
+    /// Bar `bar` of `pattern`, as an entry would hold it.
+    pub fn from_pattern(pattern: &RhythmPattern, bar: usize) -> Option<Self> {
+        pattern.bars.get(bar).map(|rhythm| AssignedRhythm {
+            name: pattern.name.clone(),
+            bar,
+            rhythm: rhythm.clone(),
+        })
+    }
+
+    /// Whether this still matches the bar of the library pattern it names.
+    pub fn matches(&self, pattern: &RhythmPattern) -> bool {
+        pattern
+            .bars
+            .get(self.bar)
+            .is_some_and(|bar| *bar == self.rhythm)
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct ProgressionEntry {
     pub degree: ScaleDegree,
@@ -95,7 +135,7 @@ pub struct ProgressionEntry {
     /// The cost is deliberate: a rhythm edited here lives in the *session*
     /// document, so it travels with an export rather than reaching
     /// `rhythms.toml` on its own.
-    pub pattern: Option<RhythmPattern>,
+    pub pattern: Option<AssignedRhythm>,
     /// Signed ticks, clamped to `-MAX_OFFSET_TICKS..=MAX_OFFSET_TICKS`.
     ///
     /// Negative anticipates the chord across the bar line, positive delays it;
@@ -424,7 +464,7 @@ impl Progression {
         &mut self,
         start: usize,
         end: usize,
-        patterns: &[Option<RhythmPattern>],
+        patterns: &[Option<AssignedRhythm>],
     ) -> bool {
         let (start, end) = ordered(start, end);
         if patterns.is_empty() || start >= self.slots.len() {
@@ -448,6 +488,41 @@ impl Progression {
             }
         }
         true
+    }
+
+    /// Lay a whole pattern across consecutive slots, one bar each.
+    ///
+    /// This is how a phrase is assigned, and how the looper's four bars reach the
+    /// progression. Returns how many bars landed: a pattern longer than the run
+    /// left is not an error and does not pad the progression — the bars that fit
+    /// are written and the caller reports the shortfall.
+    ///
+    /// One undoable edit, like every other change here.
+    pub fn assign_phrase(&mut self, start: usize, pattern: &RhythmPattern) -> usize {
+        let bars: Vec<Option<AssignedRhythm>> = (0..pattern.bars.len())
+            .map(|bar| AssignedRhythm::from_pattern(pattern, bar))
+            .collect();
+        let end = (start + bars.len())
+            .saturating_sub(1)
+            .min(self.slots.len().saturating_sub(1));
+        if bars.is_empty() || start >= self.slots.len() {
+            return 0;
+        }
+        let changes = (start..=end).any(|index| match self.slots.get(index) {
+            Some(Slot::Chord(entry)) => entry.pattern != bars[index - start],
+            _ => false,
+        });
+        if !changes {
+            return 0;
+        }
+        self.record();
+        for index in start..=end {
+            let assigned = bars[index - start].clone();
+            if let Some(Slot::Chord(entry)) = self.slots.get_mut(index) {
+                entry.pattern = assigned;
+            }
+        }
+        end - start + 1
     }
 
     /// Give every slot in a run the chord in the registers, keeping each one's
@@ -507,7 +582,7 @@ impl Progression {
     /// is what keeps two chords from sharing one instance. Returns whether
     /// anything changed, so a caller can flash instead of recording an edit that
     /// would do nothing.
-    pub fn assign_pattern(&mut self, index: usize, pattern: Option<RhythmPattern>) -> bool {
+    pub fn assign_pattern(&mut self, index: usize, pattern: Option<AssignedRhythm>) -> bool {
         let unchanged = match self.slots.get(index) {
             Some(Slot::Chord(entry)) => entry.pattern == pattern,
             _ => return false,
@@ -1063,7 +1138,12 @@ mod tests {
         RhythmPattern::from_step_string(name, 0.5, "x---").unwrap()
     }
 
-    fn pattern_and_offset(p: &Progression, i: usize) -> (Option<RhythmPattern>, i32) {
+    /// The same, as an entry holds it: one bar, and where it came from.
+    fn assigned(name: &str) -> AssignedRhythm {
+        AssignedRhythm::from_pattern(&pattern(name), 0).expect("a one-bar pattern")
+    }
+
+    fn pattern_and_offset(p: &Progression, i: usize) -> (Option<AssignedRhythm>, i32) {
         match &p.slots[i] {
             Slot::Chord(e) => (e.pattern.clone(), e.offset_ticks),
             other => panic!("expected a chord, got {:?}", other),
@@ -1081,7 +1161,7 @@ mod tests {
     fn replacing_a_chord_keeps_its_rhythm() {
         // The whole point: swap what the slot plays, keep how it plays it.
         let mut p = filled(&[ScaleDegree::I, ScaleDegree::V]);
-        p.assign_pattern(1, Some(pattern("Offbeat Eighths")));
+        p.assign_pattern(1, Some(assigned("Offbeat Eighths")));
         p.set_offset(1, -480);
         let before = pattern_and_offset(&p, 1);
 
@@ -1124,7 +1204,7 @@ mod tests {
         let mut p = Progression::new();
         p.slots = vec![Slot::Chord(entry(ScaleDegree::I, None))];
         p.slots[0] = Slot::Chord(ProgressionEntry {
-            pattern: Some(pattern("Quarters")),
+            pattern: Some(assigned("Quarters")),
             offset_ticks: 240,
             ..entry(ScaleDegree::I, None)
         });
@@ -1140,7 +1220,7 @@ mod tests {
         );
         assert_eq!(
             pattern_and_offset(&p, 0),
-            (Some(pattern("Quarters")), 240),
+            (Some(assigned("Quarters")), 240),
             "and the rhythm it had"
         );
     }
@@ -1177,7 +1257,7 @@ mod tests {
 
     // ---- rhythm assignment and offset ----
 
-    fn pattern_of(p: &Progression, i: usize) -> Option<RhythmPattern> {
+    fn pattern_of(p: &Progression, i: usize) -> Option<AssignedRhythm> {
         match &p.slots[i] {
             Slot::Chord(e) => e.pattern.clone(),
             other => panic!("expected a chord, got {:?}", other),
@@ -1201,40 +1281,40 @@ mod tests {
     #[test]
     fn assigning_a_pattern_is_undoable() {
         let mut p = filled(&[ScaleDegree::I, ScaleDegree::V]);
-        assert!(p.assign_pattern(1, Some(pattern("Offbeat Eighths"))));
-        assert_eq!(pattern_of(&p, 1), Some(pattern("Offbeat Eighths")));
+        assert!(p.assign_pattern(1, Some(assigned("Offbeat Eighths"))));
+        assert_eq!(pattern_of(&p, 1), Some(assigned("Offbeat Eighths")));
         assert_eq!(pattern_of(&p, 0), None, "only the targeted slot changed");
 
         assert!(p.undo());
         assert_eq!(pattern_of(&p, 1), None);
         assert!(p.redo());
-        assert_eq!(pattern_of(&p, 1), Some(pattern("Offbeat Eighths")));
+        assert_eq!(pattern_of(&p, 1), Some(assigned("Offbeat Eighths")));
     }
 
     #[test]
     fn clearing_a_pattern_is_undoable_too() {
         let mut p = filled(&[ScaleDegree::I]);
-        p.assign_pattern(0, Some(pattern("Eighths")));
+        p.assign_pattern(0, Some(assigned("Eighths")));
         assert!(p.assign_pattern(0, None));
         assert_eq!(pattern_of(&p, 0), None);
         assert!(p.undo());
-        assert_eq!(pattern_of(&p, 0), Some(pattern("Eighths")));
+        assert_eq!(pattern_of(&p, 0), Some(assigned("Eighths")));
     }
 
     #[test]
     fn assigning_to_a_rest_or_past_the_end_does_nothing() {
         let mut p = Progression::new();
         p.slots = vec![Slot::Rest];
-        assert!(!p.assign_pattern(0, Some(pattern("Eighths"))));
-        assert!(!p.assign_pattern(9, Some(pattern("Eighths"))));
+        assert!(!p.assign_pattern(0, Some(assigned("Eighths"))));
+        assert!(!p.assign_pattern(9, Some(assigned("Eighths"))));
         assert!(!p.can_undo(), "a refused assign must not touch history");
     }
 
     #[test]
     fn assigning_the_same_pattern_again_records_nothing() {
         let mut p = filled(&[ScaleDegree::I]);
-        p.assign_pattern(0, Some(pattern("Eighths")));
-        assert!(!p.assign_pattern(0, Some(pattern("Eighths"))));
+        p.assign_pattern(0, Some(assigned("Eighths")));
+        assert!(!p.assign_pattern(0, Some(assigned("Eighths"))));
         // Only the first assign and the original append are undoable.
         assert!(p.undo());
         assert_eq!(pattern_of(&p, 0), None);
@@ -1402,7 +1482,7 @@ mod tests {
     #[test]
     fn clearing_rhythms_keeps_the_chords_and_the_offsets_go_too() {
         let mut p = filled(&[ScaleDegree::I, ScaleDegree::V]);
-        p.assign_pattern(0, Some(pattern("Syncopated 16ths")));
+        p.assign_pattern(0, Some(assigned("Syncopated 16ths")));
         p.set_offset(1, 480);
 
         assert!(p.strip_rhythms(0, 1));
@@ -1421,21 +1501,21 @@ mod tests {
     #[test]
     fn one_rhythm_lays_across_a_whole_selection() {
         let mut p = filled(&[ScaleDegree::I, ScaleDegree::V, ScaleDegree::VI]);
-        let patterns = vec![Some(pattern("Quarters"))];
+        let patterns = vec![Some(assigned("Quarters"))];
         assert!(p.assign_patterns(0, 2, &patterns));
         for i in 0..3 {
-            assert_eq!(pattern_of(&p, i), Some(pattern("Quarters")), "at {}", i);
+            assert_eq!(pattern_of(&p, i), Some(assigned("Quarters")), "at {}", i);
         }
     }
 
     #[test]
     fn a_phrase_of_rhythms_pastes_in_order_and_repeats() {
         let mut p = filled(&[ScaleDegree::I, ScaleDegree::V, ScaleDegree::VI]);
-        let patterns = vec![Some(pattern("A")), Some(pattern("B"))];
+        let patterns = vec![Some(assigned("A")), Some(assigned("B"))];
         assert!(p.assign_patterns(0, 2, &patterns));
-        assert_eq!(pattern_of(&p, 0), Some(pattern("A")));
-        assert_eq!(pattern_of(&p, 1), Some(pattern("B")));
-        assert_eq!(pattern_of(&p, 2), Some(pattern("A")), "and it repeats");
+        assert_eq!(pattern_of(&p, 0), Some(assigned("A")));
+        assert_eq!(pattern_of(&p, 1), Some(assigned("B")));
+        assert_eq!(pattern_of(&p, 2), Some(assigned("A")), "and it repeats");
     }
 
     #[test]
@@ -1443,18 +1523,18 @@ mod tests {
         // A copied chord with no rhythm pastes as "no rhythm", so a phrase's shape
         // survives the round trip.
         let mut p = filled(&[ScaleDegree::I, ScaleDegree::V]);
-        p.assign_pattern(0, Some(pattern("A")));
-        p.assign_pattern(1, Some(pattern("B")));
-        let patterns = vec![None, Some(pattern("B"))];
+        p.assign_pattern(0, Some(assigned("A")));
+        p.assign_pattern(1, Some(assigned("B")));
+        let patterns = vec![None, Some(assigned("B"))];
         assert!(p.assign_patterns(0, 1, &patterns));
         assert_eq!(pattern_of(&p, 0), None);
-        assert_eq!(pattern_of(&p, 1), Some(pattern("B")));
+        assert_eq!(pattern_of(&p, 1), Some(assigned("B")));
     }
 
     #[test]
     fn replacing_a_range_keeps_each_slots_own_rhythm() {
         let mut p = filled(&[ScaleDegree::I, ScaleDegree::V]);
-        p.assign_pattern(1, Some(pattern("Quarters")));
+        p.assign_pattern(1, Some(assigned("Quarters")));
         p.set_offset(1, 240);
 
         assert!(p.replace_chord_range(
@@ -1468,7 +1548,7 @@ mod tests {
         assert_eq!(pattern_of(&p, 0), None, "the first had none");
         assert_eq!(
             pattern_of(&p, 1),
-            Some(pattern("Quarters")),
+            Some(assigned("Quarters")),
             "the second kept its own"
         );
         assert_eq!(offset_of(&p, 1), 240);
@@ -1477,13 +1557,13 @@ mod tests {
     #[test]
     fn copy_and_paste_carry_the_pattern_and_the_offset() {
         let mut p = filled(&[ScaleDegree::I, ScaleDegree::V]);
-        p.assign_pattern(1, Some(pattern("Syncopated 16ths")));
+        p.assign_pattern(1, Some(assigned("Syncopated 16ths")));
         p.set_offset(1, 480);
 
         assert!(p.copy(1));
         assert_eq!(p.paste_after(Some(1)), 1);
         assert_eq!(p.len(), 3);
-        assert_eq!(pattern_of(&p, 2), Some(pattern("Syncopated 16ths")));
+        assert_eq!(pattern_of(&p, 2), Some(assigned("Syncopated 16ths")));
         assert_eq!(offset_of(&p, 2), 480);
     }
 }

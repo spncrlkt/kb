@@ -99,20 +99,6 @@ fn hold_from_gate(gate: f32, steps: usize) -> u32 {
     (ticks as u64).clamp(1, BAR_TICKS) as u32
 }
 
-/// Gains never decay below this, so the oldest take in a stack is still heard.
-pub const GAIN_FLOOR: f32 = 0.05;
-
-/// Each earlier take is quieter than its successor by this factor, applied once
-/// per recorded bar.
-pub const TAKE_DECAY: f32 = 0.7;
-
-/// Most takes one recording session keeps, and the widest window a pattern can
-/// average over.
-///
-/// The *default* window is a UI choice (`SINKO_SMOOTH_DEFAULT` in `tui`); this is
-/// the bound, not the policy.
-pub const MAX_TAKES: usize = 8;
-
 // -----------------------------------------------------------------------------
 // Errors
 // -----------------------------------------------------------------------------
@@ -124,10 +110,10 @@ pub enum RhythmError {
     BadResolution(usize),
     /// A step string held something other than `x` or `-`.
     BadStepChar(char),
-    /// A pattern must have at least one layer.
+    /// A pattern must have at least one bar.
     EmptyPattern,
-    /// Every layer of a pattern shares one grid resolution.
-    LayerLengthMismatch { expected: usize, found: usize },
+    /// A pattern may hold at most [`MAX_PATTERN_BARS`] bars.
+    TooManyBars(usize),
     /// A hold must be between one tick and the whole bar.
     BadHold(u32),
     /// The muted tail must be no longer than a quarter note.
@@ -162,11 +148,11 @@ impl fmt::Display for RhythmError {
                 "step string holds {:?}; use 'x' for a hit and '-' for a rest",
                 c
             ),
-            RhythmError::EmptyPattern => write!(f, "a pattern needs at least one layer"),
-            RhythmError::LayerLengthMismatch { expected, found } => write!(
+            RhythmError::EmptyPattern => write!(f, "a pattern needs at least one bar"),
+            RhythmError::TooManyBars(n) => write!(
                 f,
-                "a layer has {} steps but the pattern's grid is {}",
-                found, expected
+                "a pattern holds {} bars; the most is {}",
+                n, MAX_PATTERN_BARS
             ),
             RhythmError::BadHold(v) => {
                 write!(f, "a hold of {} ticks is outside 1..={}", v, BAR_TICKS)
@@ -247,30 +233,62 @@ pub fn render_steps(steps: &[bool]) -> String {
 }
 
 // -----------------------------------------------------------------------------
-// Layer
+// Bar
 // -----------------------------------------------------------------------------
 
-/// One take: a step grid and the gain it plays at.
+/// One bar of hits: a grid and the shapes played on it.
+///
+/// This used to be a *layer* — one take of a tapped performance, stacked with the
+/// takes before it and decayed a step each. The stack is gone: a bar is now the
+/// unit a progression entry owns and the unit a pattern is made of, and the
+/// overlapping-takes sound it existed for is what the four-bar looper records
+/// instead, one bar at a time.
 #[derive(Clone, Debug, PartialEq)]
-pub struct RhythmLayer {
-    /// 0..1. Take 1 is loudest; each earlier take is decayed.
-    pub gain: f32,
+pub struct RhythmBar {
     /// One flag per grid cell.
     pub steps: Vec<bool>,
+    /// Per-cell hold overrides, one entry per grid cell. `0` means "use `hold`".
+    pub holds: Vec<u32>,
+    /// Per-cell accent, one per grid cell, `0.0..=1.0`. `1.0` is full level.
+    pub velocities: Vec<f32>,
+    /// The *default* hold for a hit, in ticks, `1..=BAR_TICKS`.
+    pub hold: u32,
+    /// How much of the bar's tail is silent, in ticks, up to a quarter note.
+    pub mute_ticks: u32,
+    /// This bar's swing, or `None` to follow the transport's.
+    pub swing: Option<f32>,
 }
 
-impl RhythmLayer {
-    pub fn new(gain: f32, steps: Vec<bool>) -> Self {
-        RhythmLayer {
-            gain: gain.clamp(0.0, 1.0),
-            steps,
+impl RhythmBar {
+    /// A silent bar at `resolution` steps, holding like `hold`.
+    pub fn silent(resolution: usize, hold: u32) -> Self {
+        RhythmBar {
+            steps: vec![false; resolution],
+            holds: Vec::new(),
+            velocities: Vec::new(),
+            hold,
+            mute_ticks: 0,
+            swing: None,
         }
     }
 
-    pub fn from_step_string(gain: f32, text: &str) -> Result<Self, RhythmError> {
-        Ok(RhythmLayer::new(gain, parse_steps(text)?))
+    /// A bar from a step string, with `gate` as the hold in cells.
+    ///
+    /// `gate` is how many cells the hit holds, as a fraction — the bar stores the
+    /// resulting ticks, so the grid is baked in here and never again.
+    pub fn from_step_string(gate: f32, text: &str) -> Result<Self, RhythmError> {
+        let steps = parse_steps(text)?;
+        Ok(RhythmBar {
+            hold: hold_from_gate(gate, steps.len()),
+            steps,
+            holds: Vec::new(),
+            velocities: Vec::new(),
+            mute_ticks: 0,
+            swing: None,
+        })
     }
 
+    /// The wire form of the grid.
     pub fn to_step_string(&self) -> String {
         render_steps(&self.steps)
     }
@@ -279,7 +297,6 @@ impl RhythmLayer {
         self.steps.len()
     }
 
-    /// Whether this layer sounds on no step at all.
     pub fn is_empty(&self) -> bool {
         !self.any_hit()
     }
@@ -292,120 +309,27 @@ impl RhythmLayer {
         self.steps.iter().any(|on| *on)
     }
 
-    /// The steps this layer sounds on, in order.
-    pub fn hits(&self) -> Vec<usize> {
-        self.steps
-            .iter()
-            .enumerate()
-            .filter(|(_, on)| **on)
-            .map(|(i, _)| i)
-            .collect()
-    }
-}
-
-// -----------------------------------------------------------------------------
-// Pattern
-// -----------------------------------------------------------------------------
-
-/// A one-bar rhythm: a grid, a hold fraction, and the takes stacked on it.
-///
-/// `hold` is in **ticks**, so a half note stays a half note when the grid
-/// changes. (It used to be a fraction of one cell, which meant switching from a
-/// quarter grid to a sixteenth silently shortened every hold by four.) A slot
-/// with no pattern assigned does not use a pattern at all — it sustains for the
-/// transport's note length.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(try_from = "PatternWire", into = "PatternWire")]
-pub struct RhythmPattern {
-    pub name: String,
-    /// The *default* hold for a hit, in ticks, `1..=BAR_TICKS`.
-    ///
-    /// A cell with its own entry in [`RhythmPattern::holds`] overrides it, which
-    /// is how a Charleston gets its dotted quarter without every other hit in the
-    /// pattern growing too.
-    pub hold: u32,
-    /// Per-cell hold overrides, one per grid cell. `0` means "use [`Self::hold`]".
-    ///
-    /// A `Vec` rather than a map because it is indexed by the same cell number as
-    /// the step grid, so editing the grid cannot shift an override onto a
-    /// neighbouring hit. It serialises only when some cell is set.
-    pub holds: Vec<u32>,
-    /// Per-cell accent, one per grid cell, `0.0..=1.0`. `1.0` is full level.
-    ///
-    /// Multiplied by the layer's own gain, so a take can still sit under another
-    /// while a metre accent sits on top of both.
-    pub velocities: Vec<f32>,
-    /// How much of the bar's tail is silent, in ticks, up to a quarter note.
-    ///
-    /// 0 means no mute at all — the default, and what every pattern written
-    /// before this field existed reads as.
-    pub mute_ticks: u32,
-    /// This pattern's swing, or `None` to follow the transport's.
-    ///
-    /// `0.0` is straight and `1.0` is the triplet feel — the same scale the
-    /// transport's own swing uses, so an override is comparable with the default
-    /// it replaces. A pattern that is *written* on the triplet grid ignores it:
-    /// there is nothing left to swing.
-    pub swing: Option<f32>,
-    pub layers: Vec<RhythmLayer>,
-}
-
-impl RhythmPattern {
-    /// A valid but silent draft at `resolution` steps per bar.
-    pub fn blank(name: impl Into<String>, resolution: usize) -> Result<Self, RhythmError> {
-        if !valid_resolution(resolution) {
-            return Err(RhythmError::BadResolution(resolution));
-        }
-        Ok(RhythmPattern {
-            name: name.into(),
-            hold: DEFAULT_HOLD,
-            holds: Vec::new(),
-            velocities: Vec::new(),
-            mute_ticks: 0,
-            swing: None,
-            layers: vec![RhythmLayer::new(1.0, vec![false; resolution])],
-        })
+    /// Grid cells in one bar.
+    pub fn steps_per_bar(&self) -> usize {
+        self.steps.len()
     }
 
-    /// A silent draft at the default grid, for a caller that cannot fail.
-    ///
-    /// This is what the Sinko panel starts from before anything has been
-    /// tapped, which is why it needs no `Result`.
-    pub fn draft() -> Self {
-        RhythmPattern {
-            name: String::new(),
-            hold: DEFAULT_HOLD,
-            holds: Vec::new(),
-            velocities: Vec::new(),
-            mute_ticks: 0,
-            swing: None,
-            layers: vec![RhythmLayer::new(1.0, vec![false; DEFAULT_STEPS])],
+    /// Ticks per grid cell.
+    pub fn step_ticks(&self) -> u64 {
+        let steps = self.steps_per_bar();
+        if steps == 0 {
+            BAR_TICKS
+        } else {
+            BAR_TICKS / steps as u64
         }
     }
 
-    /// One layer, taken from a step string.
-    ///
-    /// `gate` is how many cells the hit holds, as a fraction — the pattern stores
-    /// the resulting ticks, so the grid is baked in here and never again.
-    pub fn from_step_string(
-        name: impl Into<String>,
-        gate: f32,
-        text: &str,
-    ) -> Result<Self, RhythmError> {
-        let steps = parse_steps(text)?;
-        let hold = hold_from_gate(gate, steps.len());
-        Ok(RhythmPattern {
-            name: name.into(),
-            hold,
-            holds: Vec::new(),
-            velocities: Vec::new(),
-            mute_ticks: 0,
-            swing: None,
-            layers: vec![RhythmLayer::new(1.0, steps)],
-        })
+    /// How long one hit holds, in ticks.
+    pub fn hold_ticks(&self) -> u64 {
+        (self.hold as u64).clamp(1, BAR_TICKS)
     }
 
-    /// The hold for one cell: its override, or the pattern's default.
+    /// The hold for one cell: its override, or the bar's default.
     pub fn cell_hold(&self, step: usize) -> u32 {
         match self.holds.get(step).copied() {
             Some(over) if over > 0 => over,
@@ -460,7 +384,7 @@ impl RhythmPattern {
         }
     }
 
-    /// Whether this cell's hold is an override rather than the pattern default.
+    /// Whether this cell's hold is an override rather than the bar default.
     pub fn has_hold_override(&self, step: usize) -> bool {
         self.holds.get(step).copied().is_some_and(|h| h > 0)
     }
@@ -472,30 +396,9 @@ impl RhythmPattern {
             .is_some_and(|v| (*v - 1.0).abs() >= f32::EPSILON)
     }
 
-    /// The swing to play at: this pattern's own, or the transport's default.
+    /// The swing to play at: this bar's own, or the transport's default.
     pub fn swing_or(&self, transport_swing: f32) -> f32 {
         self.swing.unwrap_or(transport_swing).clamp(0.0, 1.0)
-    }
-
-    /// Grid cells in one bar. Zero only for a pattern with no layers, which
-    /// [`RhythmPattern::validate`] refuses.
-    pub fn steps_per_bar(&self) -> usize {
-        self.layers.first().map(|l| l.len()).unwrap_or(0)
-    }
-
-    /// Ticks per grid cell.
-    pub fn step_ticks(&self) -> u64 {
-        let steps = self.steps_per_bar();
-        if steps == 0 {
-            BAR_TICKS
-        } else {
-            BAR_TICKS / steps as u64
-        }
-    }
-
-    /// How long one hit holds, in ticks.
-    pub fn hold_ticks(&self) -> u64 {
-        (self.hold as u64).clamp(1, BAR_TICKS)
     }
 
     /// The tick from which the bar is silent, or `None` when nothing is muted.
@@ -510,45 +413,69 @@ impl RhythmPattern {
         Some(BAR_TICKS.saturating_sub(self.mute_ticks.min(BAR_TICKS as u32) as u64))
     }
 
-
-    pub fn any_hit(&self) -> bool {
-        self.layers.iter().any(|l| l.any_hit())
+    /// Every hit as `(step, 1.0)`, in step order.
+    ///
+    /// The second value was the take's gain; with one grid there is nothing for
+    /// it to say, and it stays in the shape because every caller multiplies it
+    /// into the stab's loudness.
+    pub fn hits(&self) -> Vec<(usize, f32)> {
+        self.steps
+            .iter()
+            .enumerate()
+            .filter(|(_, on)| **on)
+            .map(|(step, _)| (step, 1.0))
+            .collect()
     }
 
-    /// Every hit as `(step, gain)`, in step order and then take order — the
-    /// order the stack sounds in when several takes land on one cell.
-    pub fn hits(&self) -> Vec<(usize, f32)> {
-        let steps = self.steps_per_bar();
-        let mut out = Vec::new();
-        for step in 0..steps {
-            for layer in &self.layers {
-                if layer.hit(step) {
-                    out.push((step, layer.gain));
-                }
+    /// The steps this bar sounds on, in order.
+    pub fn hit_steps(&self) -> Vec<usize> {
+        self.steps
+            .iter()
+            .enumerate()
+            .filter(|(_, on)| **on)
+            .map(|(i, _)| i)
+            .collect()
+    }
+
+    pub fn hit_count(&self) -> usize {
+        self.steps.iter().filter(|on| **on).count()
+    }
+
+    /// The cells a hit is *still sounding* through, one flag per grid cell.
+    ///
+    /// `false` everywhere a hit starts — an onset is drawn as a hit, not as a
+    /// sustain — and true on the cells after it that its hold covers. It is what
+    /// lets a grid show a note held for a bar as a line rather than a dot, which
+    /// is the difference between a four-bar loop you can read and one you have
+    /// to play back to hear.
+    ///
+    /// Clipped at the bar: a hold that carries into the next bar marks nothing
+    /// there, because the next bar has its own grid and its own hits.
+    pub fn sustain(&self) -> Vec<bool> {
+        let mut out = vec![false; self.steps.len()];
+        let step_ticks = self.step_ticks().max(1);
+        for (step, on) in self.steps.iter().enumerate() {
+            if !on {
+                continue;
+            }
+            let cells = (self.cell_hold(step) as u64).div_ceil(step_ticks) as usize;
+            for covered in (step + 1)..(step + cells).min(out.len()) {
+                out[covered] = true;
             }
         }
         out
     }
 
-    /// Total hits across every layer.
-    pub fn hit_count(&self) -> usize {
-        self.layers.iter().map(|l| l.hits().len()).sum()
+    /// Clear every hit, keeping the grid and the shapes.
+    pub fn clear_hits(&mut self) {
+        for step in self.steps.iter_mut() {
+            *step = false;
+        }
     }
 
     pub fn validate(&self) -> Result<(), RhythmError> {
-        let Some(first) = self.layers.first() else {
-            return Err(RhythmError::EmptyPattern);
-        };
-        if !valid_resolution(first.len()) {
-            return Err(RhythmError::BadResolution(first.len()));
-        }
-        for layer in &self.layers {
-            if layer.len() != first.len() {
-                return Err(RhythmError::LayerLengthMismatch {
-                    expected: first.len(),
-                    found: layer.len(),
-                });
-            }
+        if !valid_resolution(self.steps.len()) {
+            return Err(RhythmError::BadResolution(self.steps.len()));
         }
         if self.hold == 0 || self.hold as u64 > BAR_TICKS {
             return Err(RhythmError::BadHold(self.hold));
@@ -559,7 +486,7 @@ impl RhythmPattern {
         // An override array is either absent or exactly one entry per cell: a
         // short one would silently apply the wrong cell's hold to the tail of the
         // bar, which is worse than refusing the file.
-        let cells = first.len();
+        let cells = self.steps.len();
         for over in &self.holds {
             if *over as u64 > BAR_TICKS {
                 return Err(RhythmError::BadHold(*over));
@@ -593,13 +520,104 @@ impl RhythmPattern {
     }
 }
 
-/// Quiet every take one step of the decay chain.
+// -----------------------------------------------------------------------------
+// Pattern
+// -----------------------------------------------------------------------------
+
+/// Most bars one pattern may hold. Four, which is one looper pass and the deepest
+/// stack the rhythm feature has ever had to sound.
+pub const MAX_PATTERN_BARS: usize = 4;
+
+/// A named rhythm: one to [`MAX_PATTERN_BARS`] bars.
 ///
-/// Applied once per recorded bar, so the take you just played is always the
-/// loudest and the stack fades as it builds.
-pub fn decay_layer_gains(layers: &mut [RhythmLayer], factor: f32) {
-    for layer in layers {
-        layer.gain = (layer.gain * factor).clamp(GAIN_FLOOR, 1.0);
+/// A pattern is what the library holds and what a chord is assigned *from*; the
+/// entry keeps one bar of it. One bar is the common case and every shipped
+/// default, and four is what the tap looper records.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(try_from = "PatternWire", into = "PatternWire")]
+pub struct RhythmPattern {
+    pub name: String,
+    pub bars: Vec<RhythmBar>,
+}
+
+impl RhythmPattern {
+    /// A pattern of one bar.
+    pub fn single(name: impl Into<String>, bar: RhythmBar) -> Self {
+        RhythmPattern {
+            name: name.into(),
+            bars: vec![bar],
+        }
+    }
+
+    /// A valid but silent pattern of one bar at `resolution` steps per bar.
+    pub fn blank(name: impl Into<String>, resolution: usize) -> Result<Self, RhythmError> {
+        if !valid_resolution(resolution) {
+            return Err(RhythmError::BadResolution(resolution));
+        }
+        Ok(RhythmPattern::single(
+            name,
+            RhythmBar::silent(resolution, DEFAULT_HOLD),
+        ))
+    }
+
+    /// A silent one-bar draft at the default grid, for a caller that cannot fail.
+    ///
+    /// This is what the Sinko panel starts from before anything has been tapped,
+    /// which is why it needs no `Result`.
+    pub fn draft() -> Self {
+        RhythmPattern::single(
+            String::new(),
+            RhythmBar::silent(DEFAULT_STEPS, DEFAULT_HOLD),
+        )
+    }
+
+    /// A one-bar pattern from a step string, with `gate` as the hold in cells.
+    pub fn from_step_string(
+        name: impl Into<String>,
+        gate: f32,
+        text: &str,
+    ) -> Result<Self, RhythmError> {
+        Ok(RhythmPattern::single(
+            name,
+            RhythmBar::from_step_string(gate, text)?,
+        ))
+    }
+
+    /// How many bars this pattern holds.
+    pub fn len(&self) -> usize {
+        self.bars.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.bars.is_empty()
+    }
+
+    /// The first bar, which is what a progression entry takes.
+    pub fn first(&self) -> Option<&RhythmBar> {
+        self.bars.first()
+    }
+
+    /// How many hits across every bar.
+    pub fn hit_count(&self) -> usize {
+        self.bars.iter().map(|bar| bar.hit_count()).sum()
+    }
+
+    /// Whether any bar sounds at all.
+    pub fn any_hit(&self) -> bool {
+        self.bars.iter().any(|bar| bar.any_hit())
+    }
+
+    pub fn validate(&self) -> Result<(), RhythmError> {
+        if self.bars.is_empty() {
+            return Err(RhythmError::EmptyPattern);
+        }
+        if self.bars.len() > MAX_PATTERN_BARS {
+            return Err(RhythmError::TooManyBars(self.bars.len()));
+        }
+        for bar in &self.bars {
+            bar.validate()?;
+        }
+        Ok(())
     }
 }
 
@@ -626,26 +644,11 @@ pub fn quantize(taps: &[u32], steps: usize) -> Vec<bool> {
     grid
 }
 
-/// Average the n-th tap of the most recent `keep` takes.
-///
-/// Averaging by ordinal is what makes this *rough* rather than exact: the same
-/// gesture played three times lands in three slightly different places, and the
-/// mean is the gesture. Takes are truncated to the shortest one's tap count,
-/// because a take with fewer taps has nothing to average against and inventing a
-/// position would be worse than dropping the tail.
-pub fn average_takes(takes: &[Vec<u32>], keep: usize) -> Vec<u32> {
-    if takes.is_empty() || keep == 0 {
-        return Vec::new();
-    }
-    let start = takes.len().saturating_sub(keep);
-    let window = &takes[start..];
-    let count = window.iter().map(|t| t.len()).min().unwrap_or(0);
-    (0..count)
-        .map(|i| {
-            let sum: u64 = window.iter().map(|t| t[i] as u64).sum();
-            (sum / window.len() as u64) as u32
-        })
-        .collect()
+/// The same, as a whole bar holding at the default.
+pub fn quantize_bar(taps: &[u32], steps: usize, hold: u32) -> RhythmBar {
+    let mut bar = RhythmBar::silent(steps, hold);
+    bar.steps = quantize(taps, steps);
+    bar
 }
 
 /// Where inside the bar `now` falls, in ticks.
@@ -685,6 +688,39 @@ fn builtin_pulse(name: &str, gate: f32, steps: usize) -> RhythmPattern {
     builtin(name, gate, &"x".repeat(steps))
 }
 
+/// The first bar of a pattern, for the single-bar shapes below.
+///
+/// A built-in is always at least one bar — `builtin` panics otherwise — so this
+/// is the whole of "the pattern's bar" for a one-bar pattern.
+fn first_bar(pattern: &mut RhythmPattern) -> &mut RhythmBar {
+    pattern
+        .bars
+        .first_mut()
+        .unwrap_or_else(|| panic!("built-in pattern {} has no bars", pattern.name))
+}
+
+/// A multi-bar pattern from one step string per bar.
+///
+/// Every bar shares the gate, which is what a phrase wants: the same touch
+/// across the four bars, with the figure the only thing that changes.
+fn builtin_phrase(name: &str, gate: f32, bars: &[&str]) -> RhythmPattern {
+    let built = bars
+        .iter()
+        .map(|steps| {
+            RhythmBar::from_step_string(gate, steps)
+                .unwrap_or_else(|e| panic!("built-in pattern {} is invalid: {}", name, e))
+        })
+        .collect();
+    let pattern = RhythmPattern {
+        name: name.to_string(),
+        bars: built,
+    };
+    pattern
+        .validate()
+        .unwrap_or_else(|e| panic!("built-in pattern {} is invalid: {}", name, e));
+    pattern
+}
+
 /// The patterns every install ships with, written when `rhythms.toml` is
 /// missing and merged into a file that predates them.
 ///
@@ -696,26 +732,26 @@ pub fn builtin_patterns() -> Vec<RhythmPattern> {
     // tight "chk" of a rhythm-guitar bar, and the one built-in that ships with a
     // mute so the row is discoverable from the palette.
     let mut damped = builtin("Damped Quarters", 0.4, "xxxx");
-    damped.mute_ticks = 960;
+    first_bar(&mut damped).mute_ticks = 960;
 
     // The downbeats at full level, the offbeats under them. This used to be a
     // second, quieter layer, which was the only way an older build could say
     // "quieter"; per-cell velocity says it directly.
     let mut accented = builtin("Accented Eighths", 1.0, "x-x-x-x-");
     for step in [2, 4, 6] {
-        accented.set_cell_velocity(step, 0.55);
+        first_bar(&mut accented).set_cell_velocity(step, 0.55);
     }
 
     // Charleston: the dotted quarter is a *length*, not just a long gap — the
     // first hit rings for a dotted quarter and the answer is an eighth.
     let mut charleston = builtin("Charleston", 2.0, "x-----x---------");
-    charleston.set_cell_hold(0, 1440);
+    first_bar(&mut charleston).set_cell_hold(0, 1440);
 
     // Tresillo's 3+3+2 is three lengths, so the pattern carries all three: two
     // dotted quarters and a quarter to close the bar.
     let mut tresillo = builtin("Tresillo", 4.0, "x-----x-----x---");
-    tresillo.set_cell_hold(0, 1440);
-    tresillo.set_cell_hold(6, 1440);
+    first_bar(&mut tresillo).set_cell_hold(0, 1440);
+    first_bar(&mut tresillo).set_cell_hold(6, 1440);
 
     let mut patterns = vec![
         // ---- sustained: one hit, held for a note value ----
@@ -758,48 +794,42 @@ pub fn builtin_patterns() -> Vec<RhythmPattern> {
 
     // ---- phrases ----
     //
-    // A pattern is one bar, so a longer figure is a *set* of one-bar patterns
-    // that name their place in it: assign `Jazz Chorus 1/4`, `2/4`, `3/4` and
-    // `4/4` to four consecutive chords and the four bars are the phrase. The
-    // numbering is the whole contract, so the sets are kept together at the end
-    // of the list, in order.
-    patterns.extend(jazz_chorus());
-    patterns.extend(son_clave());
+    // A pattern longer than a bar, which is what the tap looper records. Assigning
+    // one spreads its bars across consecutive chords, so a four-bar phrase is one
+    // library entry rather than four entries whose names have to be kept in step.
+    patterns.push(jazz_chorus());
+    patterns.push(son_clave());
 
     patterns
 }
 
-/// A four-bar jazz comp, one pattern per bar.
+/// A four-bar jazz comp.
 ///
 /// The arc is the one a player actually uses: state the pulse, answer it with a
 /// Charleston, add the "&" of 3, then tighten the same figure into a turnaround
 /// fill. Sixteenth grid throughout, short holds — comping, not pads.
-fn jazz_chorus() -> Vec<RhythmPattern> {
-    [
-        // 1: beats 1 and 3 — the two-feel statement.
-        "x-------x-------",
-        // 2: Charleston, the answer.
-        "x-----x---------",
-        // 3: the same, plus the "&" of 3.
-        "x-----x---x-----",
-        // 4: the turnaround — two sixteenth pushes before the bar line.
-        "x-----x---x-x-x-",
-    ]
-    .into_iter()
-    .enumerate()
-    .map(|(bar, steps)| builtin(&format!("Jazz Chorus {}/4", bar + 1), 2.0, steps))
-    .collect()
+fn jazz_chorus() -> RhythmPattern {
+    builtin_phrase(
+        "Jazz Chorus",
+        2.0,
+        &[
+            // 1: beats 1 and 3 — the two-feel statement.
+            "x-------x-------",
+            // 2: Charleston, the answer.
+            "x-----x---------",
+            // 3: the same, plus the "&" of 3.
+            "x-----x---x-----",
+            // 4: the turnaround — two sixteenth pushes before the bar line.
+            "x-----x---x-x-x-",
+        ],
+    )
 }
 
 /// The 3-2 son clave over two bars: the three-side, then the two-side.
 ///
-/// The two halves of one clave, so they only make sense assigned to consecutive
-/// chords; the eighth grid keeps the onsets exactly where the clave puts them.
-fn son_clave() -> Vec<RhythmPattern> {
-    [("x--x--x-", 1), ("--x-x---", 2)]
-        .into_iter()
-        .map(|(steps, side)| builtin(&format!("Son Clave {}/2", side), 1.0, steps))
-        .collect()
+/// The eighth grid keeps the onsets exactly where the clave puts them.
+fn son_clave() -> RhythmPattern {
+    builtin_phrase("Son Clave", 1.0, &["x--x--x-", "--x-x---"])
 }
 
 // -----------------------------------------------------------------------------
@@ -809,31 +839,58 @@ fn son_clave() -> Vec<RhythmPattern> {
 #[derive(Serialize, Deserialize)]
 struct PatternWire {
     name: String,
-    /// The hold in ticks — an integer, which is also what makes the file
-    /// readable. Version 1 of this format wrote `gate`, a fraction of a grid
-    /// cell; `TryFrom` converts one when it is the only thing present, so an old
-    /// file keeps the sound it had.
-    #[serde(default = "default_hold")]
+    /// The bars, in order. One is the common case.
+    ///
+    /// A file written before patterns could hold more than one bar has no `bars`
+    /// and carries `layers` instead; `TryFrom` folds those into a single bar.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    bars: Vec<BarWire>,
+    /// The old one-bar shape, read only.
+    ///
+    /// Every field here is the bar's, and every file written before this version
+    /// has them at the top level rather than inside a `[[rhythms.bars]]` table.
+    #[serde(default = "default_hold", skip_serializing)]
     hold: u32,
-    /// The old spelling, read only.
+    /// Version 1 of this format wrote `gate`, a fraction of a grid cell;
+    /// `TryFrom` converts one when it is the only thing present, so an old file
+    /// keeps the sound it had.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     gate: Option<f64>,
-    /// Absent in every file written before this field existed, and skipped when
-    /// zero, so a pattern with no mute does not carry a line saying so.
     #[serde(default, skip_serializing_if = "is_zero_mute")]
     mute: u32,
-    /// Per-cell hold overrides, one entry per grid cell. Skipped when no cell has
-    /// one, which is the case for every pattern that does not need it.
     #[serde(default, skip_serializing_if = "all_zero")]
     holds: Vec<u32>,
-    /// Per-cell accents, one entry per grid cell. Skipped at full level.
     #[serde(default, skip_serializing_if = "all_full")]
     velocities: Vec<f32>,
-    /// This pattern's swing, or absent to follow the transport's.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     swing: Option<f32>,
-    #[serde(default)]
+    /// The take stack, read only — folded into one grid on the way in.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     layers: Vec<LayerWire>,
+}
+
+/// One bar in the file.
+#[derive(Serialize, Deserialize)]
+struct BarWire {
+    steps: String,
+    #[serde(default = "default_hold")]
+    hold: u32,
+    #[serde(default, skip_serializing_if = "is_zero_mute")]
+    mute: u32,
+    #[serde(default, skip_serializing_if = "all_zero")]
+    holds: Vec<u32>,
+    #[serde(default, skip_serializing_if = "all_full")]
+    velocities: Vec<f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    swing: Option<f32>,
+}
+
+/// One take in a file written before patterns held bars.
+#[derive(Serialize, Deserialize)]
+struct LayerWire {
+    #[serde(default = "default_gain")]
+    gain: f32,
+    steps: String,
 }
 
 fn is_zero_mute(value: &u32) -> bool {
@@ -852,15 +909,6 @@ fn default_hold() -> u32 {
     DEFAULT_HOLD
 }
 
-#[derive(Serialize, Deserialize)]
-struct LayerWire {
-    #[serde(default = "default_gain")]
-    gain: f32,
-    steps: String,
-}
-
-
-
 fn default_gain() -> f32 {
     1.0
 }
@@ -869,23 +917,27 @@ impl From<RhythmPattern> for PatternWire {
     fn from(p: RhythmPattern) -> Self {
         PatternWire {
             name: p.name,
-            hold: p.hold,
-            gate: None,
-            mute: p.mute_ticks,
-            holds: p.holds,
-            velocities: p.velocities,
-            swing: p.swing,
-            layers: p
-                .layers
+            bars: p
+                .bars
                 .into_iter()
-                .map(|layer| {
-                    let steps = layer.to_step_string();
-                    LayerWire {
-                        gain: layer.gain,
-                        steps,
-                    }
+                .map(|bar| BarWire {
+                    steps: bar.to_step_string(),
+                    hold: bar.hold,
+                    mute: bar.mute_ticks,
+                    holds: bar.holds,
+                    velocities: bar.velocities,
+                    swing: bar.swing,
                 })
                 .collect(),
+            // The one-bar fields are the reader's, never the writer's: a pattern
+            // is written as `bars` and nothing else.
+            hold: DEFAULT_HOLD,
+            gate: None,
+            mute: 0,
+            holds: Vec::new(),
+            velocities: Vec::new(),
+            swing: None,
+            layers: Vec::new(),
         }
     }
 }
@@ -894,31 +946,92 @@ impl TryFrom<PatternWire> for RhythmPattern {
     type Error = RhythmError;
 
     fn try_from(wire: PatternWire) -> Result<Self, RhythmError> {
-        let mut layers = Vec::with_capacity(wire.layers.len());
-        for layer in wire.layers {
-            layers.push(RhythmLayer::from_step_string(layer.gain, &layer.steps)?);
-        }
-        // A file from before holds were measured in ticks: convert its gate
-        // against the grid its own layers describe, which reproduces the sound
-        // it had. `hold` is ignored in that case, because a v1 file has none.
-        let steps = layers.first().map(|l| l.len()).unwrap_or(0);
-        let hold = match wire.gate {
-            Some(gate) => hold_from_gate(gate as f32, steps),
-            None => wire.hold,
+        let bars = if wire.bars.is_empty() {
+            vec![bar_from_legacy(&wire)?]
+        } else {
+            wire.bars
+                .into_iter()
+                .map(|bar| {
+                    let steps = parse_steps(&bar.steps)?;
+                    let built = RhythmBar {
+                        steps,
+                        holds: bar.holds,
+                        velocities: bar.velocities,
+                        hold: bar.hold,
+                        mute_ticks: bar.mute,
+                        swing: bar.swing,
+                    };
+                    built.validate()?;
+                    Ok(built)
+                })
+                .collect::<Result<Vec<_>, RhythmError>>()?
         };
 
         let pattern = RhythmPattern {
             name: wire.name,
-            hold,
-            holds: wire.holds,
-            velocities: wire.velocities,
-            mute_ticks: wire.mute,
-            swing: wire.swing,
-            layers,
+            bars,
         };
         pattern.validate()?;
         Ok(pattern)
     }
+}
+
+/// The one bar an older file describes, from its take stack.
+///
+/// A file from before patterns held bars has its grid, its holds and its mute at
+/// the top level and a `layers` stack inside. The stack is gone, so its steps are
+/// **unioned** into one grid — a cell any take hit is a cell that sounds — and the
+/// topmost take's gain becomes that cell's accent, which is the nearest a single
+/// grid can come to the stack's shape. Losing the stack is the point of the
+/// change; losing the *hits* would be losing somebody's performance.
+fn bar_from_legacy(wire: &PatternWire) -> Result<RhythmBar, RhythmError> {
+    if wire.layers.is_empty() {
+        // No bars and no layers: a silent default grid, which is what a file
+        // naming a pattern but describing nothing has always meant.
+        return Ok(RhythmBar::silent(DEFAULT_STEPS, wire.hold));
+    }
+    let mut grids = Vec::with_capacity(wire.layers.len());
+    for layer in &wire.layers {
+        grids.push((parse_steps(&layer.steps)?, layer.gain));
+    }
+    let steps_len = grids[0].0.len();
+    for (grid, _) in &grids {
+        if grid.len() != steps_len {
+            return Err(RhythmError::ShapeLengthMismatch {
+                what: "layers",
+                expected: steps_len,
+                found: grid.len(),
+            });
+        }
+    }
+    let mut steps = vec![false; steps_len];
+    let mut velocities: Vec<f32> = vec![1.0; steps_len];
+    for (grid, gain) in grids.iter().rev() {
+        for (cell, on) in grid.iter().enumerate() {
+            if *on {
+                steps[cell] = true;
+                velocities[cell] = gain.clamp(0.0, 1.0);
+            }
+        }
+    }
+    // The converted accent is only worth writing when it is not full level.
+    if velocities.iter().all(|v| (*v - 1.0).abs() < f32::EPSILON) {
+        velocities.clear();
+    }
+    let hold = match wire.gate {
+        Some(gate) => hold_from_gate(gate as f32, steps_len),
+        None => wire.hold,
+    };
+    let bar = RhythmBar {
+        steps,
+        holds: wire.holds.clone(),
+        velocities,
+        hold,
+        mute_ticks: wire.mute,
+        swing: wire.swing,
+    };
+    bar.validate()?;
+    Ok(bar)
 }
 
 // -----------------------------------------------------------------------------
@@ -928,10 +1041,6 @@ impl TryFrom<PatternWire> for RhythmPattern {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn taps(pairs: &[u32]) -> Vec<u32> {
-        pairs.to_vec()
-    }
 
     // ---- resolutions ----
 
@@ -970,23 +1079,23 @@ mod tests {
     #[test]
     fn a_half_note_bar_is_two_cells() {
         let p = RhythmPattern::from_step_string("h", 1.0, "x-").unwrap();
-        assert_eq!(p.steps_per_bar(), 2);
-        assert_eq!(p.step_ticks(), 1920);
-        assert_eq!(p.hold_ticks(), 1920, "one cell is a half note");
+        assert_eq!(p.bars[0].steps_per_bar(), 2);
+        assert_eq!(p.bars[0].step_ticks(), 1920);
+        assert_eq!(p.bars[0].hold_ticks(), 1920, "one cell is a half note");
     }
 
     #[test]
     fn step_ticks_follow_the_resolution() {
         let quarter = RhythmPattern::from_step_string("q", 0.5, "x---").unwrap();
-        assert_eq!(quarter.steps_per_bar(), 4);
-        assert_eq!(quarter.step_ticks(), 960);
+        assert_eq!(quarter.bars[0].steps_per_bar(), 4);
+        assert_eq!(quarter.bars[0].step_ticks(), 960);
 
         let sixteenth = RhythmPattern::from_step_string("s", 0.5, "xxxxxxxxxxxxxxxx").unwrap();
-        assert_eq!(sixteenth.steps_per_bar(), 16);
-        assert_eq!(sixteenth.step_ticks(), 240);
+        assert_eq!(sixteenth.bars[0].steps_per_bar(), 16);
+        assert_eq!(sixteenth.bars[0].step_ticks(), 240);
 
         let sixty_fourth = RhythmPattern::blank("b", 64).unwrap();
-        assert_eq!(sixty_fourth.step_ticks(), 60);
+        assert_eq!(sixty_fourth.bars[0].step_ticks(), 60);
     }
 
     // ---- step strings ----
@@ -995,8 +1104,8 @@ mod tests {
     fn step_strings_round_trip() {
         let text = "x--x--x-x--x-x--";
         let pattern = RhythmPattern::from_step_string("sync", 0.5, text).unwrap();
-        assert_eq!(pattern.layers[0].to_step_string(), text);
-        assert_eq!(pattern.layers[0].hits(), vec![0, 3, 6, 8, 11, 13]);
+        assert_eq!(pattern.bars[0].to_step_string(), text);
+        assert_eq!(pattern.bars[0].hit_steps(), vec![0, 3, 6, 8, 11, 13]);
     }
 
     #[test]
@@ -1022,45 +1131,50 @@ mod tests {
     fn a_blank_pattern_is_silent_but_valid() {
         let p = RhythmPattern::blank("new", DEFAULT_STEPS).unwrap();
         p.validate().unwrap();
-        assert_eq!(p.steps_per_bar(), DEFAULT_STEPS);
+        assert_eq!(p.bars[0].steps_per_bar(), DEFAULT_STEPS);
         assert!(!p.any_hit());
-        assert_eq!(p.hit_count(), 0);
-        assert_eq!(p.hits(), Vec::new());
+        assert_eq!(p.bars[0].hit_count(), 0);
+        assert_eq!(p.bars[0].hit_steps(), Vec::<usize>::new());
     }
 
     #[test]
-    fn a_pattern_without_layers_is_refused() {
+    fn a_pattern_without_bars_is_refused() {
         let p = RhythmPattern {
             name: "empty".into(),
-            hold: DEFAULT_HOLD,
-            holds: Vec::new(),
-            velocities: Vec::new(),
-            mute_ticks: 0,
-            swing: None,
-            layers: Vec::new(),
+            bars: Vec::new(),
         };
         assert_eq!(p.validate(), Err(RhythmError::EmptyPattern));
     }
 
     #[test]
-    fn layers_must_share_one_grid() {
+    fn a_pattern_longer_than_four_bars_is_refused() {
+        // The looper records four, the pool is four deep, and a pattern the
+        // transport cannot play is worse than one it refuses.
+        let p = RhythmPattern {
+            name: "five".into(),
+            bars: (0..MAX_PATTERN_BARS + 1)
+                .map(|_| RhythmBar::from_step_string(1.0, "x---").unwrap())
+                .collect(),
+        };
+        assert_eq!(p.validate(), Err(RhythmError::TooManyBars(5)));
+    }
+
+    #[test]
+    fn every_bar_of_a_pattern_must_be_valid() {
+        // A phrase is only as good as its worst bar, and a bar whose overrides
+        // do not match its grid would silently apply the wrong cell's hold.
+        let mut second = RhythmBar::from_step_string(1.0, "x---").unwrap();
+        second.holds = vec![0, 0];
         let p = RhythmPattern {
             name: "mixed".into(),
-            hold: DEFAULT_HOLD,
-            holds: Vec::new(),
-            velocities: Vec::new(),
-            mute_ticks: 0,
-            swing: None,
-            layers: vec![
-                RhythmLayer::from_step_string(1.0, "x---").unwrap(),
-                RhythmLayer::from_step_string(0.5, "xxxxxxxx").unwrap(),
-            ],
+            bars: vec![RhythmBar::from_step_string(1.0, "x---").unwrap(), second],
         };
         assert_eq!(
             p.validate(),
-            Err(RhythmError::LayerLengthMismatch {
+            Err(RhythmError::ShapeLengthMismatch {
+                what: "holds",
                 expected: 4,
-                found: 8
+                found: 2
             })
         );
     }
@@ -1068,15 +1182,15 @@ mod tests {
     #[test]
     fn a_hold_outside_the_range_is_refused() {
         let mut p = RhythmPattern::from_step_string("g", 0.5, "x---").unwrap();
-        p.hold = BAR_TICKS as u32;
+        p.bars[0].hold = BAR_TICKS as u32;
         p.validate().unwrap();
-        p.hold = BAR_TICKS as u32 + 1;
+        p.bars[0].hold = BAR_TICKS as u32 + 1;
         assert_eq!(
             p.validate(),
             Err(RhythmError::BadHold(BAR_TICKS as u32 + 1)),
             "a hold cannot outlive its bar"
         );
-        p.hold = 0;
+        p.bars[0].hold = 0;
         assert_eq!(p.validate(), Err(RhythmError::BadHold(0)));
     }
 
@@ -1085,10 +1199,14 @@ mod tests {
         // The point of measuring ticks: the same pattern on a finer grid still
         // holds a half note.
         let mut p = RhythmPattern::from_step_string("h", 2.0, "x---").unwrap();
-        assert_eq!(p.hold, 1920);
-        p.layers = vec![RhythmLayer::new(1.0, vec![false; 16])];
-        assert_eq!(p.hold, 1920, "still a half note on a sixteenth grid");
-        assert_eq!(p.hold_ticks(), 1920);
+        assert_eq!(p.bars[0].hold, 1920);
+        // A finer grid is a new bar, which keeps the hold because it is ticks.
+        p.bars[0].steps = vec![false; 16];
+        assert_eq!(
+            p.bars[0].hold, 1920,
+            "still a half note on a sixteenth grid"
+        );
+        assert_eq!(p.bars[0].hold_ticks(), 1920);
     }
 
     #[test]
@@ -1150,13 +1268,13 @@ mod tests {
         // `x---` on a quarter grid with a gate of 2 holds a half note; the same
         // pattern with a gate of 3 holds a dotted half.
         let half = RhythmPattern::from_step_string("h", 2.0, "x---").unwrap();
-        assert_eq!(half.hold_ticks(), 1920);
+        assert_eq!(half.bars[0].hold_ticks(), 1920);
 
         let dotted = RhythmPattern::from_step_string("d", 3.0, "x---").unwrap();
-        assert_eq!(dotted.hold_ticks(), 2880);
+        assert_eq!(dotted.bars[0].hold_ticks(), 2880);
 
         let whole = RhythmPattern::from_step_string("w", 4.0, "x---").unwrap();
-        assert_eq!(whole.hold_ticks(), BAR_TICKS);
+        assert_eq!(whole.bars[0].hold_ticks(), BAR_TICKS);
     }
 
     #[test]
@@ -1165,15 +1283,15 @@ mod tests {
         // construction; the pattern then stores ticks and the grid is irrelevant.
         let coarse = RhythmPattern::from_step_string("c", 2.0, "x---").unwrap();
         let fine = RhythmPattern::from_step_string("f", 2.0, "xxxxxxxxxxxxxxxx").unwrap();
-        assert_eq!(coarse.hold_ticks(), 1920, "two quarter cells");
-        assert_eq!(fine.hold_ticks(), 480, "two sixteenth cells");
+        assert_eq!(coarse.bars[0].hold_ticks(), 1920, "two quarter cells");
+        assert_eq!(fine.bars[0].hold_ticks(), 480, "two sixteenth cells");
     }
 
     #[test]
     fn hold_ticks_can_never_outlive_the_bar() {
         let mut p = RhythmPattern::from_step_string("g", 1.0, "xxxxxxxx").unwrap();
-        p.hold = 99_999;
-        assert_eq!(p.hold_ticks(), BAR_TICKS);
+        p.bars[0].hold = 99_999;
+        assert_eq!(p.bars[0].hold_ticks(), BAR_TICKS);
     }
 
     #[test]
@@ -1181,7 +1299,7 @@ mod tests {
         // `from_step_string` sees the grid, so it can clamp rather than refuse:
         // nine cells of a four-cell bar is the whole bar.
         let p = RhythmPattern::from_step_string("g", 9.0, "x---").unwrap();
-        assert_eq!(p.hold, BAR_TICKS as u32);
+        assert_eq!(p.bars[0].hold, BAR_TICKS as u32);
         p.validate().unwrap();
     }
 
@@ -1190,10 +1308,10 @@ mod tests {
     #[test]
     fn the_mute_boundary_is_the_end_of_the_bar_minus_the_mute() {
         let mut p = RhythmPattern::from_step_string("m", 0.5, "x---").unwrap();
-        p.mute_ticks = 240;
-        assert_eq!(p.mute_boundary(), Some(BAR_TICKS - 240));
-        p.mute_ticks = MAX_MUTE_TICKS;
-        assert_eq!(p.mute_boundary(), Some(BAR_TICKS - 960));
+        p.bars[0].mute_ticks = 240;
+        assert_eq!(p.bars[0].mute_boundary(), Some(BAR_TICKS - 240));
+        p.bars[0].mute_ticks = MAX_MUTE_TICKS;
+        assert_eq!(p.bars[0].mute_boundary(), Some(BAR_TICKS - 960));
     }
 
     #[test]
@@ -1201,16 +1319,16 @@ mod tests {
         // `None` rather than a boundary on the bar line: a boundary there would
         // still trim a hold that crosses the bar, which is what offsets are for.
         let p = RhythmPattern::from_step_string("m", 0.5, "x---").unwrap();
-        assert_eq!(p.mute_ticks, 0);
-        assert_eq!(p.mute_boundary(), None);
+        assert_eq!(p.bars[0].mute_ticks, 0);
+        assert_eq!(p.bars[0].mute_boundary(), None);
     }
 
     #[test]
     fn a_mute_longer_than_a_quarter_note_is_refused() {
         let mut p = RhythmPattern::from_step_string("m", 0.5, "x---").unwrap();
-        p.mute_ticks = MAX_MUTE_TICKS;
+        p.bars[0].mute_ticks = MAX_MUTE_TICKS;
         p.validate().unwrap();
-        p.mute_ticks = MAX_MUTE_TICKS + 240;
+        p.bars[0].mute_ticks = MAX_MUTE_TICKS + 240;
         assert_eq!(
             p.validate(),
             Err(RhythmError::BadMute(MAX_MUTE_TICKS + 240))
@@ -1219,14 +1337,14 @@ mod tests {
 
     #[test]
     fn a_new_pattern_has_no_mute() {
-        assert_eq!(RhythmPattern::draft().mute_ticks, 0);
-        assert_eq!(RhythmPattern::blank("b", 16).unwrap().mute_ticks, 0);
+        assert_eq!(RhythmPattern::draft().bars[0].mute_ticks, 0);
+        assert_eq!(RhythmPattern::blank("b", 16).unwrap().bars[0].mute_ticks, 0);
     }
 
     #[test]
     fn the_mute_survives_a_toml_round_trip() {
         let mut pattern = RhythmPattern::from_step_string("Cut", 0.5, "x---").unwrap();
-        pattern.mute_ticks = 480;
+        pattern.bars[0].mute_ticks = 480;
         assert_eq!(round_trip(pattern.clone()), pattern);
     }
 
@@ -1235,7 +1353,7 @@ mod tests {
         // Every rhythms.toml written before this field existed.
         let text = "[[rhythms]]\nname = \"Old\"\ngate = 0.5\n\n[[rhythms.layers]]\nsteps = \"x---\"\n";
         let file: File = toml::from_str(text).unwrap();
-        assert_eq!(file.rhythms[0].mute_ticks, 0);
+        assert_eq!(file.rhythms[0].bars[0].mute_ticks, 0);
     }
 
     #[test]
@@ -1253,7 +1371,7 @@ mod tests {
         // It used to be an f32 cell fraction, which `toml` promoted to f64 and
         // wrote as 0.800000011920929 — unreadable in a file meant to be edited.
         let pattern = RhythmPattern::from_step_string("Q", 0.8, "xxxx").unwrap();
-        assert_eq!(pattern.hold, 768, "0.8 of a 960-tick cell");
+        assert_eq!(pattern.bars[0].hold, 768, "0.8 of a 960-tick cell");
         let text = toml::to_string_pretty(&File {
             rhythms: vec![pattern.clone()],
         })
@@ -1270,13 +1388,16 @@ mod tests {
         let text = "[[rhythms]]\nname = \"Old\"\ngate = 0.5\n\n\
                     [[rhythms.layers]]\nsteps = \"xxxxxxxx\"\n";
         let file: File = toml::from_str(text).unwrap();
-        assert_eq!(file.rhythms[0].hold, 240, "half of an eighth-note cell");
+        assert_eq!(
+            file.rhythms[0].bars[0].hold, 240,
+            "half of an eighth-note cell"
+        );
 
         // And the same gate on a coarser grid is a longer hold, as it was.
         let coarse = "[[rhythms]]\nname = \"Old\"\ngate = 0.5\n\n\
                       [[rhythms.layers]]\nsteps = \"x---\"\n";
         let file: File = toml::from_str(coarse).unwrap();
-        assert_eq!(file.rhythms[0].hold, 480);
+        assert_eq!(file.rhythms[0].bars[0].hold, 480);
     }
 
     #[test]
@@ -1287,8 +1408,8 @@ mod tests {
             .into_iter()
             .find(|p| p.name == "Quarters")
             .expect("Quarters");
-        assert_eq!(quarters.steps_per_bar(), 4);
-        assert_eq!(quarters.layers[0].hits(), vec![0, 1, 2, 3]);
+        assert_eq!(quarters.bars[0].steps_per_bar(), 4);
+        assert_eq!(quarters.bars[0].hit_steps(), vec![0, 1, 2, 3]);
     }
 
     #[test]
@@ -1303,71 +1424,32 @@ mod tests {
         };
 
         let half = held("Held Half");
-        assert_eq!(half.layers[0].hits(), vec![0], "one hit, on the downbeat");
-        assert_eq!(half.hold_ticks(), 1920, "a half note");
+        assert_eq!(
+            half.bars[0].hit_steps(),
+            vec![0],
+            "one hit, on the downbeat"
+        );
+        assert_eq!(half.bars[0].hold_ticks(), 1920, "a half note");
 
         let dotted = held("Held 3/4");
-        assert_eq!(dotted.layers[0].hits(), vec![0]);
-        assert_eq!(dotted.hold_ticks(), 2880, "a dotted half");
+        assert_eq!(dotted.bars[0].hit_steps(), vec![0]);
+        assert_eq!(dotted.bars[0].hold_ticks(), 2880, "a dotted half");
     }
 
     #[test]
     fn hold_ticks_are_one_step_times_the_gate() {
         let p = RhythmPattern::from_step_string("q", 1.0, "x---").unwrap();
-        assert_eq!(p.hold_ticks(), 960);
+        assert_eq!(p.bars[0].hold_ticks(), 960);
         let p = RhythmPattern::from_step_string("q", 0.5, "x---").unwrap();
-        assert_eq!(p.hold_ticks(), 480);
+        assert_eq!(p.bars[0].hold_ticks(), 480);
         // Past one cell, which is how a held half note is written.
         let p = RhythmPattern::from_step_string("h", 2.0, "x---").unwrap();
-        assert_eq!(p.hold_ticks(), 1920);
+        assert_eq!(p.bars[0].hold_ticks(), 1920);
         // Always at least one tick, so a zero-length note never reaches the
         // writer.
         let mut tiny = RhythmPattern::from_step_string("q", 0.5, "x---").unwrap();
-        tiny.hold = 0;
-        assert_eq!(tiny.hold_ticks(), 1);
-    }
-
-    #[test]
-    fn layer_gains_are_clamped_on_construction() {
-        assert_eq!(RhythmLayer::new(4.0, vec![false; 4]).gain, 1.0);
-        assert_eq!(RhythmLayer::new(-1.0, vec![false; 4]).gain, 0.0);
-    }
-
-    #[test]
-    fn hits_are_ordered_by_step_then_take() {
-        let p = RhythmPattern {
-            name: "stack".into(),
-            hold: DEFAULT_HOLD,
-            holds: Vec::new(),
-            velocities: Vec::new(),
-            mute_ticks: 0,
-            swing: None,
-            layers: vec![
-                RhythmLayer::from_step_string(1.0, "x---").unwrap(),
-                RhythmLayer::from_step_string(0.7, "x---").unwrap(),
-            ],
-        };
-        assert_eq!(p.hits(), vec![(0, 1.0), (0, 0.7)]);
-        assert_eq!(p.hit_count(), 2);
-    }
-
-    // ---- decay ----
-
-    #[test]
-    fn decaying_quiets_every_layer_and_stops_at_the_floor() {
-        let mut layers = vec![
-            RhythmLayer::from_step_string(1.0, "x---").unwrap(),
-            RhythmLayer::from_step_string(0.5, "x---").unwrap(),
-        ];
-        decay_layer_gains(&mut layers, TAKE_DECAY);
-        assert!((layers[0].gain - 0.7).abs() < 1e-6);
-        assert!((layers[1].gain - 0.35).abs() < 1e-6);
-
-        for _ in 0..50 {
-            decay_layer_gains(&mut layers, TAKE_DECAY);
-        }
-        assert_eq!(layers[0].gain, GAIN_FLOOR);
-        assert_eq!(layers[1].gain, GAIN_FLOOR);
+        tiny.bars[0].hold = 0;
+        assert_eq!(tiny.bars[0].hold_ticks(), 1);
     }
 
     // ---- quantization ----
@@ -1430,38 +1512,6 @@ mod tests {
         assert_eq!(grid.iter().filter(|on| **on).count(), 1);
     }
 
-    // ---- averaging ----
-
-    #[test]
-    fn averaging_takes_works_by_ordinal() {
-        let takes = vec![taps(&[0, 1000]), taps(&[10, 1010]), taps(&[20, 1020])];
-        assert_eq!(average_takes(&takes, 3), vec![10, 1010]);
-    }
-
-    #[test]
-    fn averaging_uses_only_the_most_recent_takes() {
-        let takes = vec![taps(&[0]), taps(&[100]), taps(&[200]), taps(&[300])];
-        assert_eq!(average_takes(&takes, 2), vec![250]);
-    }
-
-    #[test]
-    fn averaging_truncates_to_the_shortest_take() {
-        let takes = vec![taps(&[0, 100, 200]), taps(&[10, 110])];
-        assert_eq!(average_takes(&takes, 3), vec![5, 105]);
-    }
-
-    #[test]
-    fn averaging_nothing_is_empty() {
-        assert_eq!(average_takes(&[], 3), Vec::<u32>::new());
-        assert_eq!(average_takes(&[taps(&[1, 2])], 0), Vec::<u32>::new());
-    }
-
-    #[test]
-    fn averaging_more_takes_than_exist_uses_them_all() {
-        let takes = vec![taps(&[0, 100]), taps(&[10, 110])];
-        assert_eq!(average_takes(&takes, 99), vec![5, 105]);
-    }
-
     // ---- bar phase ----
 
     #[test]
@@ -1522,20 +1572,50 @@ mod tests {
     }
 
     #[test]
-    fn a_pattern_round_trips_through_toml() {
-        let pattern = RhythmPattern {
-            name: "Stack".into(),
-            hold: 480,
-            holds: Vec::new(),
-            velocities: Vec::new(),
-            mute_ticks: 0,
-            swing: None,
-            layers: vec![
-                RhythmLayer::from_step_string(1.0, "x--x--x-").unwrap(),
-                RhythmLayer::from_step_string(0.7, "--------").unwrap(),
-            ],
-        };
+    fn a_one_bar_pattern_round_trips_through_toml() {
+        let pattern = RhythmPattern::single(
+            "Offbeat",
+            RhythmBar::from_step_string(1.0, "x--x--x-").unwrap(),
+        );
         assert_eq!(round_trip(pattern.clone()), pattern);
+    }
+
+    #[test]
+    fn a_four_bar_pattern_round_trips_through_toml() {
+        // What the tap looper produces: one library entry holding four bars,
+        // rather than four entries whose names have to agree.
+        let pattern = RhythmPattern {
+            name: "Jazz Chorus".into(),
+            bars: [
+                "x-------x-------",
+                "x-----x---------",
+                "x-----x---x-----",
+                "x-----x---x-x-x-",
+            ]
+            .iter()
+            .map(|steps| RhythmBar::from_step_string(2.0, steps).unwrap())
+            .collect(),
+        };
+        let back = round_trip(pattern.clone());
+        assert_eq!(back, pattern);
+        assert_eq!(back.bars.len(), MAX_PATTERN_BARS);
+        assert_eq!(back.bars[3].hit_steps(), vec![0, 6, 10, 12, 14]);
+    }
+
+    #[test]
+    fn a_file_of_layers_reads_as_one_grid() {
+        // The shape every rhythms.toml written before patterns held bars has.
+        // The stack is gone, so its steps are unioned: a cell any take hit is a
+        // cell that sounds, and the topmost take's gain becomes the accent.
+        let text = "[[rhythms]]\nname = \"Old\"\ngate = 1.0\n\n\
+                    [[rhythms.layers]]\ngain = 1.0\nsteps = \"x---\"\n\n\
+                    [[rhythms.layers]]\ngain = 0.5\nsteps = \"--x-\"\n";
+        let file: File = toml::from_str(text).unwrap();
+        let bar = &file.rhythms[0].bars[0];
+        assert_eq!(bar.step_ticks(), 960, "the grid is the takes' own");
+        assert!(bar.hit(0) && bar.hit(2), "both takes' hits survive");
+        assert_eq!(bar.cell_velocity(0), 1.0, "the top take's level");
+        assert_eq!(bar.cell_velocity(2), 0.5, "and the one under it");
     }
 
     #[test]
@@ -1572,17 +1652,32 @@ mod tests {
     }
 
     #[test]
-    fn toml_rejects_a_pattern_with_no_layers() {
-        let text = "[[rhythms]]\nname = \"x\"\ngate = 0.5\n";
+    fn a_pattern_written_with_no_bars_at_all_still_reads() {
+        // The one-bar fields are the reader's: a file that names a pattern and
+        // describes nothing is a silent grid, which is what it has always meant.
+        let text = "[[rhythms]]\nname = \"x\"\n";
+        let file: File = toml::from_str(text).unwrap();
+        assert_eq!(file.rhythms[0].bars.len(), 1);
+        assert!(!file.rhythms[0].any_hit());
+    }
+
+    #[test]
+    fn a_file_with_more_bars_than_are_allowed_is_refused() {
+        let text = "[[rhythms]]\nname = \"long\"\n\n\
+                    [[rhythms.bars]]\nsteps = \"x---\"\n\n\
+                    [[rhythms.bars]]\nsteps = \"x---\"\n\n\
+                    [[rhythms.bars]]\nsteps = \"x---\"\n\n\
+                    [[rhythms.bars]]\nsteps = \"x---\"\n\n\
+                    [[rhythms.bars]]\nsteps = \"x---\"\n";
         assert!(toml::from_str::<File>(text).is_err());
     }
 
     #[test]
-    fn a_layer_defaults_to_full_gain_and_a_pattern_to_the_default_hold() {
+    fn a_bar_defaults_to_the_default_hold() {
         let text = "[[rhythms]]\nname = \"Bare\"\n\n[[rhythms.layers]]\nsteps = \"x---\"\n";
         let file: File = toml::from_str(text).unwrap();
-        assert_eq!(file.rhythms[0].hold, DEFAULT_HOLD);
-        assert_eq!(file.rhythms[0].layers[0].gain, 1.0);
+        assert_eq!(file.rhythms[0].bars[0].hold, DEFAULT_HOLD);
+        assert_eq!(file.rhythms[0].bars[0].steps_per_bar(), 4);
     }
 
     // ---- built-ins ----
@@ -1599,7 +1694,7 @@ mod tests {
     #[test]
     fn built_ins_have_distinct_names_and_are_not_silent() {
         let patterns = builtin_patterns();
-        assert_eq!(patterns.len(), 23, "the shipped palette");
+        assert_eq!(patterns.len(), 19, "the shipped palette");
         let mut names: Vec<&str> = patterns.iter().map(|p| p.name.as_str()).collect();
         names.sort_unstable();
         names.dedup();
@@ -1610,38 +1705,35 @@ mod tests {
     }
 
     #[test]
-    fn the_numbered_phrases_are_contiguous_and_in_order() {
-        // A phrase is a set of one-bar patterns whose names carry the position,
-        // so the numbering *is* the feature: a missing or reordered bar would
-        // silently make the figure play wrong.
+    fn the_phrases_hold_their_bars_in_one_pattern() {
+        // A phrase used to be a *set* of one-bar patterns whose names carried the
+        // position — `Jazz Chorus 1/4` and so on — so the numbering was the
+        // feature and a missing bar played the figure wrong. It is one pattern
+        // with four bars now, which is the same guarantee without the names.
         let patterns = builtin_patterns();
-        let names: Vec<&str> = patterns.iter().map(|p| p.name.as_str()).collect();
-
-        for (prefix, bars) in [("Jazz Chorus", 4usize), ("Son Clave", 2usize)] {
-            let first = names
+        let phrase = |name: &str| {
+            patterns
                 .iter()
-                .position(|n| n.starts_with(prefix))
-                .unwrap_or_else(|| panic!("{} is missing", prefix));
-            for bar in 1..=bars {
-                let want = format!("{} {}/{}", prefix, bar, bars);
-                assert_eq!(
-                    names[first + bar - 1],
-                    want,
-                    "the phrase must run {} in order",
-                    prefix
-                );
-            }
-            // The set is closed: nothing of this phrase's family may sit outside
-            // the run, or the palette would show a stray bar on its own.
-            assert!(
-                !names
-                    .iter()
-                    .skip(first + bars)
-                    .any(|n| n.starts_with(prefix)),
-                "{} must be one contiguous run",
-                prefix
-            );
-        }
+                .find(|p| p.name == name)
+                .unwrap_or_else(|| panic!("{} is missing", name))
+                .clone()
+        };
+        let jazz = phrase("Jazz Chorus");
+        assert_eq!(jazz.bars.len(), 4);
+        assert_eq!(jazz.bars[0].hit_steps(), vec![0, 8]);
+        assert_eq!(jazz.bars[1].hit_steps(), vec![0, 6]);
+        assert_eq!(jazz.bars[2].hit_steps(), vec![0, 6, 10]);
+        assert_eq!(jazz.bars[3].hit_steps(), vec![0, 6, 10, 12, 14]);
+
+        let clave = phrase("Son Clave");
+        assert_eq!(clave.bars.len(), 2);
+        assert_eq!(clave.bars[0].hit_steps(), vec![0, 3, 6]);
+        assert_eq!(clave.bars[1].hit_steps(), vec![2, 4]);
+
+        // And no pattern is named for a bar of another any more: the count is
+        // the guarantee, because a stray numbered bar would show up as a
+        // twentieth entry.
+        assert_eq!(patterns.len(), 19, "a numbered bar would be one more");
     }
 
     #[test]
@@ -1652,9 +1744,12 @@ mod tests {
             .iter()
             .find(|p| p.name == "Offbeat Eighths")
             .expect("Offbeat Eighths");
-        assert_eq!(offbeat.steps_per_bar(), 8);
-        assert_eq!(offbeat.layers[0].hits(), vec![1, 3, 5, 7]);
-        assert!(!offbeat.layers[0].hit(0), "an offbeat pattern has no downbeat");
+        assert_eq!(offbeat.bars[0].steps_per_bar(), 8);
+        assert_eq!(offbeat.bars[0].hit_steps(), vec![1, 3, 5, 7]);
+        assert!(
+            !offbeat.bars[0].hit(0),
+            "an offbeat pattern has no downbeat"
+        );
     }
 
     #[test]
@@ -1668,7 +1763,7 @@ mod tests {
                 .iter()
                 .find(|p| p.name == name)
                 .unwrap_or_else(|| panic!("no built-in named {:?}", name));
-            (pattern.steps_per_bar(), pattern.layers[0].hits())
+            (pattern.bars[0].steps_per_bar(), pattern.bars[0].hit_steps())
         };
 
         // Two halves on 1 and 3.
@@ -1688,15 +1783,35 @@ mod tests {
         assert_eq!(onsets("Swung Eighths"), (12, vec![0, 2, 3, 5, 6, 8, 9, 11]));
         // A roll fills its grid.
         assert_eq!(onsets("32nd Roll"), (32, (0..32).collect::<Vec<_>>()));
+    }
+
+    #[test]
+    fn the_phrases_have_the_onsets_their_names_claim() {
+        let patterns = builtin_patterns();
+        let phrase = |name: &str| {
+            patterns
+                .iter()
+                .find(|p| p.name == name)
+                .unwrap_or_else(|| panic!("no built-in named {:?}", name))
+                .clone()
+        };
 
         // The four-bar jazz comp: pulse, Charleston, add the "&" of 3, fill.
-        assert_eq!(onsets("Jazz Chorus 1/4"), (16, vec![0, 8]));
-        assert_eq!(onsets("Jazz Chorus 2/4"), (16, vec![0, 6]));
-        assert_eq!(onsets("Jazz Chorus 3/4"), (16, vec![0, 6, 10]));
-        assert_eq!(onsets("Jazz Chorus 4/4"), (16, vec![0, 6, 10, 12, 14]));
+        let jazz = phrase("Jazz Chorus");
+        let steps: Vec<Vec<usize>> = jazz.bars.iter().map(|b| b.hit_steps()).collect();
+        assert_eq!(
+            steps,
+            vec![
+                vec![0, 8],
+                vec![0, 6],
+                vec![0, 6, 10],
+                vec![0, 6, 10, 12, 14]
+            ]
+        );
         // 3-2 son clave: the three-side, then the two-side.
-        assert_eq!(onsets("Son Clave 1/2"), (8, vec![0, 3, 6]));
-        assert_eq!(onsets("Son Clave 2/2"), (8, vec![2, 4]));
+        let clave = phrase("Son Clave");
+        let sides: Vec<Vec<usize>> = clave.bars.iter().map(|b| b.hit_steps()).collect();
+        assert_eq!(sides, vec![vec![0, 3, 6], vec![2, 4]]);
     }
 
     #[test]
@@ -1705,8 +1820,12 @@ mod tests {
             .into_iter()
             .find(|p| p.name == "Held Whole")
             .expect("Held Whole");
-        assert_eq!(pattern.hold_ticks(), BAR_TICKS, "one hit, the whole bar");
-        assert_eq!(pattern.layers[0].hits(), vec![0]);
+        assert_eq!(
+            pattern.bars[0].hold_ticks(),
+            BAR_TICKS,
+            "one hit, the whole bar"
+        );
+        assert_eq!(pattern.bars[0].hit_steps(), vec![0]);
     }
 
     #[test]
@@ -1719,23 +1838,30 @@ mod tests {
             .find(|p| p.name == "Damped Quarters")
             .expect("Damped Quarters");
         assert_eq!(
-            damped.mute_boundary(),
+            damped.bars[0].mute_boundary(),
             Some(BAR_TICKS - MAX_MUTE_TICKS as u64)
         );
-        assert_eq!(damped.hold_ticks(), 384, "damped, not ringing");
+        assert_eq!(damped.bars[0].hold_ticks(), 384, "damped, not ringing");
 
         let accented = patterns
             .iter()
             .find(|p| p.name == "Accented Eighths")
             .expect("Accented Eighths");
-        assert_eq!(accented.layers.len(), 1, "an accent is not a second layer");
-        assert_eq!(accented.cell_velocity(0), 1.0, "the downbeat is full");
+        assert_eq!(
+            accented.bars[0].cell_velocity(0),
+            1.0,
+            "the downbeat is full"
+        );
         for step in [2, 4, 6] {
-            assert_eq!(accented.cell_velocity(step), 0.55, "the offbeats sit under");
-            assert!(accented.has_velocity_override(step));
+            assert_eq!(
+                accented.bars[0].cell_velocity(step),
+                0.55,
+                "the offbeats sit under"
+            );
+            assert!(accented.bars[0].has_velocity_override(step));
         }
         assert!(
-            !accented.has_velocity_override(0),
+            !accented.bars[0].has_velocity_override(0),
             "no override at full level"
         );
     }
@@ -1754,22 +1880,26 @@ mod tests {
         };
 
         let charleston = find("Charleston");
-        assert_eq!(charleston.hold, 480, "the answer is an eighth");
+        assert_eq!(charleston.bars[0].hold, 480, "the answer is an eighth");
         assert_eq!(
-            charleston.cell_hold(0),
+            charleston.bars[0].cell_hold(0),
             1440,
             "the statement is a dotted quarter"
         );
         assert_eq!(
-            charleston.cell_hold(6),
+            charleston.bars[0].cell_hold(6),
             480,
             "and the default holds for the rest"
         );
 
         let tresillo = find("Tresillo");
-        assert_eq!(tresillo.cell_hold(0), 1440);
-        assert_eq!(tresillo.cell_hold(6), 1440);
-        assert_eq!(tresillo.cell_hold(12), 960, "3+3+2 closes with a quarter");
+        assert_eq!(tresillo.bars[0].cell_hold(0), 1440);
+        assert_eq!(tresillo.bars[0].cell_hold(6), 1440);
+        assert_eq!(
+            tresillo.bars[0].cell_hold(12),
+            960,
+            "3+3+2 closes with a quarter"
+        );
     }
 
     // ---- per-cell shape ----
@@ -1777,32 +1907,75 @@ mod tests {
     #[test]
     fn a_cell_override_round_trips_and_clears() {
         let mut pattern = RhythmPattern::from_step_string("Shape", 1.0, "x-x-").unwrap();
-        assert!(!pattern.has_hold_override(0));
-        assert_eq!(pattern.cell_hold(0), pattern.hold, "the default, until set");
-
-        pattern.set_cell_hold(0, 1440);
-        assert!(pattern.has_hold_override(0));
-        assert_eq!(pattern.cell_hold(0), 1440);
-        assert_eq!(pattern.holds.len(), 4, "one entry per cell once used");
+        assert!(!pattern.bars[0].has_hold_override(0));
         assert_eq!(
-            pattern.cell_hold(2),
-            pattern.hold,
+            pattern.bars[0].cell_hold(0),
+            pattern.bars[0].hold,
+            "the default, until set"
+        );
+
+        pattern.bars[0].set_cell_hold(0, 1440);
+        assert!(pattern.bars[0].has_hold_override(0));
+        assert_eq!(pattern.bars[0].cell_hold(0), 1440);
+        assert_eq!(
+            pattern.bars[0].holds.len(),
+            4,
+            "one entry per cell once used"
+        );
+        assert_eq!(
+            pattern.bars[0].cell_hold(2),
+            pattern.bars[0].hold,
             "only the one cell moved"
         );
 
         // Setting it back to the default *clears* the override, so the pattern
         // does not carry a row of numbers saying nothing.
-        pattern.set_cell_hold(0, pattern.hold);
-        assert!(!pattern.has_hold_override(0));
-        assert!(pattern.holds.is_empty(), "and the array is dropped");
+        let default = pattern.bars[0].hold;
+        pattern.bars[0].set_cell_hold(0, default);
+        assert!(!pattern.bars[0].has_hold_override(0));
+        assert!(pattern.bars[0].holds.is_empty(), "and the array is dropped");
+    }
+
+    #[test]
+    fn a_hold_marks_the_cells_it_is_still_sounding_through() {
+        // What the grid draws: an onset is a hit, and the cells its hold covers
+        // are the line after it. Without this a note held for a bar and a stab
+        // look identical on screen.
+        let mut bar = RhythmPattern::from_step_string("Held", 1.0, "x---")
+            .unwrap()
+            .bars[0]
+            .clone();
+        assert_eq!(bar.step_ticks(), 960, "four cells to the bar");
+        assert!(
+            bar.sustain().iter().all(|held| !held),
+            "a one-cell hold leaves nothing to draw"
+        );
+
+        bar.set_cell_hold(0, 2880);
+        assert_eq!(
+            bar.sustain(),
+            vec![false, true, true, false],
+            "three cells of hold covers the two after the onset"
+        );
+
+        // A hold running off the end of the bar stops at the bar line: the next
+        // bar has its own grid and its own hits, so there is nothing to mark.
+        let mut late = RhythmBar::silent(4, 960);
+        late.steps[2] = true;
+        late.set_cell_hold(2, BAR_TICKS as u32);
+        assert_eq!(
+            late.sustain(),
+            vec![false, false, false, true],
+            "clipped at the bar, not wrapped"
+        );
     }
 
     #[test]
     fn accents_and_lengths_survive_the_wire() {
         let mut pattern = RhythmPattern::from_step_string("Shaped", 1.0, "x-x-").unwrap();
-        pattern.set_cell_hold(0, 1440);
-        pattern.set_cell_velocity(2, 0.5);
-        pattern.swing = Some(0.4);
+        pattern.bars[0].set_cell_hold(0, 1440);
+        pattern.bars[0].set_cell_velocity(2, 0.5);
+        pattern.bars[0].swing = Some(0.4);
 
         let text = toml::to_string_pretty(&RhythmFileOne(pattern.clone())).unwrap();
         let back: RhythmFileOne = toml::from_str(&text).unwrap();
@@ -1825,7 +1998,7 @@ mod tests {
     #[test]
     fn a_shape_array_of_the_wrong_length_is_refused() {
         let mut pattern = RhythmPattern::from_step_string("Bad", 1.0, "x-x-").unwrap();
-        pattern.holds = vec![1440, 0];
+        pattern.bars[0].holds = vec![1440, 0];
         assert_eq!(
             pattern.validate(),
             Err(RhythmError::ShapeLengthMismatch {
@@ -1840,14 +2013,14 @@ mod tests {
     fn swing_reads_the_patterns_own_or_the_transports() {
         let mut pattern = RhythmPattern::from_step_string("S", 1.0, "x-x-").unwrap();
         assert_eq!(
-            pattern.swing_or(0.6),
+            pattern.bars[0].swing_or(0.6),
             0.6,
             "no override follows the transport"
         );
-        pattern.swing = Some(0.2);
-        assert_eq!(pattern.swing_or(0.6), 0.2, "an override wins");
+        pattern.bars[0].swing = Some(0.2);
+        assert_eq!(pattern.bars[0].swing_or(0.6), 0.2, "an override wins");
 
-        pattern.swing = Some(4.0);
+        pattern.bars[0].swing = Some(4.0);
         assert!(pattern.validate().is_err(), "and it is still range-checked");
     }
 }

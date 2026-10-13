@@ -18,7 +18,9 @@
 
 mod harness;
 
-use chord_tool::synth::Waveform;
+use chord_tool::eq::{EqCurve, EQ_BANDS};
+use chord_tool::fx::{FxKind, P0, P1, P3};
+use chord_tool::synth::{SynthParams, Waveform};
 use chord_tool::voice::VoicePatch;
 
 use harness::{
@@ -153,6 +155,174 @@ fn every_shipped_ensemble_makes_a_sound() {
             render.rms()
         );
     }
+}
+
+#[test]
+fn the_palette_stays_inside_one_loudness_envelope() {
+    // A palette where one preset is far louder than the rest is unusable: the
+    // user reaches for the master every time they change ensemble, and the
+    // ensemble picker stops being a musical choice. The shipped spread is 19.2 dB
+    // — `Snare` at the bottom, `PWM Pad` at the top, loudest peak 0.9365.
+    //
+    // It was 18.9 dB before the showcase ensembles were added, and 18.9 dB after
+    // them. It moved to 19.2 when the registers were re-voiced into a bass, a
+    // chord and a descant, which is a real change in what is being played rather
+    // than a level decision: the outer registers now sit an octave out, and the
+    // loudest peak went from 0.7710 to 0.9365 with them. Two decibels of headroom
+    // above the shipped value is the bar, so this is not a mix decision being
+    // second-guessed but a preset authored at the wrong level being caught. A
+    // deliberate sixth of the palette's range is a reason to re-record the
+    // number, not to delete the test.
+    let mut levels: Vec<(String, f32)> = all_ensembles()
+        .into_iter()
+        .map(|name| {
+            let rms = render(Config::ensemble(&name).chord(&TRIAD)).rms();
+            (name, rms)
+        })
+        .collect();
+    levels.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
+    let (quietest, lowest) = &levels[0];
+    let (loudest, highest) = levels.last().unwrap();
+    let spread = 20.0 * (highest / lowest).log10();
+    assert!(
+        spread < 21.0,
+        "the palette spans {spread:.1} dB, from {quietest} at {lowest:.6} to {loudest} at {highest:.6}"
+    );
+}
+
+#[test]
+fn a_change_to_one_registers_rack_cannot_move_another() {
+    // The question this answers, as it was asked: "I changed the high effect and
+    // the low part sounds different." The racks are three disjoint runs of six
+    // slots in one bank, so this holds by construction — and construction is
+    // exactly where it would break, silently.
+    //
+    // Three details are what make this a test rather than a shape, and the first
+    // one was learned the hard way — the first version of this test passed with
+    // the registers deliberately aliased:
+    //
+    // - all three registers run the **same kind** of effect, so nothing is reset
+    //   between them. A change of kind makes `FxState::reconfigure` clear the slot
+    //   on the next tick, which would let three registers pointed at one slice
+    //   each wipe the other and look correct;
+    // - every delay is fully wet, so the tail is the whole output rather than a
+    //   fraction of it hidden under a dry signal;
+    // - the high register's **fader** is closed rather than its rack emptied. The
+    //   fader is applied after the chain, so the rack still runs and its state
+    //   still evolves, which is the only way a crossed slot could carry anything
+    //   into the registers being measured.
+    fn config(high_feedback: f32, high_fader: f32, aux: bool) -> Config {
+        Config::ensemble("Drawbar Organ")
+            .frames(16 * MAX_BLOCK)
+            .chord(&TRIAD)
+            .at(
+                0,
+                Event::Tweak(Box::new(move |p: &SynthParams| {
+                    // The reverb and delay are *single buses* that all three
+                    // registers are summed into, on purpose. They are switched off
+                    // for the rack assertions so those are about the racks alone,
+                    // and switched on for the last two.
+                    let (mix, send) = if aux { (1.0, 1.0) } else { (0.0, 0.0) };
+                    p.reverb_mix.set(mix);
+                    p.delay_mix.set(mix);
+                    for channel in [&p.low, &p.mid, &p.high] {
+                        channel.reverb_send.set(send);
+                        channel.delay_send.set(send);
+                    }
+                    for (channel, ms, feedback) in [
+                        (&p.low, 120.0f32, 0.5f32),
+                        (&p.mid, 200.0, 0.4),
+                        (&p.high, 40.0, high_feedback),
+                    ] {
+                        channel.chain.slots[0].set_kind(FxKind::Delay);
+                        channel.chain.slots[0].set_param(P0, ms);
+                        channel.chain.slots[0].set_param(P1, feedback);
+                        channel.chain.slots[0].set_param(P3, 1.0);
+                    }
+                    p.high.volume.set(high_fader);
+                })),
+            )
+    }
+
+    // The rack itself, with the shared buses out of the picture.
+    assert_eq!(
+        render(config(0.7, 0.0, false)).hash(),
+        render(config(0.1, 0.0, false)).hash(),
+        "a parameter of the high register's rack moved the low and mid registers"
+    );
+
+    // And with the shared buses *in* the picture, which is the stronger claim:
+    // the send is taken after the fader, so a register at zero cannot reach the
+    // reverb either. A pre-fader send would fail here.
+    assert_eq!(
+        render(config(0.7, 0.0, true)).hash(),
+        render(config(0.1, 0.0, true)).hash(),
+        "a muted high register still reached the shared reverb bus"
+    );
+
+    // And the mirror, so the two assertions above cannot pass by the high rack
+    // never having run at all: with the fader open the same change is audible.
+    assert_ne!(
+        render(config(0.7, 4.0, true)).hash(),
+        render(config(0.1, 4.0, true)).hash(),
+        "the high rack made no difference even with its fader open, so the assertions above prove nothing"
+    );
+}
+
+#[test]
+fn a_curve_on_one_register_cannot_move_another() {
+    // The other per-register stage, and the same question. The engine holds four
+    // separately named `Eq`s and four separately named states, so there is no
+    // index to get wrong the way there is in the rack — but that is a fact about
+    // the code as it stands, and `&mut self.low_eq_state` in the mid register's
+    // tick is exactly as silent as a crossed rack slot.
+    //
+    // The measured register carries a **non-flat** curve, and that is the whole
+    // trick: `Eq::tick` returns its input untouched when the bank is flat, so a
+    // shared state is never read or written and the bug hides. The first version
+    // of this test measured a flat register and passed with the states crossed on
+    // purpose.
+    //
+    // Low and high faders are closed so the mix is the mid register alone, and the
+    // shared buses are off so nothing arrives sideways.
+    fn config(mid_gain: f32, other: usize, other_gain: f32) -> Config {
+        Config::ensemble("Drawbar Organ")
+            .frames(8 * MAX_BLOCK)
+            .chord(&TRIAD)
+            .middle_register_only()
+            .at(
+                0,
+                Event::Tweak(Box::new(move |p: &SynthParams| {
+                    p.reverb_mix.set(0.0);
+                    p.delay_mix.set(0.0);
+                    let curve = |gain: f32| EqCurve {
+                        gains: [gain; EQ_BANDS],
+                    };
+                    p.mid.eq.set(&curve(mid_gain));
+                    let channel = match other {
+                        0 => &p.low,
+                        _ => &p.high,
+                    };
+                    channel.eq.set(&curve(other_gain));
+                })),
+            )
+    }
+
+    for (register, name) in [(2, "high"), (0, "low")] {
+        assert_eq!(
+            render(config(6.0, register, 12.0)).hash(),
+            render(config(6.0, register, -12.0)).hash(),
+            "a curve on the {name} register moved the mid register"
+        );
+    }
+
+    // And the mirror: the same curve on the register being measured does move it,
+    // so the two assertions above cannot pass because the curve never applied.
+    assert_ne!(
+        render(config(12.0, 2, 0.0)).hash(),
+        render(config(-12.0, 2, 0.0)).hash(),
+        "a curve on the mid register made no difference, so the assertions above prove nothing"
+    );
 }
 
 #[test]
@@ -342,6 +512,79 @@ fn one_note_is_voiced_as_the_note_and_its_octaves() {
         at(65.41) && at(130.81) && at(261.63),
         "note 48 should sound as 36, 48 and 60, but the partials are {peaks:?}"
     );
+}
+
+#[test]
+fn a_triad_is_voiced_as_a_bass_a_chord_and_a_descant() {
+    // The end-to-end version of `synth::tests::allocate_*`, and the assertion the
+    // palette needed and did not have. The three registers used to be handed the
+    // chord's *tones* at their written pitch — C4, E4, G4 — which put three
+    // different patches inside a major third where the ear fuses them into one
+    // instrument. The register names were a lie for every chord, and no test
+    // noticed because every other pitch test silences two of the three registers
+    // to have a pitch to measure.
+    //
+    // A neutral voice in all three registers, so what is measured is the voicing
+    // and nothing else: a bass an octave below the root, the triad itself, and a
+    // descant an octave above the top.
+    let render = render(
+        Config::voice(VoicePatch::neutral(12_000.0))
+            .frames(12 * MAX_BLOCK)
+            .chord(&[60, 64, 67]),
+    );
+    let peaks = render.top_peaks(12);
+    let at = |hz: f32| peaks.iter().any(|(p, _)| cents_above(*p, hz).abs() < 20.0);
+    assert!(at(130.81), "no bass an octave below the root: {peaks:?}");
+    assert!(
+        at(261.63) && at(329.63) && at(392.00),
+        "the triad itself is not in the middle: {peaks:?}"
+    );
+    assert!(at(783.99), "no descant an octave above the top: {peaks:?}");
+
+    // And the span, stated as the thing a listener hears: with one voice per
+    // register the three parts have to cover more than two octaves.
+    let sounding: Vec<f32> = peaks.iter().map(|(hz, _)| *hz).collect();
+    let low = sounding.iter().cloned().fold(f32::MAX, f32::min);
+    let high = sounding.iter().cloned().fold(0.0f32, f32::max);
+    assert!(
+        (high / low).log2() > 2.0,
+        "the three registers span {:.2} octaves: {peaks:?}",
+        (high / low).log2()
+    );
+}
+
+#[test]
+fn a_wide_chord_keeps_every_pitch_class() {
+    // Past four notes the top is left to the descant rather than the middle block
+    // being filled and the rest dropped, so all five tones of a ninth still sound.
+    //
+    // Checked by *pitch class* rather than by frequency, because that is the
+    // claim: a tone that does not fit in the middle is still heard an octave away
+    // rather than not heard at all. The root of this chord is the bass, an octave
+    // below where it was written, and that is the voicing working rather than a
+    // tone going missing.
+    let render = render(
+        Config::voice(VoicePatch::neutral(12_000.0))
+            .frames(12 * MAX_BLOCK)
+            .chord(&[60, 64, 67, 71, 74]),
+    );
+    let peaks = render.top_peaks(16);
+    let at_class = |hz: f32| {
+        peaks
+            .iter()
+            .any(|(p, _)| (-2..=2).any(|k| cents_above(*p, hz * 2f32.powi(k)).abs() < 20.0))
+    };
+    for (name, hz) in [
+        ("C", 261.63),
+        ("E", 329.63),
+        ("G", 392.00),
+        ("B", 493.88),
+        ("D", 587.33),
+    ] {
+        assert!(at_class(hz), "{name} ({hz} Hz) is not sounding: {peaks:?}");
+    }
+    let at = |hz: f32| peaks.iter().any(|(p, _)| cents_above(*p, hz).abs() < 20.0);
+    assert!(at(130.81), "no bass an octave below the root: {peaks:?}");
 }
 
 #[test]
@@ -633,61 +876,61 @@ fn the_fingerprints_are_what_they_were() {
         (
             "Default",
             Features {
-                peak_hz: 329.6,
-                centroid_hz: 327.9,
-                rms: 0.1256046,
-                crest: 4.0122,
-                decay_secs: 0.57,
+                peak_hz: 130.7793,
+                centroid_hz: 283.7957,
+                rms: 0.16535167,
+                crest: 3.61711,
+                decay_secs: 0.74,
             },
         ),
         (
             "Warm Pad",
             Features {
-                peak_hz: 392.5,
-                centroid_hz: 512.6,
-                rms: 0.10835968,
-                crest: 3.8026,
-                decay_secs: 0.73,
+                peak_hz: 130.8368,
+                centroid_hz: 800.7355,
+                rms: 0.11329187,
+                crest: 4.13676,
+                decay_secs: 0.64,
             },
         ),
         (
             "Plucky",
             Features {
-                peak_hz: 261.6,
-                centroid_hz: 434.8,
-                rms: 0.0418238,
-                crest: 11.074,
-                decay_secs: 0.23,
+                peak_hz: 130.811,
+                centroid_hz: 209.3293,
+                rms: 0.05165645,
+                crest: 12.73008,
+                decay_secs: 0.51,
             },
         ),
         (
             "Drawbar Organ",
             Features {
-                peak_hz: 392.1,
-                centroid_hz: 652.5,
-                rms: 0.09399436,
-                crest: 4.7659,
-                decay_secs: 0.22,
+                peak_hz: 130.8751,
+                centroid_hz: 923.8611,
+                rms: 0.09092142,
+                crest: 5.73768,
+                decay_secs: 0.57,
             },
         ),
         (
             "Bell",
             Features {
-                peak_hz: 659.2,
-                centroid_hz: 529.1,
-                rms: 0.09274316,
-                crest: 4.7316,
-                decay_secs: 1.01,
+                peak_hz: 523.5043,
+                centroid_hz: 554.4788,
+                rms: 0.10791781,
+                crest: 6.23215,
+                decay_secs: 1.02,
             },
         ),
         (
             "Bassy",
             Features {
-                peak_hz: 261.6,
-                centroid_hz: 275.2,
-                rms: 0.15137866,
-                crest: 2.8449,
-                decay_secs: 0.62,
+                peak_hz: 130.7815,
+                centroid_hz: 348.326,
+                rms: 0.12881708,
+                crest: 4.00680,
+                decay_secs: 0.74,
             },
         ),
     ];
@@ -722,12 +965,12 @@ fn the_hashes_are_what_they_were() {
     // The message prints both hashes and the features, because "0x… != 0x…" on
     // its own is not something anybody can act on.
     const RECORDED: [(&str, u64); 6] = [
-        ("Default", 0xf77bcd8290c60425),
-        ("Warm Pad", 0x964c8fd0aa79ed82),
-        ("Plucky", 0x9d6255deacd0b285),
-        ("Drawbar Organ", 0x6c4c3f8853399b55),
-        ("Bell", 0x5b6ec8577b05afaa),
-        ("Bassy", 0x47b68c36f619d8bd),
+        ("Default", 0xb2b3_39d0_8a5b_aadf),
+        ("Warm Pad", 0x99d1_00bf_6a38_f7dd),
+        ("Plucky", 0xf7f7_60e5_e757_24e2),
+        ("Drawbar Organ", 0x09fe_24df_d42c_df0b),
+        ("Bell", 0xa507_4d3b_e284_17d6),
+        ("Bassy", 0x6caa_9aa1_4f7f_2f6a),
     ];
     let mut recorded = std::collections::HashMap::new();
     for (name, hash) in RECORDED {
@@ -787,11 +1030,11 @@ fn the_second_oscillator_renders_what_it_did() {
     // supposed to change; `CHORD_TOOL_RENDER=/tmp/out.wav` writes out what the
     // render actually is.
     const RECORDED: [(&str, u64); 5] = [
-        ("X-Mod Organ", 0x0e86_7182_339a_1f31),
-        ("X-Mod Clang", 0x5d4f_e461_08eb_c151),
-        ("Through-Zero Bass", 0xf260_8403_e8d6_dc79),
-        ("Ring Clav", 0xd870_e8b9_3ef9_3a99),
-        ("Twin Registration Organ", 0xe350_5821_d409_d825),
+        ("X-Mod Organ", 0xa7e5_4035_a2e2_d495),
+        ("X-Mod Clang", 0xe56f_3826_7152_aca9),
+        ("Through-Zero Bass", 0xcc1e_b201_7807_47e1),
+        ("Ring Clav", 0xa43c_d775_7c9e_6121),
+        ("Twin Registration Organ", 0x3ea2_5d91_10ed_fc45),
     ];
     let mut recorded = std::collections::HashMap::new();
     for (name, hash) in RECORDED {

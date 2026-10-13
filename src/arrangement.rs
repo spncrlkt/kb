@@ -14,6 +14,7 @@
 
 use crate::music::{Key, BEATS_PER_BAR, BAR_TICKS};
 use crate::progression::Slot;
+use crate::rhythm::{RhythmBar, DEFAULT_HOLD};
 
 // -----------------------------------------------------------------------------
 // Stab
@@ -136,7 +137,8 @@ pub fn arrangement_auditioning(
         // entry carries its own pattern, which is what stops one chord's edit
         // from reaching another's.
         match entry.pattern.as_ref() {
-            Some(pattern) => {
+            Some(assigned) => {
+                let pattern = &assigned.rhythm;
                 let step_ticks = pattern.step_ticks() as i64;
                 let swing = pattern.swing_or(transport_swing);
                 let triplet = crate::rhythm::is_triplet_grid(pattern.steps_per_bar());
@@ -183,6 +185,87 @@ pub fn arrangement_auditioning(
     }
 
     // Stable, so stabs sharing a tick keep slot-then-step order.
+    plan.sort_by_key(|s| s.start);
+    plan
+}
+
+// -----------------------------------------------------------------------------
+// The looper's bed
+// -----------------------------------------------------------------------------
+
+/// How many bars the tap looper records. One pass, and the most a pattern holds.
+pub const BED_BARS: usize = 4;
+
+/// One bar of the looper's bed: the chord it was loaded with and its hits.
+#[derive(Clone, Debug, PartialEq)]
+pub struct BedBar {
+    pub notes: Vec<u8>,
+    pub rhythm: RhythmBar,
+}
+
+/// The looper's live four bars.
+///
+/// This is the thing the tap looper is editing and the thing the scheduler plays
+/// in place of the progression while the looper is loaded. It is planned by
+/// [`bed_plan`] into the same `Stab`s a progression produces, so playback, hold
+/// splitting, group assignment and the metronome are all the code that already
+/// existed — the looper adds a source, not a second scheduler.
+#[derive(Clone, Debug, PartialEq)]
+pub struct TapBed {
+    pub bars: Vec<BedBar>,
+}
+
+impl TapBed {
+    /// The same chord four times.
+    pub fn over(chords: &[Vec<u8>], resolution: usize) -> Self {
+        let fallback = chords.first().cloned().unwrap_or_default();
+        TapBed {
+            bars: (0..BED_BARS)
+                .map(|bar| BedBar {
+                    notes: chords.get(bar).cloned().unwrap_or_else(|| fallback.clone()),
+                    rhythm: RhythmBar::silent(resolution, DEFAULT_HOLD),
+                })
+                .collect(),
+        }
+    }
+
+    /// How many hits across the whole bed.
+    pub fn hit_count(&self) -> usize {
+        self.bars.iter().map(|bar| bar.rhythm.hit_count()).sum()
+    }
+}
+
+/// Lay the bed out as stabs, in start order.
+///
+/// Bar `k` begins at `k * BAR_TICKS`, exactly as a four-entry progression would,
+/// so everything downstream — [`bar_events`], the group assignment, the export —
+/// works on it unchanged.
+pub fn bed_plan(bed: &TapBed) -> Vec<Stab> {
+    let mut plan = Vec::new();
+    let length = bed.bars.len() as u64 * BAR_TICKS;
+    for (index, bar) in bed.bars.iter().enumerate() {
+        let base = index as i64 * BAR_TICKS as i64;
+        let boundary = bar.rhythm.mute_boundary().map(|at| base + at as i64);
+        for (step, gain) in bar.rhythm.hits() {
+            let onset = base + step as i64 * bar.rhythm.step_ticks() as i64;
+            let mut duration = (bar.rhythm.cell_hold(step) as u64).clamp(1, BAR_TICKS);
+            if let Some(boundary) = boundary {
+                if onset >= boundary {
+                    continue;
+                }
+                duration = duration.min((boundary - onset) as u64);
+            }
+            push_wrapped(
+                &mut plan,
+                onset,
+                duration,
+                &bar.notes,
+                gain,
+                bar.rhythm.cell_velocity(step),
+                length,
+            );
+        }
+    }
     plan.sort_by_key(|s| s.start);
     plan
 }
@@ -396,8 +479,8 @@ pub fn assign_groups(plan: &[Stab], groups: usize) -> Vec<usize> {
 mod tests {
     use super::*;
     use crate::music::{Scale, ScaleDegree};
-    use crate::progression::ProgressionEntry;
-    use crate::rhythm::{RhythmLayer, RhythmPattern};
+    use crate::progression::{AssignedRhythm, ProgressionEntry};
+    use crate::rhythm::RhythmPattern;
 
     fn c_major() -> Key {
         Key::new(60, Scale::Major)
@@ -416,7 +499,9 @@ mod tests {
 
     fn chord(degree: ScaleDegree, pattern: Option<RhythmPattern>, offset: i32) -> Slot {
         let mut entry = ProgressionEntry::new(degree, None);
-        entry.pattern = pattern;
+        entry.pattern = pattern
+            .as_ref()
+            .and_then(|pattern| AssignedRhythm::from_pattern(pattern, 0));
         entry.offset_ticks = offset;
         Slot::Chord(entry)
     }
@@ -496,18 +581,97 @@ mod tests {
     }
 
     #[test]
-    fn every_layer_of_a_pattern_sounds_with_its_own_gain() {
-        let mut pattern = RhythmPattern::from_step_string("Stack", 0.5, "x---").unwrap();
-        pattern
-            .layers
-            .push(RhythmLayer::from_step_string(0.7, "x---").unwrap());
-
-        let slots = vec![chord(ScaleDegree::I, Some(pattern), 0)];
+    fn a_patterns_bars_spread_across_consecutive_chords() {
+        // What assigning a four-bar phrase does: bar k lands on the chord k
+        // slots along, and each bar plays with its own chord until it stops
+        // having one.
+        let phrase = RhythmPattern {
+            name: "Two Bars".into(),
+            bars: vec![
+                crate::rhythm::RhythmBar::from_step_string(1.0, "x---").unwrap(),
+                crate::rhythm::RhythmBar::from_step_string(1.0, "x-x-").unwrap(),
+            ],
+        };
+        let mut entry = ProgressionEntry::new(ScaleDegree::I, None);
+        entry.pattern = AssignedRhythm::from_pattern(&phrase, 0);
+        let mut second = ProgressionEntry::new(ScaleDegree::V, None);
+        second.pattern = AssignedRhythm::from_pattern(&phrase, 1);
+        let slots = vec![Slot::Chord(entry), Slot::Chord(second)];
         let plan = arrangement(&slots, &c_major(), 1.0);
-        assert_eq!(plan.len(), 2);
-        assert_eq!(plan[0].gain, 1.0);
-        assert_eq!(plan[1].gain, 0.7);
-        assert_eq!(plan[0].notes, plan[1].notes);
+        // Bar 0 is `x---` — one hit on its downbeat. Bar 1 is `x-x-`, so hits on
+        // its downbeat and its third cell, which is 1920 ticks in at 960 a cell.
+        let onsets: Vec<u64> = plan.iter().map(|s| s.start).collect();
+        assert_eq!(onsets, vec![0, BAR_TICKS, BAR_TICKS + 1920]);
+    }
+
+    #[test]
+    fn the_bed_lays_one_bar_per_bar_of_the_loop() {
+        // The looper's four bars are planned by the same code a progression is,
+        // so bar `k` has to begin exactly where a four-entry progression's bar
+        // `k` would: everything downstream reads that arithmetic.
+        let mut bed = TapBed::over(&[vec![60, 64, 67]], 4);
+        bed.bars[0].rhythm.steps = vec![true, false, false, false];
+        bed.bars[1].rhythm.steps = vec![false, false, true, false];
+        bed.bars[3].rhythm.steps = vec![true, true, false, false];
+        let plan = bed_plan(&bed);
+        let onsets: Vec<u64> = plan.iter().map(|s| s.start).collect();
+        assert_eq!(
+            onsets,
+            vec![0, BAR_TICKS + 1920, 3 * BAR_TICKS, 3 * BAR_TICKS + 960]
+        );
+        // And each stab carries its own bar's chord.
+        assert!(plan.iter().all(|s| s.notes == vec![60, 64, 67]));
+    }
+
+    #[test]
+    fn the_last_bars_hold_wraps_into_the_first() {
+        // Four bars is a loop, so a hold crossing the end is split the same way a
+        // progression's is: a head at the end and a tail at the start.
+        let mut bed = TapBed::over(&[vec![60]], 4);
+        bed.bars[3].rhythm.steps = vec![false, false, false, true];
+        bed.bars[3].rhythm.hold = BAR_TICKS as u32;
+        let plan = bed_plan(&bed);
+        let onsets: Vec<u64> = plan.iter().map(|s| s.start).collect();
+        // Sorted by start, so the wrapped tail comes first.
+        assert_eq!(onsets, vec![0, 3 * BAR_TICKS + 2880], "the tail wraps");
+    }
+
+    #[test]
+    fn a_held_note_in_the_bed_is_released_in_the_bar_it_ends_in() {
+        // What a recorded length has to do to be heard: the onset carries a hold
+        // longer than the gap to the next bar, so the bar it started in emits the
+        // On and the bar it ends in emits the Off — on the same group, or the
+        // note would sound for ever.
+        let mut bed = TapBed::over(&[vec![60], vec![64]], 16);
+        // A note on the last cell of bar 1, held for a whole bar.
+        bed.bars[0].rhythm.steps[14] = true;
+        bed.bars[0].rhythm.holds = vec![0; 16];
+        bed.bars[0].rhythm.holds[14] = BAR_TICKS as u32;
+
+        let plan = bed_plan(&bed);
+        let first = bar_events(&plan, 0, BAR_TICKS, RHYTHM_LAYERS);
+        let second = bar_events(&plan, 1, BAR_TICKS, RHYTHM_LAYERS);
+
+        let on = first
+            .iter()
+            .find_map(|e| match e {
+                BarEvent::On { at, group, .. } => Some((*at, *group)),
+                _ => None,
+            })
+            .expect("the onset is in the bar it was tapped in");
+        assert_eq!(on.0, 14 * (BAR_TICKS / 16), "on the cell it was tapped on");
+
+        let off = second
+            .iter()
+            .find_map(|e| match e {
+                BarEvent::Off { at, group } => Some((*at, *group)),
+                _ => None,
+            })
+            .expect("and the release is in the bar it ends in");
+        // Held for exactly a bar, so it lands on the same offset into the *next*
+        // bar as the onset had into its own.
+        assert_eq!(off.0, 14 * (BAR_TICKS / 16), "a bar later, same offset");
+        assert_eq!(off.1, on.1, "the same group, or it never stops");
     }
 
     #[test]
@@ -527,10 +691,8 @@ mod tests {
         // library name it did.
         let mut edited = builtin("Quarters");
         // Keep only the first hit, as the `hits` row does cell by cell.
-        for cell in 1..edited.steps_per_bar() {
-            for layer in edited.layers.iter_mut() {
-                layer.steps[cell] = false;
-            }
+        for cell in 1..edited.bars[0].steps_per_bar() {
+            edited.bars[0].steps[cell] = false;
         }
         assert_ne!(edited, builtin("Quarters"), "the copy really was edited");
 
@@ -922,7 +1084,7 @@ mod tests {
     /// A one-bar pattern: `gate` cells of hold per hit, and a muted tail.
     fn muted(gate: f32, steps: &str, mute: u32) -> RhythmPattern {
         let mut pattern = RhythmPattern::from_step_string("Muted", gate, steps).unwrap();
-        pattern.mute_ticks = mute;
+        pattern.bars[0].mute_ticks = mute;
         pattern
     }
 
@@ -1069,7 +1231,7 @@ mod tests {
         // If that resolution were not accepted the built-in would not exist, and
         // if the division rounded, the shuffle would drift off the beat.
         let swung = palette("Swung Eighths");
-        assert_eq!(swung.step_ticks(), 320);
+        assert_eq!(swung.bars[0].step_ticks(), 320);
 
         let plan = arrangement(&[chord(ScaleDegree::I, Some(swung), 0)], &c_major(), 1.0);
         assert_eq!(
@@ -1082,15 +1244,16 @@ mod tests {
 
     #[test]
     fn a_four_bar_phrase_lays_out_one_pattern_per_bar() {
-        // The whole point of the numbering: four `Jazz Chorus` bars assigned to
-        // four chords are one figure across the loop, not four copies of a bar.
-        let slots: Vec<Slot> = (1..=4)
+        // The point of a multi-bar pattern: the four `Jazz Chorus` bars assigned
+        // to four chords are one figure across the loop, not four copies of a
+        // bar — and they come from one library entry rather than four.
+        let phrase = palette("Jazz Chorus");
+        assert_eq!(phrase.bars.len(), 4);
+        let slots: Vec<Slot> = (0..4)
             .map(|bar| {
-                chord(
-                    ScaleDegree::I,
-                    Some(palette(&format!("Jazz Chorus {}/4", bar))),
-                    0,
-                )
+                let mut entry = ProgressionEntry::new(ScaleDegree::I, None);
+                entry.pattern = AssignedRhythm::from_pattern(&phrase, bar);
+                Slot::Chord(entry)
             })
             .collect();
         let plan = arrangement(&slots, &c_major(), 1.0);
@@ -1121,10 +1284,13 @@ mod tests {
 
     #[test]
     fn a_two_bar_clave_lays_out_both_of_its_sides() {
-        let slots = vec![
-            chord(ScaleDegree::I, Some(palette("Son Clave 1/2")), 0),
-            chord(ScaleDegree::V, Some(palette("Son Clave 2/2")), 0),
-        ];
+        let phrase = palette("Son Clave");
+        let side = |bar: usize, degree| {
+            let mut entry = ProgressionEntry::new(degree, None);
+            entry.pattern = AssignedRhythm::from_pattern(&phrase, bar);
+            Slot::Chord(entry)
+        };
+        let slots = vec![side(0, ScaleDegree::I), side(1, ScaleDegree::V)];
         let plan = arrangement(&slots, &c_major(), 1.0);
         // The three-side on 1, the "&" of 2 and beat 4; the two-side on 2 and 3.
         assert_eq!(
@@ -1140,8 +1306,8 @@ mod tests {
         // The Charleston shape: a dotted quarter on the downbeat, an eighth on
         // the "&" of 2, from one pattern with one default hold.
         let mut pattern = palette("Charleston");
-        assert_eq!(pattern.cell_hold(0), 1440);
-        pattern.set_cell_hold(0, 960);
+        assert_eq!(pattern.bars[0].cell_hold(0), 1440);
+        pattern.bars[0].set_cell_hold(0, 960);
         let slots = vec![chord(ScaleDegree::I, Some(pattern), 0)];
         let plan = arrangement(&slots, &c_major(), 1.0);
 
@@ -1157,7 +1323,7 @@ mod tests {
     #[test]
     fn a_cell_accent_scales_that_hits_gain_alone() {
         let mut pattern = palette("Eighths");
-        pattern.set_cell_velocity(2, 0.5);
+        pattern.bars[0].set_cell_velocity(2, 0.5);
         let slots = vec![chord(ScaleDegree::I, Some(pattern), 0)];
         let plan = arrangement(&slots, &c_major(), 1.0);
 
@@ -1193,7 +1359,7 @@ mod tests {
     #[test]
     fn a_patterns_own_swing_beats_the_transports() {
         let mut pattern = palette("Eighths");
-        pattern.swing = Some(0.0);
+        pattern.bars[0].swing = Some(0.0);
         let slots = vec![chord(ScaleDegree::I, Some(pattern), 0)];
         // The transport is fully swung; the pattern says straight, and a pattern
         // that has an opinion wins.

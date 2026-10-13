@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::keyboard::KeyPosition;
 use crate::music::{Key, Scale, ScaleDegree, Transformation};
-use crate::progression::{Progression, ProgressionEntry, Registers, Slot};
+use crate::progression::{AssignedRhythm, Progression, ProgressionEntry, Registers, Slot};
 use crate::rhythm::RhythmPattern;
 use crate::rhythm_store::RhythmStore;
 
@@ -71,8 +71,16 @@ pub struct SlotDoc {
     pub transformation: Option<Transformation>,
     /// The slot's own rhythm, or the name of one in `rhythms` when the document
     /// is older than version 3.
+    ///
+    /// Since version 4 this is always one **bar**, written as a one-bar pattern
+    /// named after the library pattern it came from.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pattern: Option<PatternDoc>,
+    /// Which bar of that library pattern the slot took. Absent means the first,
+    /// which is what every document written before patterns held more than one
+    /// bar means.
+    #[serde(default, skip_serializing_if = "is_zero_usize")]
+    pub pattern_bar: usize,
     /// Signed ticks off the slot's downbeat. Absent in a v1 document.
     #[serde(default, skip_serializing_if = "is_zero_offset")]
     pub offset_ticks: i32,
@@ -88,6 +96,10 @@ pub struct SlotDoc {
 
 fn is_zero_offset(v: &i32) -> bool {
     *v == 0
+}
+
+fn is_zero_usize(value: &usize) -> bool {
+    *value == 0
 }
 
 /// A slot's rhythm as it appears in a document.
@@ -168,6 +180,7 @@ pub fn encode(
                 degree: None,
                 transformation: None,
                 pattern: None,
+                pattern_bar: 0,
                 offset_ticks: 0,
                 left: None,
                 right: None,
@@ -177,7 +190,13 @@ pub fn encode(
                     kind: "chord".to_string(),
                     degree: Some(entry.degree),
                     transformation: entry.transformation,
-                    pattern: entry.pattern.clone().map(PatternDoc::Inline),
+                    pattern: entry.pattern.as_ref().map(|assigned| {
+                        PatternDoc::Inline(RhythmPattern::single(
+                            assigned.name.clone(),
+                            assigned.rhythm.clone(),
+                        ))
+                    }),
+                    pattern_bar: entry.pattern.as_ref().map(|a| a.bar).unwrap_or(0),
                     offset_ticks: ProgressionEntry::clamp_offset(entry.offset_ticks),
                     left: entry
                         .registers
@@ -250,7 +269,15 @@ pub fn restore(project: &Project) -> Result<Restored, ProjectError> {
                                 pattern.name, err
                             ))
                         })?;
-                        Some(pattern.clone())
+                        // One bar per slot since version 4: the document still
+                        // writes the bar inside a one-bar pattern, so this takes
+                        // the bar and remembers where it came from.
+                        let name = pattern.name.clone();
+                        Some(AssignedRhythm {
+                            name,
+                            bar: doc.pattern_bar,
+                            rhythm: pattern.bars[0].clone(),
+                        })
                     }
                     Some(PatternDoc::Name(name)) => {
                         let found = project
@@ -265,7 +292,7 @@ pub fn restore(project: &Project) -> Result<Restored, ProjectError> {
                             })?;
                         // The copy each slot used to share becomes its own, so a
                         // version 2 file opens with the isolation version 3 has.
-                        Some(found.clone())
+                        AssignedRhythm::from_pattern(found, 0)
                     }
                 };
                 let mut entry = ProgressionEntry::new(degree, doc.transformation);
@@ -586,12 +613,25 @@ mod tests {
 
     fn assigned(degree: ScaleDegree, pattern: Option<RhythmPattern>, offset: i32) -> Slot {
         let mut entry = ProgressionEntry::new(degree, None);
-        entry.pattern = pattern;
+        entry.pattern = pattern
+            .as_ref()
+            .and_then(|pattern| AssignedRhythm::from_pattern(pattern, 0));
         entry.offset_ticks = offset;
         Slot::Chord(entry)
     }
 
-    fn pattern_of(slot: &Slot) -> Option<RhythmPattern> {
+    /// The assigned form of a named palette pattern, which is what an entry
+    /// holds and what `pattern_of` hands back.
+    fn assigned_at(name: &str) -> AssignedRhythm {
+        assigned_bar(&pattern(name), 0)
+    }
+
+    /// Bar `bar` of a pattern, as an entry holds it.
+    fn assigned_bar(pattern: &RhythmPattern, bar: usize) -> AssignedRhythm {
+        AssignedRhythm::from_pattern(pattern, bar).expect("a bar that exists")
+    }
+
+    fn pattern_of(slot: &Slot) -> Option<AssignedRhythm> {
         match slot {
             Slot::Chord(e) => e.pattern.clone(),
             other => panic!("expected a chord, got {:?}", other),
@@ -630,10 +670,8 @@ mod tests {
     }
 
     #[test]
-    fn a_slots_own_pattern_keeps_its_layers_and_its_step_string() {
-        let mut own = RhythmPattern::from_step_string("Stack", 0.4, "x--x--x-").unwrap();
-        own.layers
-            .push(crate::rhythm::RhythmLayer::from_step_string(0.7, "--------").unwrap());
+    fn a_slots_own_pattern_keeps_its_bar_and_its_step_string() {
+        let own = RhythmPattern::from_step_string("Offbeat", 0.4, "x--x--x-").unwrap();
 
         let prog = progression(vec![assigned(ScaleDegree::I, Some(own.clone()), 0)]);
         let bytes = encode(&prog, &RhythmStore::default(), c_major(), 120, 1.0).unwrap();
@@ -641,7 +679,9 @@ mod tests {
         assert!(text.contains(r#"steps = "x--x--x-""#), "rendered:\n{}", text);
 
         let restored = round_trip_with(&prog, &RhythmStore::default(), c_major(), 120, 1.0);
-        assert_eq!(pattern_of(&restored.slots[0]), Some(own));
+        // The bar survives as it was written, and it remembers which pattern it
+        // came from so the `pattern` row can still name it.
+        assert_eq!(pattern_of(&restored.slots[0]), Some(assigned_bar(&own, 0)));
         assert!(
             restored.rhythms.is_empty(),
             "the palette was empty, so nothing was embedded"
@@ -654,17 +694,21 @@ mod tests {
         // one of them edited. The file has to bring back two different rhythms,
         // not one shared name.
         let mut edited = pattern("Quarters");
-        for layer in edited.layers.iter_mut() {
-            layer.steps[1] = true;
-        }
+        edited.bars[0].steps[1] = true;
         let prog = progression(vec![
             assigned(ScaleDegree::I, Some(pattern("Quarters")), 0),
             assigned(ScaleDegree::V, Some(edited.clone()), 0),
         ]);
 
         let restored = round_trip_with(&prog, &library(), c_major(), 120, 0.5);
-        assert_eq!(pattern_of(&restored.slots[0]), Some(pattern("Quarters")));
-        assert_eq!(pattern_of(&restored.slots[1]), Some(edited));
+        assert_eq!(
+            pattern_of(&restored.slots[0]),
+            Some(assigned_at("Quarters"))
+        );
+        assert_eq!(
+            pattern_of(&restored.slots[1]),
+            Some(AssignedRhythm::from_pattern(&edited, 0).unwrap())
+        );
         assert_ne!(
             pattern_of(&restored.slots[0]),
             pattern_of(&restored.slots[1]),
@@ -767,9 +811,7 @@ mod tests {
         match &mut restored.slots[1] {
             Slot::Chord(entry) => {
                 let own = entry.pattern.as_mut().expect("its own copy");
-                for layer in own.layers.iter_mut() {
-                    layer.steps[0] = false;
-                }
+                own.rhythm.steps[0] = false;
             }
             other => panic!("expected a chord, got {:?}", other),
         }

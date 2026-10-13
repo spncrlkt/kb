@@ -119,6 +119,16 @@ pub enum Hotkey {
     /// new slot, while `Shift+J` changes the rhythm of the slot you are on,
     /// leaving its chord and its offset alone. Never returned by `hotkey()`.
     PasteSinko,
+    /// Set the selected slot to the chord being held, keeping that slot's own
+    /// rhythm and offset.
+    ///
+    /// The one-key way to overwrite a chord you have changed your mind about.
+    /// It shares the below-home-row row with `reverse`, `rotate` and `clear`,
+    /// which are group actions and live in the Progression panel's menu because
+    /// they only mean something applied to a run. Replacing does not need a run
+    /// — one slot is a range of one — and a menu that opens only for two or more
+    /// chords left a single slot with no way in at all, so this kept its key.
+    ReplaceChord,
     /// Delete the chord under the progression cursor.
     DeleteChord,
     /// Undo the last progression edit. Shift selects `Redo` instead.
@@ -231,6 +241,10 @@ impl KeyPosition {
             KeyPosition::LeftMiddleBelow => Some(PasteChord),
             KeyPosition::LeftIndexBelow => Some(DeleteChord),
             KeyPosition::LeftInnerBelow => Some(Undo),
+            // The one below-home-row slot on the right hand that still carries an
+            // action of its own: `reverse`, `rotate` and `clear` need a run and
+            // live in the Progression panel's menu instead.
+            KeyPosition::RightInnerBelow => Some(ReplaceChord),
             KeyPosition::RightInnerAbove => Some(HistoryRecall),
             KeyPosition::RightIndexAbove => Some(HistoryBack),
             KeyPosition::RightMiddleAbove => Some(HistoryForward),
@@ -588,17 +602,29 @@ mod tests {
 
     #[test]
     fn the_group_actions_have_no_key_of_their_own() {
-        // Replace, reverse, rotate and clear-sinko live in the Progression
-        // panel's menu, so the below-home-row slots they briefly held are free
-        // again and every one of them is inert rather than a chord key.
+        // Reverse, rotate and clear-sinko only mean something applied to a *run*
+        // of chords, so they live in the Progression panel's menu and the
+        // below-home-row slots they briefly held are free again — inert rather
+        // than chord keys, which is what makes the menu the only way to reach
+        // them.
         for p in [
-            KeyPosition::RightInnerBelow,
             KeyPosition::RightIndexBelow,
             KeyPosition::RightMiddleBelow,
             KeyPosition::RightRingBelow,
         ] {
             assert_eq!(p.hotkey(), None, "{:?} should be inert", p);
         }
+    }
+
+    #[test]
+    fn replace_keeps_a_key_because_a_single_slot_needs_one() {
+        // Replacing is not a group action: one slot is a range of one, and the
+        // edit layer has always taken it that way. The menu cannot serve that
+        // case — it opens only once a run is selected — so the key stays.
+        assert_eq!(
+            KeyPosition::RightInnerBelow.hotkey(),
+            Some(Hotkey::ReplaceChord)
+        );
     }
 
     /// The rows of a fenced hotkey table: keycap, the character that reaches the

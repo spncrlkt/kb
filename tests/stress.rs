@@ -18,8 +18,8 @@ mod harness;
 
 use chord_tool::arrangement::{arrangement_with_swing, assign_groups, bar_events, BarEvent};
 use chord_tool::music::{Key, Scale, BAR_TICKS};
-use chord_tool::progression::{Progression, ProgressionEntry, Slot};
-use chord_tool::rhythm::{RhythmLayer, RhythmPattern};
+use chord_tool::progression::{AssignedRhythm, Progression, ProgressionEntry, Slot};
+use chord_tool::rhythm::{RhythmBar, RhythmPattern, MAX_PATTERN_BARS};
 use chord_tool::rhythm_store::RhythmStore;
 use chord_tool::smf::SmfOptions;
 use chord_tool::synth::{AUDITION_GROUP, STAB_GROUPS};
@@ -197,17 +197,21 @@ fn every_voice_of_the_pool_survives_every_waveform() {
 // -----------------------------------------------------------------------------
 
 /// A progression of `bars` chords on the densest grid the tool offers.
-fn dense_progression(bars: usize, steps: usize, layers: usize) -> Vec<Slot> {
-    let mut pattern =
-        RhythmPattern::from_step_string("Dense", 0.25, &"x".repeat(steps)).expect("a valid grid");
-    // Four takes, decaying, all hitting every cell: the densest onset rate and
-    // the deepest stack the arrangement will ever have to assign groups to.
-    while pattern.layers.len() < layers {
-        let gain = 1.0 / (pattern.layers.len() as f32 + 1.0);
-        pattern
-            .layers
-            .push(RhythmLayer::new(gain, vec![true; steps]));
-    }
+fn dense_progression(bars: usize, steps: usize, _bars_per_pattern: usize) -> Vec<Slot> {
+    // Every cell of every bar: the densest onset rate the arrangement will ever
+    // have to assign groups to. It used to be written as four stacked takes; a
+    // pattern of four full bars is the same onset rate without the stack, and it
+    // is also what the box the pool is sized for.
+    let pattern = RhythmPattern {
+        name: "Dense".to_string(),
+        bars: (0..MAX_PATTERN_BARS)
+            .map(|_| RhythmBar::silent(steps, 240))
+            .map(|mut bar| {
+                bar.steps = vec![true; steps];
+                bar
+            })
+            .collect(),
+    };
 
     let degrees = [
         chord_tool::music::ScaleDegree::I,
@@ -218,7 +222,7 @@ fn dense_progression(bars: usize, steps: usize, layers: usize) -> Vec<Slot> {
     (0..bars)
         .map(|bar| {
             let mut entry = ProgressionEntry::new(degrees[bar % degrees.len()], None);
-            entry.pattern = Some(pattern.clone());
+            entry.pattern = AssignedRhythm::from_pattern(&pattern, 0);
             Slot::Chord(entry)
         })
         .collect()
@@ -400,8 +404,17 @@ fn a_minute_of_the_worst_case_does_not_drift() {
     let mut tail_count = 0u64;
     let mut mid_sum = 0.0f64;
     let mut mid_count = 0u64;
-    let mut head_time = std::time::Duration::ZERO;
-    let mut tail_time = std::time::Duration::ZERO;
+    // Per buffer rather than summed, because the comparison below is a *median*:
+    // the tail window is about half a second of wall clock, so one scheduler stall
+    // inside it doubles the mean and fails a test about a sound. A median cannot
+    // be moved by a handful of stalls, and a cost that really has doubled moves
+    // every buffer in the window.
+    // Preallocated, and pushed to by index: this loop runs inside
+    // `count_allocations`, so growing a vector here is an allocator pass and the
+    // counter would — correctly — fail the test on it.
+    let block = prepared.block;
+    let mut head_times: Vec<f64> = Vec::with_capacity(head_to / block + 2);
+    let mut tail_times: Vec<f64> = Vec::with_capacity(ten / block + 2);
 
     let (_, passes) = count_allocations(|| {
         for start in (0..prepared.frames).step_by(prepared.block) {
@@ -409,9 +422,9 @@ fn a_minute_of_the_worst_case_does_not_drift() {
             prepared.engine.process(&mut buffer, &prepared.params, None);
             let took = began.elapsed();
             if start < head_to {
-                head_time += took;
+                head_times.push(took.as_secs_f64());
             } else if start >= tail_from {
-                tail_time += took;
+                tail_times.push(took.as_secs_f64());
             }
             for sample in &buffer {
                 assert!(
@@ -445,8 +458,12 @@ fn a_minute_of_the_worst_case_does_not_drift() {
     } else {
         mid_sum / mid_count as f64
     };
-    let head_us = head_time.as_secs_f64() / head_to as f64 * 1e6;
-    let tail_us = tail_time.as_secs_f64() / (frames - tail_from) as f64 * 1e6;
+    let median = |times: &mut Vec<f64>| {
+        times.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        times.get(times.len() / 2).copied().unwrap_or(0.0)
+    };
+    let head_us = median(&mut head_times) * 1e6 / block as f64;
+    let tail_us = median(&mut tail_times) * 1e6 / block as f64;
     println!(
         "over {seconds} s: loudest {loudest:.6}, first ten seconds peak {head_peak:.3e} \
          (cost {head_us:.3} us/frame), last ten seconds peak {tail_peak:.3e} \
@@ -474,6 +491,10 @@ fn a_minute_of_the_worst_case_does_not_drift() {
     // become dramatically more expensive to compute. A tail that has decayed
     // into the subnormal range is the usual reason this moves, and it is worth
     // knowing about even when the sound is identical.
+    //
+    // Median per buffer, not mean over the window: this is a wall-clock
+    // measurement in a test suite that runs beside whatever else the machine is
+    // doing, and the window is short enough that one stall was enough to fail it.
     assert!(
         tail_us <= head_us * 2.0,
         "the last ten seconds cost {tail_us:.3} us a frame against {head_us:.3} at the start"

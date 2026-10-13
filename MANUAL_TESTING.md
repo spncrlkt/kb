@@ -48,7 +48,7 @@ list on one page, if you would rather have it open beside the app.
 - [ ] `Esc` stops the transport; a second `Esc` within 500 ms quits.
 - [ ] Shrinking the terminal below 80×16 replaces the frame with a banner saying
       what is missing, rather than wrapping into a mess.
-- [ ] Every panel fits: `Tab` through all seven stops at 80×35 without a row
+- [ ] Every panel fits: `Tab` through all nine stops at 80×35 without a row
       being clipped or the layout jumping.
 
 ## 2. Chord grammar and registers
@@ -87,6 +87,11 @@ list on one page, if you would rather have it open beside the app.
       header reports `N selected`.
 - [ ] `x` copies, `c` pastes **after the block**, `v` deletes, `b` undoes,
       `Shift+b` redoes. The header's `undo: yes` / `redo: yes` tracks it.
+- [ ] **`n` replaces the slot you are on with the chord you are holding**, keeping
+      that slot's rhythm and offset. It must work with **one** chord selected,
+      where the menu is away — that is the case the menu cannot serve. Undoable
+      like every other edit, and it flashes rather than guessing when nothing is
+      held or nothing is selected.
 - [ ] Pasting into the gap before position 1 puts the chord at the front rather
       than refusing.
 - [ ] `Cmd+A` / `Ctrl+A` selects everything.
@@ -101,15 +106,17 @@ list on one page, if you would rather have it open beside the app.
       selected; changing the selection there changes this panel.
 - [ ] `quant` offers 2, 4, 8, **12**, 16, **24**, 32, 64, and a hold survives a
       grid change.
-- [ ] `pattern` shows `[8/23]`, `Shift` jumps five, and `(edited)` appears once a
+- [ ] `pattern` shows `[8/19]`, `Shift` jumps five, and `(edited)` appears once a
       cell is moved away from the library version.
-- [ ] On `hits`, `Enter` toggles the cell under the cursor: **off clears it in
-      every take**, on puts it in the newest.
-- [ ] Recording: `Enter` on `record` arms it, the click runs, and each tap of
-      `` ` `` sounds the chord and adds a take. The four layer lines draw, newest
-      at full level and each older one quieter.
+- [ ] Assigning a **four-bar** pattern spreads its bars: the first lands on the
+      selected chord and the other three on the chords after it, and a single
+      `Ctrl+Z` takes all four back.
+- [ ] On `hits`, `Enter` toggles the cell under the cursor — nothing else. The
+      grid draws under the row, on the bar the row above is showing.
 - [ ] `length` and `accent` apply to the hit under the cursor, not the whole
       pattern.
+- [ ] Changing `quant` **re-quantizes** the existing hits onto the new grid; it
+      does not throw them away.
 - [ ] `mute` silences the end of the pattern's bar and cuts anything ringing in.
 - [ ] `[Copy Sinko]` then `[Paste Sinko]` over a multi-chord selection lays the
       rhythms out in order and repeats to fill; the paste row names what is
@@ -118,7 +125,58 @@ list on one page, if you would rather have it open beside the app.
 - [ ] `[Save Pattern As...]` writes to `rhythms.user.toml` under a new name, and
       a fresh launch still has it.
 
-## 6. History and Top
+## 6. The four-bar Loops panel **⚠** — brand new
+
+Reached with `Tab` until the title reads `Synth [loops]`, or by pressing `Enter`
+on the Sinko panel's `loop` row. It borrows the Synth slot, so the panels below
+it do not move.
+
+- [ ] The panel lists `source`, `chord`, `bar`, `quant`, `hits`, `length`,
+      `accent`, `hold`, `[Clear Bar]`, `[Record]` and `[Save Loop As...]`.
+- [ ] **All four bars are drawn**, one grid per line under `hits`, numbered 1–4,
+      with the bar the cursor is on marked `▸` and the bar the clock is on
+      carrying the playhead (`X`/`+`). `←`/`→` on `bar` moves the marker.
+- [ ] The grid reads `x` for a hit, `·` for a rest and `=` for a cell a note is
+      still sounding through, so a held note is a line and not a dot.
+- [ ] `source` offers `one chord, four times` and `the first four chords`; the
+      `chord` row is only meaningful for the first.
+- [ ] `Enter` on `[Record]` with nothing loaded **loads the four bars and starts
+      looping them with the click**. The grid follows the clock down the four
+      lines, wrapping back to 1.
+- [ ] Each press of `` ` `` sounds the chord of the bar the clock is on — change
+      `bar` by hand and the tap should still follow the *clock*, not the line you
+      are looking at.
+- [ ] Let it come round: the hits you placed play back, each with its own bar's
+      chord. Four bars, four different chords, four different sets of hits.
+- [ ] A tap that lands slightly late still lands in the bar it was played in.
+- [ ] **Holding `` ` `` records a length.** Hold it for about a beat and let go:
+      the `length` row should show roughly a beat on that hit, the grid should
+      show only *one* hit (the cells it was held through are cleared), and the
+      note should sound for that long when the loop comes round.
+- [ ] **Holding the key is one note, not a burst.** Hold it for two or three
+      seconds: the note should keep sounding and the bar should gain exactly one
+      hit, not one per key repeat.
+- [ ] **Nothing hangs.** After a tap, the chord must stop when the key comes up.
+      The one to look for: record a few bars, tap once and *stop* — the last
+      chord should go quiet. Then `Esc` mid-hold, and press `` ` `` and unload the
+      loop with `[Record]` while the key is down: no chord may be left ringing in
+      any of those.
+- [ ] A note held over a bar line keeps sounding into the next bar, and the grid
+      line it started on carries its length.
+- [ ] `[Clear Bar]` empties the bar the cursor is on and leaves the other three
+      alone.
+- [ ] `Enter` on `[Record]` a second time **stops the recording but keeps the
+      loop** — the hits keep playing and nothing is lost.
+- [ ] `Enter` a third time unloads the bed and hands the progression back.
+- [ ] `Esc` during recording stops the transport and the recording **without
+      discarding the four bars**; pressing `Enter` on `[Record]` again brings
+      them back.
+- [ ] `[Save Loop As...]` asks for a name and writes all four bars to the
+      palette as **one** pattern; it then appears in Sinko's `pattern` row and in
+      `rhythms.user.toml`, and survives a relaunch.
+- [ ] `Tab` walks on from here and comes back; nothing below the panel jumps.
+
+## 7. History and Top
 
 - [ ] `p` (`l`) cycles the log: away → exact history → top list.
 - [ ] On the history view, `u` (`g`) and `i` (`c`) step back and forward through
@@ -129,7 +187,7 @@ list on one page, if you would rather have it open beside the app.
 - [ ] A chord only enters the log when it was actually audible — holding a chord
       with the loop running and nothing armed should not log it.
 
-## 7. Synth panel **⚠**
+## 8. Synth panel **⚠**
 
 - [ ] `PageDown` / `PageUp` walk the seven pages and wrap; the title shows
       `Synth [filter 5/7]`.
@@ -156,7 +214,7 @@ list on one page, if you would rather have it open beside the app.
       worth doing deliberately: hold a chord and sweep `cutoff` slowly, then
       quickly.
 
-## 8. Ensembles
+## 9. Ensembles
 
 - [ ] `Enter` loads an ensemble: all three registers change, and the instrument
       row is named for all three at once.
@@ -164,11 +222,84 @@ list on one page, if you would rather have it open beside the app.
       master curve.
 - [ ] `[Save As...]` writes to `ensembles.user.toml`; a user ensemble with a
       shipped name **wins**, and a fresh launch still has it.
+- [ ] **The list scrolls.** There are seventy-four shipped ensembles and the panel
+      shows twenty, so arrowing to the bottom must roll the window rather than
+      running off the screen — the panel's height must not change as it slides,
+      and `[Save As...]` is the last row of the same list, reachable at the end.
+      Tab away from the panel and back: the window returns to the row you left
+      the cursor on.
+- [ ] **The first screen is the everyday palette, and you can move it.** The list
+      opens on `Default` and then twenty one-per-role instruments — piano,
+      electric piano, Wurli, organ, pad, strings, pluck, guitar, mallets, bell,
+      clav, two basses, brass, flute, choir. Re-ordering is line order in
+      `ensembles.toml` and nothing else; no test has an opinion about it, so move
+      anything you like up or down and re-run the suite to confirm nothing else
+      noticed. **Which of the showcase sounds you would actually reach for is the
+      one judgement left open** — promote the ones you like into the first
+      screen.
+- [ ] **Every ensemble is three different instruments, and no two share a
+      middle.** Step the `instrument` row through the whole list: each of the
+      three columns should name a *different* design, and the **middle** one
+      should never be the middle of any other ensemble — the middle is what the
+      ensemble is, so two ensembles sharing one are two names for one sound. The
+      three drum kits (`Kick`, `Hi-Hat`, `Snare`) are the one exception: all three
+      of their registers are percussion, because a drum has no register.
+      Twenty-one ensembles route a register through the rack, twenty-three slots
+      between them — `Folded Lead` and `Funk Clav` use two in order — and the rest
+      have no rack at all.
+- [ ] **The palette stays level.** Click through the whole list with a chord held:
+      no ensemble should need the master moved. A test asserts the spread across
+      all seventy-four is under 21 dB, and it is 19.2 dB.
+- [ ] **The three registers are three parts.** Play a triad and listen for a
+      **bass**, a **chord** and a **descant** — not one sound with three layers.
+      The root should be an octave below the chord, the chord itself in the
+      middle, and the top note an octave above. Before the fix a triad came out as
+      three notes inside a major third, which is the "same instrument played three
+      ways" this was reported as. A ninth should sound all five tones: the root an
+      octave down, the third, fifth and seventh in the middle and the ninth an
+      octave up. Percussion is the exception — a drum has no register.
+- [ ] **Load an ensemble, then re-pick the instrument it already has.** This is the
+      test for the register bug, and it needs no reference recording: load
+      `Twin Drawbars`, hold a chord, then on the `instrument` row step the *high*
+      column one place and back to where it started. **Nothing should change when
+      it comes back.** Before the fix, re-picking a register made it come alive —
+      it gained the drive, the second oscillator, the wavetable position and the
+      string model that the ensemble load had dropped — so stepping away and back
+      audibly changed the sound and shifted the mix against the other two
+      registers. Do it on all three columns, and on `X-Mod Organ` / `Through-Zero
+      Bass` / `Ring Clav`, where the difference was the whole synthesis method.
+- [ ] **The showcase instruments do what their names say**, now that they can:
+      `X-Mod Organ` and `X-Mod Clang` cross-modulate, `Through-Zero Bass` is
+      through-zero FM, `Ring Clav` rings and drives, `Twin Drawbars` really is two
+      registrations, the plucked strings have their own damping, and the morphs
+      move. If one of these sounds like a plain organ or a plain saw, the voice is
+      not reaching the engine again.
+- [ ] **Two shares are deliberate**, so do not report them: a note is voiced as
+      itself plus an octave below and an octave above, so every chord and every
+      audition plays through all three channel strips at once; and the reverb and
+      delay are single aux buses that all three registers are summed into.
+- [ ] **The racks are separate.** On the `fx` page of the Synth panel (or the FX
+      panel itself), give the **high** register a loud, obvious chain — a
+      distortion, a flanger, a bitcrusher — and listen: the low and mid registers
+      must not change at all. Then sweep the `rack` row between `low`, `mid` and
+      `high` and confirm the title and the slot contents follow the column you are
+      on. Before you conclude anything, do the same with the high register's
+      *volume* at zero: the rack still runs, and the low and mid must still not
+      change.
+- [ ] **A curve is per register too.** On the EQ panel, put +12 dB on `high` and
+      then on `low`, with only the mid register audible: the mid must not move.
+      Then move the mid's own curve and confirm it does — that is what proves the
+      first check was measuring anything.
+- [ ] Known gap: many rows name instruments that have no ensemble of their own
+      (`X-Mod Clang`, `Sitar`, `Harpsichord`, `Electric Bass`, `Celesta`). That is
+      the point — the ensemble is the only way to reach them — so to hear one on
+      its own, load its ensemble and solo the register in the Synth panel rather
+      than looking for it in the list.
 - [ ] Loading an ensemble whose instrument does not resolve degrades rather than
       failing — you should get a neutral voice and an error line in `debug.log`,
       not a crash.
 
-## 9. EQ
+## 10. EQ
 
 - [ ] `↑` / `↓` walk `target`, `preset`, `band`, `gain`, `[Save Curve As...]`.
 - [ ] `target` cycles `low`, `mid`, `high`, `master`, and the title names which.
@@ -180,7 +311,7 @@ list on one page, if you would rather have it open beside the app.
 - [ ] `[Save Curve As...]` writes to `eq_presets.user.toml` and survives a
       restart.
 
-## 10. Spectrum **⚠** (this one changed)
+## 11. Spectrum **⚠** (this one changed)
 
 - [ ] The panel draws thirteen levels for whichever `target` the EQ panel set,
       and the two panels share that cursor.
@@ -193,7 +324,7 @@ list on one page, if you would rather have it open beside the app.
 - [ ] Play a chord, tab away for a few seconds, tab back: the bars should reflect
       the present, not the past.
 
-## 11. FX rack **⚠**
+## 12. FX rack **⚠**
 
 - [ ] `rack` cycles `low`, `mid`, `high`; `slot` cycles six places; changing
       either resets the `param` cursor.
@@ -216,7 +347,7 @@ list on one page, if you would rather have it open beside the app.
       anything that decays below the noise floor, and that was a fix, not a
       behaviour you should be able to hear.
 
-## 12. MIDI export and import
+## 13. MIDI export and import
 
 - [ ] `Enter` on `[MIDI]` opens the chooser sideways; `←`/`→` pick a side; a
       second `Enter` runs the bracketed one.
@@ -230,7 +361,7 @@ list on one page, if you would rather have it open beside the app.
 - [ ] The exported `.mid` opens in another program and plays the same notes at
       the same tempo.
 
-## 13. Settings persistence
+## 14. Settings persistence
 
 - [ ] Change the key, the tempo and the master volume, wait a moment, quit.
 - [ ] Relaunch: all three are as you left them, and the default ensemble's own
@@ -242,7 +373,7 @@ list on one page, if you would rather have it open beside the app.
       start.
 - [ ] The progression is **not** restored — that is deliberate.
 
-## 14. The new timing line **⚠**
+## 15. The new timing line **⚠**
 
 The instrumentation added in this batch, and the one place a performance
 regression is visible without a profiler.
@@ -264,7 +395,7 @@ regression is visible without a profiler.
       It should fall slightly; that is 52 filters a sample that are no longer
       being run.
 
-## 15. Things most likely to be broken
+## 16. Things most likely to be broken
 
 The places where a mistake would hide from the automated tests.
 
@@ -278,8 +409,13 @@ The places where a mistake would hide from the automated tests.
       widest voicing you can hold — nothing should wrap, go silent, or click.
 - [ ] **Loading every shipped ensemble in turn** with a chord held. None should
       be silent, none should blow up, and none should be wildly louder than the
-      rest. (42 of them; the audio suite checks this renders, not that it sounds
-      right.)
+      rest. (All seventy-four; the audio suite checks this renders, not that it
+      sounds right.)
+- [ ] **The looper's four bars against the clock.** Record four bars with a chord
+      on each, then count the passes: the hits must not creep early or late
+      against the click, and the bar the grid is showing must follow the one you
+      hear. Leave it looping for a couple of minutes and check the `bar` row still
+      tracks the audio rather than drifting.
 - [ ] **Starting another app that grabs the audio device** while playing. The app
       should survive the stream error rather than dying silently.
 - [ ] **A very long session** — leave it running for ten minutes with the loop

@@ -2037,6 +2037,72 @@ mod tests {
     }
 
     #[test]
+    fn one_registers_rack_state_cannot_reach_another() {
+        // The question this answers: "I changed the *high* effect and the low part
+        // sounds different." The bank is `REGISTERS * CHAIN_SLOTS` slots laid out
+        // per register, so the three racks are disjoint by construction — but that
+        // is exactly the kind of claim that quietly stops being true when the
+        // layout is touched, and the failure is silent: three racks sharing state
+        // still make a sound, just not the one that was asked for.
+        //
+        // `the_registers_have_their_own_slots` checks the shape — that a
+        // distortion in one register is not heard in another. This checks the
+        // *state*, which is the half a wrong slice boundary leaves aliased.
+        //
+        // Every register runs the **same kind** of effect, and the two banks
+        // differ only in a *parameter* of the high one. That is not decoration: a
+        // change of kind makes `FxState::reconfigure` clear the slot on the next
+        // tick, so three registers pointed at one slice would each reset the other
+        // and the aliasing would be invisible. Same kind, different numbers, and
+        // the tail is the only thing that can carry across.
+        fn wet_delay(ms: f32, feedback: f32) -> [Fx; CHAIN_SLOTS] {
+            let mut chain = [Fx::none(); CHAIN_SLOTS];
+            let mut fx = Fx::variant(Delay, FxSubtype::Digital);
+            fx.set_param(P0, ms);
+            fx.set_param(P1, feedback);
+            // Fully wet, so the tail is the whole of the output rather than a
+            // fraction of it blended back with a dry signal that hides it.
+            fx.set_param(P3, 1.0);
+            chain[0] = fx;
+            chain
+        }
+        let low = wet_delay(120.0, 0.5);
+        let mid = wet_delay(200.0, 0.4);
+        let high_a = wet_delay(40.0, 0.7);
+        let high_b = wet_delay(40.0, 0.1);
+
+        let mut a = FxBank::new(SR);
+        let mut b = FxBank::new(SR);
+        let mut high_moved = false;
+        for i in 0..24_000 {
+            // A burst and then silence, so what is being compared is the tails.
+            let x = if i < 240 {
+                (std::f32::consts::TAU * 220.0 * i as f32 / SR).sin() * 0.5
+            } else {
+                0.0
+            };
+            let (la, lb) = (a.chain(0, &low, 120.0, x), b.chain(0, &low, 120.0, x));
+            assert_eq!(
+                la.to_bits(),
+                lb.to_bits(),
+                "the low rack moved at sample {i}"
+            );
+            let (ma, mb) = (a.chain(1, &mid, 120.0, x), b.chain(1, &mid, 120.0, x));
+            assert_eq!(
+                ma.to_bits(),
+                mb.to_bits(),
+                "the mid rack moved at sample {i}"
+            );
+            let (ha, hb) = (a.chain(2, &high_a, 120.0, x), b.chain(2, &high_b, 120.0, x));
+            high_moved |= ha.to_bits() != hb.to_bits();
+        }
+        assert!(
+            high_moved,
+            "the two high racks never diverged, so nothing was tested"
+        );
+    }
+
+    #[test]
     fn changing_the_type_resets_the_state_a_new_effect_would_inherit() {
         // A delay's tail must not come out of a reverb, and a reverb must not
         // start with a delay line's worth of somebody else's sound in it.
